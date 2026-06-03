@@ -38,7 +38,7 @@ def load_all_documents() -> list[dict]:
             if text:
                 documents.append({"text": text, "source": _relative_source(fp)})
         except Exception as e:
-            print(f"  [red]Erro ao ler {fp.name}: {e}[/red]")
+            print(f"  [red]Error reading {fp.name}: {e}[/red]")
 
     for fp in sorted(DATA_DIR_MARKDOWN.glob("*.md")):
         try:
@@ -46,7 +46,7 @@ def load_all_documents() -> list[dict]:
             if text:
                 documents.append({"text": text, "source": _relative_source(fp)})
         except Exception as e:
-            print(f"  [red]Erro ao ler {fp.name}: {e}[/red]")
+            print(f"  [red]Error reading {fp.name}: {e}[/red]")
 
     for fp in sorted(DATA_DIR_WEB.glob("*.txt")):
         try:
@@ -54,6 +54,6 @@ def load_all_documents() -> list[dict]:
             if text:
                 documents.append({"text": text, "source": _relative_source(fp)})
         except Exception as e:
-            print(f"  [red]Erro ao ler {fp.name}: {e}[/red]")
+            print(f"  [red]Error reading {fp.name}: {e}[/red]")
 
     return documents

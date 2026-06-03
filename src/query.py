@@ -19,8 +19,8 @@ def _get_client() -> OpenAI:
     if _client is None:
         if not DEEPSEEK_API_KEY:
             raise ValueError(
-                "DEEPSEEK_API_KEY não configurada. "
-                "Crie um arquivo .env com DEEPSEEK_API_KEY=sk-..."
+                "DEEPSEEK_API_KEY not configured. "
+                "Create a .env file with DEEPSEEK_API_KEY=sk-..."
             )
         _client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     return _client
@@ -29,7 +29,7 @@ def _get_client() -> OpenAI:
 def build_context(retrieved: list[dict]) -> str:
     parts = []
     for i, r in enumerate(retrieved, 1):
-        source = r.get("source", "desconhecido")
+        source = r.get("source", "unknown")
         text = r["text"].strip()
         parts.append(f"[{i}] (source: {source})\n{text}")
     return "\n\n".join(parts)
@@ -49,7 +49,7 @@ def ask_with_sources(
     top_k: int = SIMILARITY_TOP_K,
 ) -> dict:
     if not check_index_exists():
-        raise FileNotFoundError("Índice não encontrado. Execute: python main.py ingest")
+        raise FileNotFoundError("Index not found. Run: python main.py ingest")
 
     retrieved = _retrieve_context(question, top_k=top_k)
     context = build_context(retrieved)
@@ -79,7 +79,7 @@ def ask_with_sources(
                 "text": node["text"][:300],
                 "score": round(score, 4),
                 "metadata": {
-                    "source": node.get("source", "desconhecido"),
+                    "source": node.get("source", "unknown"),
                     "chunk_index": node.get("chunk_index", 0),
                     "search_type": node.get("_search_type", "unknown"),
                 },

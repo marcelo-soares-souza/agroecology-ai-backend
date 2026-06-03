@@ -12,7 +12,7 @@ done
 echo "PostgreSQL is ready."
 
 echo "Running migrations..."
-python main.py migrate
+python main.py db:migrate
 
 echo "Starting API server..."
 exec python main.py serve --host 0.0.0.0 --port "${PORT:-8000}"

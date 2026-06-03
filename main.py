@@ -18,12 +18,12 @@ console = Console()
 def cmd_ingest(args):
     from src.ingest import ingest_all
 
-    console.print("[bold]Indexando documentos...[/bold]")
+    console.print("[bold]Ingesting documents...[/bold]")
     try:
         _table, count = ingest_all()
-        console.print(f"[green]OK[/green] {count} chunks indexados com sucesso!")
+        console.print(f"[green]OK[/green] {count} chunks indexed successfully!")
     except ValueError as e:
-        console.print(f"[red]Erro: {e}[/red]")
+        console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 
 
@@ -34,22 +34,22 @@ def cmd_ask(args):
     try:
         result = ask_with_sources(question, top_k=args.top_k)
     except (ValueError, FileNotFoundError) as e:
-        console.print(f"[red]Erro: {e}[/red]")
+        console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 
     console.print(
         Panel(
             result["answer"],
-            title="[bold green]Resposta[/bold green]",
+            title="[bold green]Answer[/bold green]",
             border_style="green",
         )
     )
 
     if result["sources"]:
-        console.print("\n[bold]Fontes:[/bold]")
+        console.print("\n[bold]Sources:[/bold]")
         for i, src in enumerate(result["sources"], 1):
             meta = src.get("metadata", {})
-            source_file = meta.get("source", "desconhecido")
+            source_file = meta.get("source", "unknown")
             stype = meta.get("search_type", "?")
             console.print(
                 f"  {i}. [dim]Score: {src['score']:.3f} ({stype}) | {source_file}[/dim]"
@@ -68,16 +68,16 @@ def cmd_scrape(args):
     from src.web_scraper import scrape_urls
 
     urls = args.urls
-    console.print(f"[bold]Fazendo scrape de {len(urls)} URLs...[/bold]")
+    console.print(f"[bold]Scraping {len(urls)} URLs...[/bold]")
     results = scrape_urls(urls)
-    console.print(f"[green]OK[/green] {len(results)} páginas salvas em data/web/")
+    console.print(f"[green]OK[/green] {len(results)} pages saved to data/web/")
 
 
 def cmd_status(args):
-    table = Table(title="Status do Projeto")
-    table.add_column("Componente", style="cyan")
-    table.add_column("Itens", style="green")
-    table.add_column("Caminho", style="dim")
+    table = Table(title="Project Status")
+    table.add_column("Component", style="cyan")
+    table.add_column("Count", style="green")
+    table.add_column("Path", style="dim")
 
     pdfs = list(DATA_DIR_PDFS.glob("*.pdf"))
     mds = list(DATA_DIR_MARKDOWN.glob("*.md"))
@@ -95,35 +95,62 @@ def cmd_status(args):
     table.add_row("PDFs", str(len(pdfs)), str(DATA_DIR_PDFS))
     table.add_row("Markdown", str(len(mds)), str(DATA_DIR_MARKDOWN))
     table.add_row("Web (scraped)", str(len(webs)), str(DATA_DIR_WEB))
-    table.add_row("Chunks indexados", str(chunk_count), str(LANCEDB_DIR))
+    table.add_row("Chunks indexed", str(chunk_count), str(LANCEDB_DIR))
 
     console.print(table)
 
 
-def cmd_migrate(args):
-    from src.migrate import run_migrations
+def cmd_db_migrate(args):
+    from src.migrate import ensure_database, run_migrations
 
-    console.print("[bold]Executando migrations...[/bold]")
+    console.print("[bold]Checking database...[/bold]")
+    try:
+        created = ensure_database()
+        if created:
+            console.print("[green]Database created successfully![/green]")
+        else:
+            console.print("[dim]Database already exists.[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error creating database: {e}[/red]")
+        sys.exit(1)
+
+    console.print("[bold]Running migrations...[/bold]")
     try:
         applied = run_migrations()
         if applied == 0:
-            console.print("[yellow]Nenhuma migration pendente.[/yellow]")
+            console.print("[yellow]No pending migrations.[/yellow]")
         else:
-            console.print(f"[green]OK[/green] {applied} migration(s) aplicada(s)!")
+            console.print(f"[green]OK[/green] {applied} migration(s) applied!")
     except Exception as e:
-        console.print(f"[red]Erro: {e}[/red]")
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_db_create(args):
+    from src.migrate import ensure_database
+
+    console.print("[bold]Checking database...[/bold]")
+    try:
+        created = ensure_database()
+        if created:
+            console.print("[green]Database created successfully![/green]")
+        else:
+            console.print("[dim]Database already exists.[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 
 
 def cmd_serve(args):
     import uvicorn
+    from src.adapters.rest.server import app
 
-    console.print("[bold]Iniciando servidor API...[/bold]")
+    console.print("[bold]Starting API server...[/bold]")
     console.print(f"  Endpoint: [cyan]http://{args.host}:{args.port}[/cyan]")
     console.print(f"  Docs:     [cyan]http://{args.host}:{args.port}/docs[/cyan]")
 
     uvicorn.run(
-        "server:app",
+        app,
         host=args.host,
         port=args.port,
         reload=args.reload,
@@ -133,49 +160,57 @@ def cmd_serve(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="RAG Agroecologia — DeepSeek + LanceDB + bge-m3",
+        description="Agroecology RAG — DeepSeek + LanceDB + bge-m3",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Exemplos:
-  python main.py ingest                        # Indexar documentos
-  python main.py ask "O que é agroecologia?"   # Pergunta única
-  python main.py chat                           # Chat interativo
-  python main.py serve                          # Iniciar API REST
-  python main.py migrate                        # Executar migrations
-  python main.py scrape https://exemplo.com     # Scraping de URLs
-  python main.py status                         # Ver status
+Examples:
+  python main.py ingest                        # Index documents
+  python main.py ask "What is agroecology?"    # Single question
+  python main.py chat                           # Interactive chat
+  python main.py serve                          # Start API server
+  python main.py db:migrate                     # Create database + run migrations
+  python main.py db:create                      # Create database only
+  python main.py scrape https://example.com     # Scrape URLs
+  python main.py status                         # View status
         """,
     )
-    subparsers = parser.add_subparsers(dest="command", help="Comando disponível")
+    subparsers = parser.add_subparsers(dest="command", help="Available command")
 
-    sub_ingest = subparsers.add_parser("ingest", help="Indexar documentos")
+    sub_ingest = subparsers.add_parser("ingest", help="Index documents")
     sub_ingest.set_defaults(func=cmd_ingest)
 
-    sub_ask = subparsers.add_parser("ask", help="Fazer uma pergunta")
-    sub_ask.add_argument("question", nargs="+", help="Sua pergunta")
-    sub_ask.add_argument("--top-k", type=int, default=5, help="Número de chunks")
+    sub_ask = subparsers.add_parser("ask", help="Ask a question")
+    sub_ask.add_argument("question", nargs="+", help="Your question")
+    sub_ask.add_argument("--top-k", type=int, default=5, help="Number of chunks")
     sub_ask.set_defaults(func=cmd_ask)
 
-    sub_chat = subparsers.add_parser("chat", help="Chat interativo")
+    sub_chat = subparsers.add_parser("chat", help="Interactive chat")
     sub_chat.set_defaults(func=cmd_chat)
 
-    sub_scrape = subparsers.add_parser("scrape", help="Fazer scrape de URLs")
-    sub_scrape.add_argument("urls", nargs="+", help="URLs para fazer scrape")
+    sub_scrape = subparsers.add_parser("scrape", help="Scrape URLs")
+    sub_scrape.add_argument("urls", nargs="+", help="URLs to scrape")
     sub_scrape.set_defaults(func=cmd_scrape)
 
-    sub_status = subparsers.add_parser("status", help="Ver status do projeto")
+    sub_status = subparsers.add_parser("status", help="View project status")
     sub_status.set_defaults(func=cmd_status)
 
-    sub_serve = subparsers.add_parser("serve", help="Iniciar API REST")
+    sub_serve = subparsers.add_parser("serve", help="Start API server")
     sub_serve.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
     sub_serve.add_argument(
-        "--port", type=int, default=8000, help="Porta (default: 8000)"
+        "--port", type=int, default=8000, help="Port (default: 8000)"
     )
-    sub_serve.add_argument("--reload", action="store_true", help="Auto-reload em dev")
+    sub_serve.add_argument(
+        "--reload", action="store_true", help="Auto-reload (dev mode)"
+    )
     sub_serve.set_defaults(func=cmd_serve)
 
-    sub_migrate = subparsers.add_parser("migrate", help="Executar migrations")
-    sub_migrate.set_defaults(func=cmd_migrate)
+    sub_migrate = subparsers.add_parser(
+        "db:migrate", help="Create database and run migrations"
+    )
+    sub_migrate.set_defaults(func=cmd_db_migrate)
+
+    sub_dbcreate = subparsers.add_parser("db:create", help="Create database only")
+    sub_dbcreate.set_defaults(func=cmd_db_create)
 
     args = parser.parse_args()
 

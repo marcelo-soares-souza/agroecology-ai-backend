@@ -199,7 +199,9 @@ async def ask(body: AskRequest):
     title_map = await get_title_map()
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _process_task, task_id, body.question, body.top_k, cache, title_map)
+    loop.run_in_executor(
+        None, _process_task, task_id, body.question, body.top_k, cache, title_map
+    )
 
     return AskResponse(task_id=task_id, status="processing")
 
@@ -357,7 +359,9 @@ async def upload_documents(
 
         if await filename_exists(f.filename):
             skipped.append(
-                DocumentSkipped(filename=f.filename, reason="arquivo já enviado anteriormente")
+                DocumentSkipped(
+                    filename=f.filename, reason="arquivo já enviado anteriormente"
+                )
             )
             continue
 

@@ -3,7 +3,7 @@
 ## Start the server
 
 ```bash
-python main.py migrate                    # roda migrations (cria tabelas)
+python main.py db:migrate                   # cria banco + roda migrations
 python main.py serve                      # porta 8000, host 0.0.0.0
 python main.py serve --port 8080          # porta customizada
 python main.py serve --reload             # dev: auto-reload
@@ -512,10 +512,9 @@ Migrations são scripts SQL idempotentes em `migrations/`, ordenados por prefixo
 
 ```bash
 # Aplicar migrations pendentes
-python main.py migrate
+python main.py db:migrate
+python main.py db:migrate
 
-# Segunda execução: sem efeito (idempotente)
-python main.py migrate
 ```
 
 Estrutura:
@@ -525,7 +524,7 @@ migrations/
 └── 002_create_documents_table.sql     # documents table (UUIDv7 TEXT PK)
 ```
 
-Para adicionar uma nova migration: crie um arquivo `003_<descricao>.sql` com SQL idempotente (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, etc.) e rode `python main.py migrate`.
+Para adicionar uma nova migration: crie um arquivo `003_<descricao>.sql` com SQL idempotente (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, etc.) e rode `python main.py db:migrate`.
 
 ---
 
@@ -533,7 +532,7 @@ Para adicionar uma nova migration: crie um arquivo `003_<descricao>.sql` com SQL
 
 ```bash
 # 1. Rodar migrations
-python main.py migrate
+python main.py db:migrate
 
 # 2. Subir servidor
 python main.py serve &

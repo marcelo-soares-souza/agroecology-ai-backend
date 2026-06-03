@@ -12,8 +12,7 @@ def ingest_all() -> tuple[object, int]:
     docs = load_all_documents()
     if not docs:
         raise ValueError(
-            "Nenhum documento encontrado. "
-            "Adicione arquivos em data/pdfs/, data/markdown/ ou data/web/"
+            "No documents found. Add files to data/pdfs/, data/markdown/ or data/web/"
         )
 
     rows: list[dict] = []

@@ -11,7 +11,7 @@ def _get_table():
     table_names = db.table_names()
     if "chunks" not in table_names:
         raise FileNotFoundError(
-            f"Tabela 'chunks' não encontrada em {LANCEDB_DIR}. Execute: python main.py ingest"
+            f"Table 'chunks' not found in {LANCEDB_DIR}. Run: python main.py ingest"
         )
     return db.open_table("chunks")
 

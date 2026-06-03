@@ -44,7 +44,9 @@ async def send_email(to_email: str, subject: str, body_html: str) -> bool:
         return False
 
 
-async def send_confirmation_email(to_email: str, token: str, locale: str = "pt-BR") -> bool:
+async def send_confirmation_email(
+    to_email: str, token: str, locale: str = "pt-BR"
+) -> bool:
     from src.shared.config import APP_URL
 
     link = f"{APP_URL}/confirm-email?token={token}"
@@ -94,7 +96,9 @@ async def send_reset_email(to_email: str, token: str, locale: str = "pt-BR") -> 
     return await send_email(to_email, subject, body)
 
 
-async def send_admin_new_user_notification(user_email: str, user_name: str, locale: str = "pt-BR") -> bool:
+async def send_admin_new_user_notification(
+    user_email: str, user_name: str, locale: str = "pt-BR"
+) -> bool:
     from src.shared.config import ADMIN_EMAIL
 
     subject = f"New user registered: {user_email}"

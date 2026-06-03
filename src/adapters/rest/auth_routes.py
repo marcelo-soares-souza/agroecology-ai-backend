@@ -113,7 +113,9 @@ async def register(body: RegisterRequest):
     )
 
 
-async def _send_emails_async(email: str, full_name: str, token: str, locale: str) -> None:
+async def _send_emails_async(
+    email: str, full_name: str, token: str, locale: str
+) -> None:
     from src.infrastructure.email.smtp_service import (
         send_admin_new_user_notification,
         send_confirmation_email,
@@ -141,9 +143,8 @@ async def resend_confirmation(email: str):
 
     import asyncio as _asyncio2
     from src.infrastructure.email.smtp_service import send_confirmation_email
-    _asyncio2.create_task(
-        send_confirmation_email(user.email, token, user.locale)
-    )
+
+    _asyncio2.create_task(send_confirmation_email(user.email, token, user.locale))
 
     return MessageResponse(message="Confirmation email resent. Check your inbox.")
 
@@ -243,7 +244,9 @@ async def request_password_reset(email: str):
     repo = await get_user_repo()
     user = await repo.get_by_email(email)
     if not user:
-        return MessageResponse(message="If the email exists, a reset link has been sent.")
+        return MessageResponse(
+            message="If the email exists, a reset link has been sent."
+        )
 
     token = generate_token()
     token_hash = hash_token(token)
@@ -252,6 +255,7 @@ async def request_password_reset(email: str):
 
     from src.infrastructure.email.smtp_service import send_reset_email
     import asyncio as _asyncio3
+
     _asyncio3.create_task(send_reset_email(user.email, token, user.locale))
 
     return MessageResponse(message="If the email exists, a reset link has been sent.")
@@ -262,7 +266,9 @@ async def confirm_password_reset(token: str, new_password: str):
     from src.adapters.rest.dependencies import get_user_repo
 
     if len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters"
+        )
 
     repo = await get_user_repo()
     token_hash = hash_token(token)

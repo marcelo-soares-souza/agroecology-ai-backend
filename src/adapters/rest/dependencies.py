@@ -31,6 +31,8 @@ from src.infrastructure.persistence.postgres_ingestion_repo import (
 from src.infrastructure.persistence.postgres_user_repo import (
     PostgresUserRepository,
 )
+from src.infrastructure.persistence.queue_repository import QueueRepository
+from src.infrastructure.jobs.worker import start_job_worker
 from src.shared.config import (
     CACHE_TTL,
     DEEPSEEK_API_KEY,
@@ -52,6 +54,7 @@ _cache: CachePort | None = None
 _doc_repo: PostgresDocumentRepository | None = None
 _ingestion_repo: PostgresIngestionRepository | None = None
 _user_repo: PostgresUserRepository | None = None
+_queue: QueueRepository | None = None
 _ingest: IngestDocuments | None = None
 _retriever: RetrieverService | None = None
 _ask_question: AskQuestion | None = None
@@ -158,7 +161,14 @@ def get_ask_question() -> AskQuestion:
 
 
 async def init_services() -> None:
-    global _doc_repo, _ingestion_repo, _user_repo, _ingest, _manage_docs, _get_status
+    global \
+        _doc_repo, \
+        _ingestion_repo, \
+        _user_repo, \
+        _queue, \
+        _ingest, \
+        _manage_docs, \
+        _get_status
 
     if _doc_repo is None:
         _doc_repo = PostgresDocumentRepository()
@@ -188,6 +198,11 @@ async def init_services() -> None:
         doc_repo=_doc_repo,
     )
 
+    if _queue is None:
+        _queue = QueueRepository()
+        _queue.open()
+        start_job_worker(_queue)
+
 
 async def shutdown_services() -> None:
     if _doc_repo:
@@ -212,3 +227,11 @@ def get_extract_metadata() -> ExtractMetadata:
     if _extract_metadata is None:
         _extract_metadata = ExtractMetadata(get_llm())
     return _extract_metadata
+
+
+def get_queue() -> QueueRepository:
+    global _queue
+    if _queue is None:
+        _queue = QueueRepository()
+        _queue.open()
+    return _queue

@@ -38,6 +38,7 @@ from src.adapters.rest.schemas import (
     IngestResponse,
     IngestStatusResponse,
     IngestionRunSchema,
+    MessageResponse,
     StatusResponse,
 )
 from src.domain.models.user import User
@@ -548,6 +549,42 @@ async def extract_document_metadata(doc_id: str):
     return _serialize_doc(doc)
 
 
+@app.get("/api/v1/documents/{doc_id}/view")
+async def view_document(doc_id: str, token: str):
+    # Allow iframe embeds via token query param
+    from src.infrastructure.auth.jwt_handler import decode_token
+
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    manage = get_manage_docs()
+    if manage is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    doc = await manage.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    filepath = manage.get_file_path(doc)
+    p = Path(filepath)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    from urllib.parse import quote
+
+    return FileResponse(
+        path=str(p),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"
+        },
+    )
+
+
 @app.get("/api/v1/documents/{doc_id}/download")
 async def download_document(
     doc_id: str, current_user: User = Depends(get_current_user)
@@ -572,6 +609,37 @@ async def download_document(
         headers={
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"
         },
+    )
+
+
+@app.post("/api/v1/documents/extract-all-metadata", response_model=MessageResponse)
+async def extract_all_metadata(current_user: User = Depends(require_role("admin"))):
+    from src.infrastructure.persistence.postgres_document_repo import (
+        PostgresDocumentRepository,
+    )
+    from src.adapters.rest.dependencies import get_queue
+
+    db = PostgresDocumentRepository()
+    await db.initialize()
+    try:
+        docs = await db.list_all()
+        count = 0
+        queue = get_queue()
+        for doc in docs:
+            if doc.file_type != "pdf":
+                continue
+            if doc.title and doc.title.strip() and doc.authors and doc.authors.strip():
+                continue
+            queue.enqueue(
+                "document.extract_metadata",
+                {"document_id": doc.id},
+            )
+            count += 1
+    finally:
+        await db.close()
+
+    return MessageResponse(
+        message=f"{count} document(s) enqueued for metadata extraction"
     )
 
 

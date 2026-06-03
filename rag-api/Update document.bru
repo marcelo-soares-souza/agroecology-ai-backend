@@ -1,0 +1,24 @@
+meta {
+  name: Update document
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{base_url}}/api/v1/documents/{{doc_id}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "My agroecology paper",
+    "authors": "Silva, J.; Souza, M.",
+    "url": "https://example.com/paper"
+  }
+}
+
+vars:pre-request {
+  base_url: http://localhost:8000
+  doc_id: 1
+}

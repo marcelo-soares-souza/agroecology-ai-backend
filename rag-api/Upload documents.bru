@@ -1,0 +1,19 @@
+meta {
+  name: Upload documents
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{base_url}}/api/v1/documents
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  files: @file1 (PDF, MD, or TXT)
+}
+
+vars:pre-request {
+  base_url: http://localhost:8000
+}

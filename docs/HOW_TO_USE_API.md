@@ -3,9 +3,10 @@
 ## Start the server
 
 ```bash
-python main.py serve                    # porta 8000, host 0.0.0.0
-python main.py serve --port 8080        # porta customizada
-python main.py serve --reload           # dev: auto-reload
+python main.py migrate                    # roda migrations (cria tabelas)
+python main.py serve                      # porta 8000, host 0.0.0.0
+python main.py serve --port 8080          # porta customizada
+python main.py serve --reload             # dev: auto-reload
 ```
 
 Swagger: `http://localhost:8000/docs`
@@ -13,6 +14,21 @@ Swagger: `http://localhost:8000/docs`
 ---
 
 ## Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/ask` | Submit a question (async) |
+| `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
+| `GET` | `/api/v1/status` | Server health and cache stats |
+| `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
+| `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD, TXT) |
+| `GET` | `/api/v1/documents` | List all documents |
+| `GET` | `/api/v1/documents/{id}` | Get document by ID |
+| `PUT` | `/api/v1/documents/{id}` | Update document metadata |
+| `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
+
+---
 
 ### `POST /api/v1/ask` — Submit a question
 
@@ -149,6 +165,8 @@ curl http://localhost:8000/api/v1/status
 ```json
 {
   "index_ready": true,
+  "ingest_status": "done",
+  "chunks_indexed": 21,
   "active_tasks": 0,
   "cache_enabled": true,
   "cache_hits": 3
@@ -158,9 +176,218 @@ curl http://localhost:8000/api/v1/status
 | Field | Type | Description |
 |---|---|---|
 | `index_ready` | boolean | Índice LanceDB disponível |
-| `active_tasks` | integer | Tarefas em processamento |
+| `ingest_status` | string | Estado da ingestão: `"idle"`, `"processing"`, `"done"`, ou `"error"` |
+| `chunks_indexed` | integer | Total de chunks na última ingestão concluída |
+| `active_tasks` | integer | Tarefas de query em processamento |
 | `cache_enabled` | boolean | Cache Valkey/Redis ativo |
 | `cache_hits` | integer | Total de cache hits desde o startup |
+
+---
+
+### `POST /api/v1/ingest` — Trigger ingestion
+
+Inicia a ingestão de documentos em background. Apenas uma ingestão por vez — se já houver uma em andamento, retorna `already_running`.
+
+**Response `200 OK`**
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"processing"` se iniciou, `"already_running"` se já estava rodando |
+
+**Example**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest
+```
+
+```json
+{"status": "processing"}
+```
+
+---
+
+### `GET /api/v1/ingest/status` — Poll ingestion progress
+
+**Response `200 OK`**
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"idle"`, `"processing"`, `"done"`, ou `"error"` |
+| `chunks_indexed` | integer \| null | Chunks indexados (null se não concluído) |
+| `error` | string \| null | Mensagem de erro (null se ok) |
+
+**Example: processing**
+
+```bash
+curl http://localhost:8000/api/v1/ingest/status
+```
+
+```json
+{"status": "processing", "chunks_indexed": null, "error": null}
+```
+
+**Example: done**
+
+```json
+{"status": "done", "chunks_indexed": 21, "error": null}
+```
+
+**Example: error**
+
+```json
+{"status": "error", "chunks_indexed": 0, "error": "Nenhum documento encontrado. Adicione arquivos em data/pdfs/, data/markdown/ ou data/web/"}
+```
+
+---
+
+### `POST /api/v1/documents` — Upload files
+
+Envia arquivos que serão salvos no diretório correto conforme a extensão e registrados no banco de dados.
+
+| Extensão | Diretório |
+|---|---|
+| `.pdf` | `data/pdfs/` |
+| `.md` | `data/markdown/` |
+| `.txt` | `data/web/` |
+
+**Request**
+
+```
+POST /api/v1/documents
+Content-Type: multipart/form-data
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `files` | file[] | yes | Um ou mais arquivos (máx 50 MB cada) |
+
+**Response `200 OK`**
+
+| Field | Type | Description |
+|---|---|---|
+| `uploaded` | array | Arquivos salvos com sucesso |
+| `uploaded[].id` | integer | ID do registro no banco |
+| `uploaded[].filename` | string | Nome do arquivo |
+| `uploaded[].directory` | string | Diretório onde foi salvo |
+| `uploaded[].size` | integer | Tamanho em bytes |
+| `skipped` | array | Arquivos rejeitados |
+| `skipped[].filename` | string | Nome do arquivo |
+| `skipped[].reason` | string | Motivo da rejeição |
+
+**Example**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/documents \
+  -F "files=@paper.pdf" \
+  -F "files=@guide.md" \
+  -F "files=@notes.txt"
+```
+
+```json
+{
+  "uploaded": [
+    {"id": 1, "filename": "paper.pdf", "directory": "pdfs", "size": 245678},
+    {"id": 2, "filename": "guide.md", "directory": "markdown", "size": 8901},
+    {"id": 3, "filename": "notes.txt", "directory": "web", "size": 1234}
+  ],
+  "skipped": []
+}
+```
+
+---
+
+### `GET /api/v1/documents` — List all documents
+
+```bash
+curl http://localhost:8000/api/v1/documents
+```
+
+```json
+[
+  {
+    "id": 1,
+    "filename": "paper.pdf",
+    "title": null,
+    "authors": null,
+    "url": null,
+    "file_type": "pdf",
+    "file_size": 245678,
+    "directory": "pdfs",
+    "created_at": "2026-06-03T14:00:00+00:00",
+    "updated_at": "2026-06-03T14:00:00+00:00"
+  }
+]
+```
+
+---
+
+### `GET /api/v1/documents/{id}` — Get one document
+
+```bash
+curl http://localhost:8000/api/v1/documents/1
+```
+
+Response: mesmo formato do item da lista.
+
+**Errors**
+
+| Code | Condition |
+|---|---|
+| `404` | Documento não encontrado |
+
+---
+
+### `PUT /api/v1/documents/{id}` — Update metadata
+
+Atualiza campos opcionais de metadados. Todos os campos são opcionais — envia apenas os que deseja alterar.
+
+**Request**
+
+```
+PUT /api/v1/documents/1
+Content-Type: application/json
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string \| null | no | Título do artigo/documento |
+| `authors` | string \| null | no | Autores (string livre) |
+| `url` | string \| null | no | URL do artigo original |
+
+**Example**
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/documents/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "My Paper", "authors": "Silva, J.", "url": "https://doi.org/10.1234/example"}'
+```
+
+Response: registro atualizado completo.
+
+**Errors**
+
+| Code | Condition |
+|---|---|
+| `404` | Documento não encontrado |
+| `422` | Nenhum campo enviado |
+
+---
+
+### `DELETE /api/v1/documents/{id}` — Delete document
+
+Remove o arquivo do disco e o registro do banco.
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/documents/1
+```
+
+Response: registro que foi deletado.
+
+**Errors**
+
+| Code | Condition |
+|---|---|
+| `404` | Documento não encontrado |
 
 ---
 
@@ -279,20 +506,54 @@ done
 
 ---
 
+## Migration system
+
+Migrations são scripts SQL idempotentes em `migrations/`, ordenados por prefixo numérico. O comando `migrate` verifica quais já foram aplicados (tabela `schema_migrations`) e executa apenas os pendentes.
+
+```bash
+# Aplicar migrations pendentes
+python main.py migrate
+
+# Segunda execução: sem efeito (idempotente)
+python main.py migrate
+```
+
+Estrutura:
+```
+migrations/
+├── 001_create_schema_migrations.sql   # tracking table
+└── 002_create_documents_table.sql     # documents table (UUIDv7 TEXT PK)
+```
+
+Para adicionar uma nova migration: crie um arquivo `003_<descricao>.sql` com SQL idempotente (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, etc.) e rode `python main.py migrate`.
+
+---
+
 ## Quick test checklist
 
 ```bash
-# 1. Subir servidor
+# 1. Rodar migrations
+python main.py migrate
+
+# 2. Subir servidor
 python main.py serve &
 
-# 2. Verificar saúde
+# 3. Verificar saúde
 curl http://localhost:8000/api/v1/status
 
-# 3. Perguntar
+# 3. Enviar documentos (opcional)
+curl -X POST http://localhost:8000/api/v1/documents \
+  -F "files=@meu-artigo.pdf"
+
+# 4. Ingerir documentos (após envio)
+curl -X POST http://localhost:8000/api/v1/ingest
+curl http://localhost:8000/api/v1/ingest/status
+
+# 5. Perguntar
 curl -X POST http://localhost:8000/api/v1/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "Quais os benefícios dos SAFs?", "top_k": 3}'
 
-# 4. Polling (substitua pelo task_id retornado)
+# 5. Polling (substitua pelo task_id retornado)
 curl http://localhost:8000/api/v1/answer/<task_id>
 ```

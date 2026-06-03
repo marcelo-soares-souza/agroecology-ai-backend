@@ -55,6 +55,9 @@ rag/
 │   ├── chunker.py         # Sentence-aware text chunking
 │   ├── loader.py          # Document loading (PDF/MD/TXT)
 │   ├── ingest.py          # Ingestion pipeline
+│   ├── ingest_state.py     # Ingestion state singleton
+│   ├── database.py         # PostgreSQL document store
+│   ├── migrate.py          # Migration runner
 │   ├── retriever.py       # Hybrid search (vector + BM25 + RRF)
 │   ├── query.py           # Query engine with source citation
 │   ├── chat.py            # Interactive chat with memory + streaming
@@ -65,6 +68,7 @@ rag/
 │   ├── pdfs/              # Place PDF files here
 │   ├── markdown/          # Place .md files here
 │   └── web/               # Scraped web pages (auto-generated)
+├── migrations/            # SQL migration scripts
 ├── index/                 # Persisted LanceDB index
 ├── .env.example           # Environment variable template
 └── requirements.txt       # Python dependencies
@@ -105,7 +109,15 @@ docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 
 If Valkey is not running, the cache is silently disabled — the API works normally without it.
 
-### 4. Add documents
+### 4. Run database migrations
+
+```bash
+python main.py migrate
+```
+
+Migrations are idempotent SQL scripts in `migrations/`. The command creates the required tables and tracks which migrations have already been applied.
+
+### 5. Add documents
 
 Place your files in the appropriate directories:
 
@@ -120,7 +132,7 @@ Or scrape web pages:
 python main.py scrape https://example.com/agroecology-article
 ```
 
-### 5. Build the index
+### 6. Build the index
 
 ```bash
 python main.py ingest
@@ -175,6 +187,13 @@ Swagger docs: `http://localhost:8000/docs`
 | `POST` | `/api/v1/ask` | Submit a question (async) |
 | `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
 | `GET` | `/api/v1/status` | Server health and cache stats |
+| `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
+| `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD, TXT) |
+| `GET` | `/api/v1/documents` | List all documents |
+| `GET` | `/api/v1/documents/{id}` | Get document by ID |
+| `PUT` | `/api/v1/documents/{id}` | Update document metadata |
+| `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
 
 #### Ask a question
 
@@ -187,26 +206,24 @@ curl -X POST http://localhost:8000/api/v1/ask \
 Returns immediately:
 
 ```json
-{"task_id": "581e8cf3a29b", "status": "processing"}
-```
+{"task_id": "019e8dd2-8f8f-746e-8d76-5a4d375cf370", "status": "processing"}
 
 #### Poll for the answer
 
 ```bash
-curl http://localhost:8000/api/v1/answer/581e8cf3a29b
+curl http://localhost:8000/api/v1/answer/019e8dd2-8f8f-746e-8d76-5a4d375cf370
 ```
 
 While processing:
 
 ```json
-{"task_id": "581e8cf3a29b", "status": "processing", "answer": null, "sources": null, "error": null}
-```
+{"task_id": "019e8dd2-8f8f-746e-8d76-5a4d375cf370", "status": "processing", "answer": null, "sources": null, "error": null}
 
 When done:
 
 ```json
 {
-  "task_id": "581e8cf3a29b",
+  "task_id": "019e8dd2-8f8f-746e-8d76-5a4d375cf370",
   "status": "done",
   "answer": "Os Sistemas Agroflorestais (SAFs) são formas de uso da terra que combinam...",
   "sources": [
@@ -229,10 +246,61 @@ curl http://localhost:8000/api/v1/status
 ```json
 {
   "index_ready": true,
+  "ingest_status": "done",
+  "chunks_indexed": 21,
   "active_tasks": 0,
   "cache_enabled": true,
   "cache_hits": 3
 }
+```
+
+#### Trigger ingestion (async)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest
+
+# Poll progress
+curl http://localhost:8000/api/v1/ingest/status
+```
+
+#### Upload documents
+
+```bash
+curl -X POST http://localhost:8000/api/v1/documents \
+  -F "files=@paper.pdf" \
+  -F "files=@guide.md"
+```
+
+Response:
+
+```json
+{
+  "uploaded": [
+    {"id": 1, "filename": "paper.pdf", "directory": "pdfs", "size": 123456},
+    {"id": 2, "filename": "guide.md", "directory": "markdown", "size": 8901}
+  ],
+  "skipped": []
+}
+```
+
+Supported formats: `.pdf` → `data/pdfs/`, `.md` → `data/markdown/`, `.txt` → `data/web/`. Max 50 MB per file.
+
+#### Manage documents
+
+```bash
+# List all
+curl http://localhost:8000/api/v1/documents
+
+# Get one
+curl http://localhost:8000/api/v1/documents/1
+
+# Update metadata
+curl -X PUT http://localhost:8000/api/v1/documents/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "My Paper", "authors": "Silva, J."}'
+
+# Delete file + record
+curl -X DELETE http://localhost:8000/api/v1/documents/1
 ```
 
 #### Python client example
@@ -285,6 +353,7 @@ All settings can be overridden via environment variables in `.env`:
 | `CACHE_TTL` | `3600` | Cache TTL in seconds (1 hour) |
 | `TASK_TTL` | `3600` | Task expiry in seconds (1 hour) |
 | `CLEANUP_INTERVAL` | `300` | Task cleanup interval in seconds (5 min) |
+| `DATABASE_URL` | `postgresql://postgres:password@localhost:5432/agroecology_ai` | PostgreSQL connection string |
 
 ## Limitations
 

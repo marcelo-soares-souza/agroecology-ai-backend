@@ -38,6 +38,11 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))
 TASK_TTL = int(os.getenv("TASK_TTL", "3600"))
 CLEANUP_INTERVAL = int(os.getenv("CLEANUP_INTERVAL", "300"))
 
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:password@localhost:5432/agroecology_ai",
+)
+
 SYSTEM_PROMPT = (
     "You are a specialized assistant in Agroecology. "
     "You answer based exclusively on the context provided by the user. "

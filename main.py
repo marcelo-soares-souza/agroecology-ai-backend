@@ -97,6 +97,21 @@ def cmd_status(args):
     console.print(table)
 
 
+def cmd_migrate(args):
+    from src.migrate import run_migrations
+
+    console.print("[bold]Executando migrations...[/bold]")
+    try:
+        applied = run_migrations()
+        if applied == 0:
+            console.print("[yellow]Nenhuma migration pendente.[/yellow]")
+        else:
+            console.print(f"[green]OK[/green] {applied} migration(s) aplicada(s)!")
+    except Exception as e:
+        console.print(f"[red]Erro: {e}[/red]")
+        sys.exit(1)
+
+
 def cmd_serve(args):
     import uvicorn
 
@@ -123,6 +138,7 @@ Exemplos:
   python main.py ask "O que é agroecologia?"   # Pergunta única
   python main.py chat                           # Chat interativo
   python main.py serve                          # Iniciar API REST
+  python main.py migrate                        # Executar migrations
   python main.py scrape https://exemplo.com     # Scraping de URLs
   python main.py status                         # Ver status
         """,
@@ -152,6 +168,9 @@ Exemplos:
     sub_serve.add_argument("--port", type=int, default=8000, help="Porta (default: 8000)")
     sub_serve.add_argument("--reload", action="store_true", help="Auto-reload em dev")
     sub_serve.set_defaults(func=cmd_serve)
+
+    sub_migrate = subparsers.add_parser("migrate", help="Executar migrations")
+    sub_migrate.set_defaults(func=cmd_migrate)
 
     args = parser.parse_args()
 

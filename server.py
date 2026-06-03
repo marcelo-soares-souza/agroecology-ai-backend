@@ -32,6 +32,7 @@ from src.ingest import check_index_exists
 from src.ingest_state import IngestState, ingest_state
 from src.query import ask_with_sources
 from src.task_manager import TaskManager
+from src.uuid7 import uuid7
 from src.valkey_cache import ValkeyCache
 
 
@@ -273,7 +274,7 @@ async def upload_documents(files: list[UploadFile]):
             ))
             continue
 
-        dest = target_dir / f.filename
+        dest = target_dir / f"{uuid7()}{ext}"
         dest.write_bytes(content)
 
         record = await insert_document(

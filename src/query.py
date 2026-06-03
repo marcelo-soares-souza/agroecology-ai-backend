@@ -49,9 +49,7 @@ def ask_with_sources(
     top_k: int = SIMILARITY_TOP_K,
 ) -> dict:
     if not check_index_exists():
-        raise FileNotFoundError(
-            "Índice não encontrado. Execute: python main.py ingest"
-        )
+        raise FileNotFoundError("Índice não encontrado. Execute: python main.py ingest")
 
     retrieved = _retrieve_context(question, top_k=top_k)
     context = build_context(retrieved)
@@ -61,7 +59,10 @@ def ask_with_sources(
         model=DEEPSEEK_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": USER_PROMPT.format(context=context, question=question)},
+            {
+                "role": "user",
+                "content": USER_PROMPT.format(context=context, question=question),
+            },
         ],
         temperature=0.2,
         max_tokens=2048,
@@ -73,14 +74,16 @@ def ask_with_sources(
     for node in retrieved:
         dist = node.get("_distance", 0)
         score = 1.0 / (1.0 + float(dist)) if dist else 0.0
-        sources.append({
-            "text": node["text"][:300],
-            "score": round(score, 4),
-            "metadata": {
-                "source": node.get("source", "desconhecido"),
-                "chunk_index": node.get("chunk_index", 0),
-                "search_type": node.get("_search_type", "unknown"),
-            },
-        })
+        sources.append(
+            {
+                "text": node["text"][:300],
+                "score": round(score, 4),
+                "metadata": {
+                    "source": node.get("source", "desconhecido"),
+                    "chunk_index": node.get("chunk_index", 0),
+                    "search_type": node.get("_search_type", "unknown"),
+                },
+            }
+        )
 
     return {"answer": answer, "sources": sources}

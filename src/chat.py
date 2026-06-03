@@ -1,6 +1,5 @@
 from openai import OpenAI
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
@@ -74,14 +73,16 @@ def chat():
 
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            recent = history[-(MAX_HISTORY * 2):]
+            recent = history[-(MAX_HISTORY * 2) :]
             for msg in recent:
                 messages.append(msg)
 
-            messages.append({
-                "role": "user",
-                "content": USER_PROMPT.format(context=context, question=question),
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": USER_PROMPT.format(context=context, question=question),
+                }
+            )
 
             stream = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
@@ -118,4 +119,3 @@ def chat():
 
         except Exception as e:
             console.print(f"[red]Erro: {e}[/red]")
-

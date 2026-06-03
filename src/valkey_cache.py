@@ -1,19 +1,25 @@
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
+from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
-try:
+if TYPE_CHECKING:
     import redis
-except ImportError:
-    redis = None
+else:
+    try:
+        import redis  # noqa: F811
+    except ImportError:
+        redis = None  # type: ignore[assignment]
 
 
 class ValkeyCache:
     def __init__(self, url: str, ttl: int = 3600) -> None:
         self.enabled = False
-        self._client: "redis.Redis | None" = None
+        self._client: redis.Redis | None = None  # type: ignore[name-defined]
         self._ttl = ttl
 
         if redis is None:
@@ -21,7 +27,9 @@ class ValkeyCache:
             return
 
         try:
-            self._client = redis.Redis.from_url(url, socket_connect_timeout=2, decode_responses=True)
+            self._client = redis.Redis.from_url(
+                url, socket_connect_timeout=2, decode_responses=True
+            )
             self._client.ping()
             self.enabled = True
             logger.info("Valkey cache connected: %s", url)
@@ -33,19 +41,19 @@ class ValkeyCache:
         h = hashlib.md5(normalized.encode()).hexdigest()
         return f"rag:cache:{h}"
 
-    def get(self, question: str) -> dict | None:
+    def get(self, question: str) -> dict[str, Any] | None:
         if not self.enabled or self._client is None:
             return None
         try:
-            raw = self._client.get(self._key(question))
+            raw: Any = self._client.get(self._key(question))
             if raw:
                 self._client.incr("rag:stats:cache_hits")
-                return json.loads(raw)
+                return dict(json.loads(str(raw)))
         except Exception:
             pass
         return None
 
-    def set(self, question: str, result: dict) -> None:
+    def set(self, question: str, result: dict[str, Any]) -> None:
         if not self.enabled or self._client is None:
             return
         try:
@@ -61,8 +69,8 @@ class ValkeyCache:
         if not self.enabled or self._client is None:
             return 0
         try:
-            raw = self._client.get("rag:stats:cache_hits")
-            return int(raw) if raw else 0
+            raw: Any = self._client.get("rag:stats:cache_hits")
+            return int(str(raw)) if raw else 0
         except Exception:
             return 0
 

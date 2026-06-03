@@ -24,9 +24,7 @@ class TaskManager:
         self._tasks: dict[str, Task] = {}
         self._lock = threading.Lock()
         self._running = True
-        self._cleanup_thread = threading.Thread(
-            target=self._cleanup_loop, daemon=True
-        )
+        self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_thread.start()
 
     def create(self, question: str, top_k: int) -> str:
@@ -66,9 +64,7 @@ class TaskManager:
 
     def active_count(self) -> int:
         with self._lock:
-            return sum(
-                1 for t in self._tasks.values() if t.status == "processing"
-            )
+            return sum(1 for t in self._tasks.values() if t.status == "processing")
 
     def _cleanup_loop(self) -> None:
         while self._running:
@@ -79,9 +75,7 @@ class TaskManager:
         now = time.time()
         with self._lock:
             expired = [
-                tid
-                for tid, t in self._tasks.items()
-                if now - t.created_at > TASK_TTL
+                tid for tid, t in self._tasks.items() if now - t.created_at > TASK_TTL
             ]
             for tid in expired:
                 del self._tasks[tid]

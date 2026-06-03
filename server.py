@@ -22,14 +22,16 @@ from src.database import (
     close_pool,
     delete_document,
     get_document,
+    get_ingestion_run,
     init_pool,
     insert_document,
     list_documents,
+    list_ingestion_runs,
     update_document,
 )
 from src.embedder import get_embedder
 from src.ingest import check_index_exists
-from src.ingest_state import IngestState, ingest_state
+from src.ingest_state import ingest_state
 from src.query import ask_with_sources
 from src.task_manager import TaskManager
 from src.uuid7 import uuid7
@@ -71,6 +73,7 @@ app.add_middleware(
 
 # ── models ───────────────────────────────────────────────────────────────────
 
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=SIMILARITY_TOP_K, ge=1, le=20)
@@ -96,6 +99,7 @@ class StatusResponse(BaseModel):
     active_tasks: int
     cache_enabled: bool
     cache_hits: int
+    last_ingestion: "IngestionRunResponse | None" = None
 
 
 class IngestResponse(BaseModel):
@@ -106,6 +110,16 @@ class IngestStatusResponse(BaseModel):
     status: str
     chunks_indexed: int | None = None
     error: str | None = None
+    run_id: str | None = None
+
+
+class IngestionRunResponse(BaseModel):
+    id: str
+    status: str
+    chunks_indexed: int
+    error: str | None = None
+    started_at: str
+    finished_at: str | None = None
 
 
 class DocumentSkipped(BaseModel):
@@ -156,6 +170,7 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024
 
 # ── ask / answer ─────────────────────────────────────────────────────────────
 
+
 @app.post("/api/v1/ask", response_model=AskResponse)
 async def ask(body: AskRequest):
     if not check_index_exists():
@@ -179,9 +194,7 @@ async def ask(body: AskRequest):
     task_id = app.state.tasks.create(body.question, body.top_k)
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(
-        None, _process_task, task_id, body.question, body.top_k, cache
-    )
+    loop.run_in_executor(None, _process_task, task_id, body.question, body.top_k, cache)
 
     return AskResponse(task_id=task_id, status="processing")
 
@@ -205,10 +218,27 @@ async def answer(task_id: str):
 
 # ── status ───────────────────────────────────────────────────────────────────
 
+
 @app.get("/api/v1/status", response_model=StatusResponse)
 async def status():
     cache = app.state.cache
     tasks = app.state.tasks
+
+    last_ingestion = None
+    runs = await list_ingestion_runs()
+    if runs:
+        last = runs[0]
+        last_ingestion = IngestionRunResponse(
+            id=last["id"],
+            status=last["status"],
+            chunks_indexed=last["chunks_indexed"],
+            error=last["error"],
+            started_at=last["started_at"].isoformat(),
+            finished_at=last["finished_at"].isoformat()
+            if last["finished_at"]
+            else None,
+        )
+
     return StatusResponse(
         index_ready=check_index_exists(),
         ingest_status=ingest_state.status,
@@ -216,10 +246,12 @@ async def status():
         active_tasks=tasks.active_count(),
         cache_enabled=cache.enabled,
         cache_hits=cache.hit_count(),
+        last_ingestion=last_ingestion,
     )
 
 
 # ── ingest ───────────────────────────────────────────────────────────────────
+
 
 @app.post("/api/v1/ingest", response_model=IngestResponse)
 async def ingest_start():
@@ -231,10 +263,43 @@ async def ingest_start():
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
 async def ingest_status():
-    return IngestStatusResponse(**ingest_state.to_dict())
+    data = ingest_state.to_dict()
+    return IngestStatusResponse(**data)
+
+
+@app.get("/api/v1/ingestion/runs", response_model=list[IngestionRunResponse])
+async def list_runs():
+    runs = await list_ingestion_runs()
+    return [
+        IngestionRunResponse(
+            id=r["id"],
+            status=r["status"],
+            chunks_indexed=r["chunks_indexed"],
+            error=r["error"],
+            started_at=r["started_at"].isoformat(),
+            finished_at=r["finished_at"].isoformat() if r["finished_at"] else None,
+        )
+        for r in runs
+    ]
+
+
+@app.get("/api/v1/ingestion/runs/{run_id}", response_model=IngestionRunResponse)
+async def get_run(run_id: str):
+    run = await get_ingestion_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Ingestion run not found")
+    return IngestionRunResponse(
+        id=run["id"],
+        status=run["status"],
+        chunks_indexed=run["chunks_indexed"],
+        error=run["error"],
+        started_at=run["started_at"].isoformat(),
+        finished_at=run["finished_at"].isoformat() if run["finished_at"] else None,
+    )
 
 
 # ── documents CRUD ───────────────────────────────────────────────────────────
+
 
 def _file_type(ext: str) -> str:
     return {".pdf": "pdf", ".md": "md", ".txt": "txt"}.get(ext, "unknown")
@@ -247,17 +312,21 @@ async def upload_documents(files: list[UploadFile]):
 
     for f in files:
         if not f.filename:
-            skipped.append(DocumentSkipped(filename="(unknown)", reason="filename vazio"))
+            skipped.append(
+                DocumentSkipped(filename="(unknown)", reason="filename vazio")
+            )
             continue
 
         ext = Path(f.filename).suffix.lower()
         target_dir = _ALLOWED_EXT.get(ext)
 
         if target_dir is None:
-            skipped.append(DocumentSkipped(
-                filename=f.filename,
-                reason=f"formato não suportado ({ext})",
-            ))
+            skipped.append(
+                DocumentSkipped(
+                    filename=f.filename,
+                    reason=f"formato não suportado ({ext})",
+                )
+            )
             continue
 
         content = await f.read()
@@ -268,10 +337,12 @@ async def upload_documents(files: list[UploadFile]):
             continue
 
         if size > _MAX_FILE_SIZE:
-            skipped.append(DocumentSkipped(
-                filename=f.filename,
-                reason=f"arquivo excede 50 MB ({size / 1024 / 1024:.1f} MB)",
-            ))
+            skipped.append(
+                DocumentSkipped(
+                    filename=f.filename,
+                    reason=f"arquivo excede 50 MB ({size / 1024 / 1024:.1f} MB)",
+                )
+            )
             continue
 
         dest = target_dir / f"{uuid7()}{ext}"
@@ -284,12 +355,14 @@ async def upload_documents(files: list[UploadFile]):
             directory=str(target_dir.relative_to(DATA_DIR)),
         )
 
-        uploaded.append(DocumentUploaded(
-            id=record["id"],
-            filename=f.filename,
-            directory=str(target_dir.relative_to(DATA_DIR)),
-            size=size,
-        ))
+        uploaded.append(
+            DocumentUploaded(
+                id=record["id"],
+                filename=f.filename,
+                directory=str(target_dir.relative_to(DATA_DIR)),
+                size=size,
+            )
+        )
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 
@@ -311,8 +384,12 @@ async def get_one_document(doc_id: str):
 @app.put("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
 async def update_one_document(doc_id: str, body: DocumentUpdate):
     if body.title is None and body.authors is None and body.url is None:
-        raise HTTPException(status_code=422, detail="Nenhum campo para atualizar (title, authors, url)")
-    row = await update_document(doc_id, title=body.title, authors=body.authors, url=body.url)
+        raise HTTPException(
+            status_code=422, detail="Nenhum campo para atualizar (title, authors, url)"
+        )
+    row = await update_document(
+        doc_id, title=body.title, authors=body.authors, url=body.url
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
     return _serialize_doc(row)
@@ -341,6 +418,7 @@ def _serialize_doc(row: dict) -> dict:
 
 
 # ── background ───────────────────────────────────────────────────────────────
+
 
 def _process_task(
     task_id: str,

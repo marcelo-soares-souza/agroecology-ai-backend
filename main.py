@@ -37,11 +37,13 @@ def cmd_ask(args):
         console.print(f"[red]Erro: {e}[/red]")
         sys.exit(1)
 
-    console.print(Panel(
-        result["answer"],
-        title="[bold green]Resposta[/bold green]",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            result["answer"],
+            title="[bold green]Resposta[/bold green]",
+            border_style="green",
+        )
+    )
 
     if result["sources"]:
         console.print("\n[bold]Fontes:[/bold]")
@@ -85,6 +87,7 @@ def cmd_status(args):
     chunk_count = 0
     if db_exists:
         import lancedb
+
         db = lancedb.connect(str(LANCEDB_DIR))
         t = db.open_table("chunks")
         chunk_count = t.count_rows()
@@ -165,7 +168,9 @@ Exemplos:
 
     sub_serve = subparsers.add_parser("serve", help="Iniciar API REST")
     sub_serve.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
-    sub_serve.add_argument("--port", type=int, default=8000, help="Porta (default: 8000)")
+    sub_serve.add_argument(
+        "--port", type=int, default=8000, help="Porta (default: 8000)"
+    )
     sub_serve.add_argument("--reload", action="store_true", help="Auto-reload em dev")
     sub_serve.set_defaults(func=cmd_serve)
 

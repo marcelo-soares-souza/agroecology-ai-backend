@@ -2,9 +2,7 @@ import re
 
 from .config import CHUNK_SIZE, CHUNK_OVERLAP
 
-_SENTENCE_END = re.compile(
-    r'(?<=[.!?])\s+(?=[A-Z\u00c0-\u00da\u00c7])'
-)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\u00c0-\u00da\u00c7])")
 
 
 def estimate_tokens(text: str) -> int:

@@ -4,7 +4,7 @@ import lancedb
 
 from .chunker import chunk_text
 from .config import CHUNK_OVERLAP, CHUNK_SIZE, LANCEDB_DIR
-from .embedder import get_embedding_dim, embed_texts
+from .embedder import embed_texts
 from .loader import load_all_documents
 
 
@@ -16,20 +16,20 @@ def ingest_all() -> tuple[object, int]:
             "Adicione arquivos em data/pdfs/, data/markdown/ ou data/web/"
         )
 
-    embedding_dim = get_embedding_dim()
-
     rows: list[dict] = []
     for doc in docs:
         chunks = chunk_text(doc["text"], CHUNK_SIZE, CHUNK_OVERLAP)
         for i, chunk in enumerate(chunks):
             if not chunk.strip():
                 continue
-            rows.append({
-                "id": f"{Path(doc['source']).stem}_{i}",
-                "text": chunk,
-                "source": doc["source"],
-                "chunk_index": i,
-            })
+            rows.append(
+                {
+                    "id": f"{Path(doc['source']).stem}_{i}",
+                    "text": chunk,
+                    "source": doc["source"],
+                    "chunk_index": i,
+                }
+            )
 
     texts = [r["text"] for r in rows]
     vectors = embed_texts(texts)

@@ -1,5 +1,4 @@
 import os
-import sys
 from contextlib import contextmanager
 
 from .config import EMBEDDING_MODEL
@@ -18,7 +17,7 @@ def _suppress_stderr():
         os.close(old_stderr)
 
 
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer  # noqa: E402
 
 _embedder: SentenceTransformer | None = None
 
@@ -32,7 +31,9 @@ def get_embedder() -> SentenceTransformer:
 
 
 def get_embedding_dim() -> int:
-    return get_embedder().get_embedding_dimension()
+    dim = get_embedder().get_embedding_dimension()
+    assert dim is not None
+    return dim
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:

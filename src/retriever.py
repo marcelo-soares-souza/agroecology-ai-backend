@@ -67,7 +67,7 @@ def _rrf_fusion(
         scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank + 1)
         rows[doc_id] = r
 
-    sorted_ids = sorted(scores, key=scores.get, reverse=True)
+    sorted_ids = sorted(scores, key=lambda k: scores[k], reverse=True)
     results = []
     for doc_id in sorted_ids:
         row = dict(rows[doc_id])

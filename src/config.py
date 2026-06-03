@@ -19,6 +19,8 @@ EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "sentence_transformer")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
+AUTO_EXTRACT_METADATA = os.getenv("AUTO_EXTRACT_METADATA", "true").lower() == "true"
+
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "5"))

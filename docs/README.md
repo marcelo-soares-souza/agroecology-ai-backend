@@ -47,7 +47,7 @@ See [../docs/HOW_AI_FLOW_WORKS.md](../docs/HOW_AI_FLOW_WORKS.md) for the full de
 - **Source citation**: Every answer includes source file references, titles, and retrieval scores
 - **Multilingual**: bge-m3 supports 102 languages; answers match the query language
 - **REST API**: Async polling API with Valkey/Redis response caching
-- **Document management**: Upload, list, edit metadata, download, delete. SHA256-based deduplication prevents duplicate uploads.
+- **Document management**: Upload, list, edit metadata, download, delete. SHA256-based deduplication prevents duplicate uploads. Auto-extracts title and authors from PDF first pages.
 - **Ingestion history**: Tracks every ingestion run with status, chunk count, and timing
 - **Incremental ingestion**: Only processes new documents by default. `?force=true` rebuilds the entire index.
 

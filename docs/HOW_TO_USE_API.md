@@ -262,6 +262,8 @@ curl http://localhost:8000/api/v1/ingest/status
 
 Envia arquivos que serão salvos no diretório correto conforme a extensão e registrados no banco de dados.
 
+When uploading PDFs, if `title` and `authors` are not provided, the server will automatically extract them from the first page using the LLM (configurable via `AUTO_EXTRACT_METADATA`). The upload returns immediately; metadata appears in the database shortly after.
+
 | Extensão | Diretório |
 |---|---|
 | `.pdf` | `data/pdfs/` |

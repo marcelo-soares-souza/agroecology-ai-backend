@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from src.adapters.rest.dependencies import (
     get_cache,
     get_embedder,
+    get_extract_metadata,
     get_ingest,
     get_ingestion_repo,
     get_manage_docs,
@@ -37,6 +38,7 @@ from src.adapters.rest.schemas import (
     StatusResponse,
 )
 from src.shared.config import (
+    AUTO_EXTRACT_METADATA,
     CLEANUP_INTERVAL,
     DATA_DIR,
     DATA_DIR_MARKDOWN,
@@ -142,6 +144,41 @@ _MAX_FILE_SIZE = 50 * 1024 * 1024
 
 def _file_type(ext: str) -> str:
     return {".pdf": "pdf", ".md": "md", ".txt": "txt"}.get(ext, "unknown")
+
+
+async def _auto_extract_metadata(
+    content: bytes,
+) -> tuple[str, str] | None:
+    if not AUTO_EXTRACT_METADATA:
+        return None
+
+    import asyncio as asyncio_mod
+    import fitz
+
+    def _extract() -> tuple[str, str] | None:
+        pdf = fitz.open(stream=content, filetype="pdf")
+        first_page = None
+        try:
+            pages = min(3, len(pdf))
+            texts = []
+            for i in range(pages):
+                t = pdf[i].get_text()
+                if t:
+                    texts.append(t)
+            first_page = "\n".join(texts)
+        except Exception:
+            pass
+        pdf.close()
+
+        if not first_page or not first_page.strip():
+            return None
+
+        extractor = get_extract_metadata()
+        result = extractor.execute(first_page)
+        return (result.get("title", "").strip(), result.get("authors", "").strip())
+
+    loop = asyncio_mod.get_event_loop()
+    return await loop.run_in_executor(None, _extract)
 
 
 def _serialize_doc(doc) -> dict:
@@ -424,6 +461,8 @@ async def upload_documents(
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 
+    return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
+
 
 @app.get("/api/v1/documents", response_model=list[DocumentRecord])
 async def list_all_documents():
@@ -458,6 +497,40 @@ async def update_one_document(doc_id: str, body: DocumentUpdateBody):
     return _serialize_doc(doc)
 
 
+@app.post("/api/v1/documents/{doc_id}/extract-metadata", response_model=DocumentRecord)
+async def extract_document_metadata(doc_id: str):
+    manage = get_manage_docs()
+    if manage is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    doc = await manage.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.file_type != "pdf":
+        raise HTTPException(status_code=400, detail="Metadata extraction is only available for PDF files")
+
+    filepath = manage.get_file_path(doc)
+    from pathlib import Path
+
+    p = Path(filepath)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    content = p.read_bytes()
+    extracted = await _auto_extract_metadata(content)
+
+    if extracted:
+        ext_title, ext_authors = extracted
+        updated = await manage.update_metadata(
+            doc_id,
+            title=doc.title or ext_title or None,
+            authors=doc.authors or ext_authors or None,
+        )
+        if updated:
+            return _serialize_doc(updated)
+
+    return _serialize_doc(doc)
+
+
 @app.get("/api/v1/documents/{doc_id}/download")
 async def download_document(doc_id: str):
     manage = get_manage_docs()
@@ -472,10 +545,12 @@ async def download_document(doc_id: str):
     if not p.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 
+    from urllib.parse import quote
+
     return FileResponse(
         path=str(p),
-        filename=doc.filename,
-        media_type="application/octet-stream",
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"},
     )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 from src.application.ask_question import AskQuestion
+from src.application.extract_metadata import ExtractMetadata
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
@@ -52,6 +53,7 @@ _retriever: RetrieverService | None = None
 _ask_question: AskQuestion | None = None
 _manage_docs: ManageDocuments | None = None
 _get_status: GetStatus | None = None
+_extract_metadata: ExtractMetadata | None = None
 
 
 def get_embedder() -> EmbeddingPort:
@@ -185,3 +187,10 @@ def get_manage_docs() -> ManageDocuments | None:
 
 def get_status_service() -> GetStatus | None:
     return _get_status
+
+
+def get_extract_metadata() -> ExtractMetadata:
+    global _extract_metadata
+    if _extract_metadata is None:
+        _extract_metadata = ExtractMetadata(get_llm())
+    return _extract_metadata

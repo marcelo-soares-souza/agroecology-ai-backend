@@ -86,7 +86,7 @@ DEEPSEEK_MODEL=qwen3:14b
 | `POST` | `/api/v1/ingest` | Start document ingestion. Use `?force=true` for full rebuild. |
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | Ingestion history |
-| `POST` | `/api/v1/documents` | Upload files (PDF, MD). Deduplicated by SHA256 hash. |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD). Deduplicated by SHA256 hash. Auto-extracts title/authors from PDFs. |
 | `GET` | `/api/v1/documents` | List all documents (includes `ingested` status) |
 | `GET` | `/api/v1/documents/{id}` | Get document details (includes `ingested` status) |
 | `GET` | `/api/v1/documents/{id}/download` | Download original file |

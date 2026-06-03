@@ -3,8 +3,9 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -21,6 +22,7 @@ from src.config import (
 from src.database import (
     close_pool,
     delete_document,
+    filename_exists,
     get_document,
     get_ingestion_run,
     init_pool,
@@ -306,7 +308,12 @@ def _file_type(ext: str) -> str:
 
 
 @app.post("/api/v1/documents", response_model=DocumentUploadResponse)
-async def upload_documents(files: list[UploadFile]):
+async def upload_documents(
+    files: list[UploadFile],
+    title: str | None = Form(None),
+    authors: str | None = Form(None),
+    url: str | None = Form(None),
+):
     uploaded: list[DocumentUploaded] = []
     skipped: list[DocumentSkipped] = []
 
@@ -345,7 +352,14 @@ async def upload_documents(files: list[UploadFile]):
             )
             continue
 
-        dest = target_dir / f"{uuid7()}{ext}"
+        if await filename_exists(f.filename):
+            skipped.append(
+                DocumentSkipped(filename=f.filename, reason="arquivo já enviado anteriormente")
+            )
+            continue
+
+        doc_id = uuid7()
+        dest = target_dir / f"{doc_id}{ext}"
         dest.write_bytes(content)
 
         record = await insert_document(
@@ -353,6 +367,10 @@ async def upload_documents(files: list[UploadFile]):
             file_type=_file_type(ext),
             file_size=size,
             directory=str(target_dir.relative_to(DATA_DIR)),
+            title=title,
+            authors=authors,
+            url=url,
+            doc_id=doc_id,
         )
 
         uploaded.append(
@@ -395,6 +413,24 @@ async def update_one_document(doc_id: str, body: DocumentUpdate):
     return _serialize_doc(row)
 
 
+@app.get("/api/v1/documents/{doc_id}/download")
+async def download_document(doc_id: str):
+    row = await get_document(doc_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Documento não encontrado")
+
+    file_dir = DATA_DIR / row["directory"]
+    filepath = file_dir / f"{row['id']}.{row['file_type']}"
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no disco")
+
+    return FileResponse(
+        path=str(filepath),
+        filename=row["filename"],
+        media_type="application/octet-stream",
+    )
+
+
 @app.delete("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
 async def delete_one_document(doc_id: str):
     row = await delete_document(doc_id)
@@ -402,7 +438,7 @@ async def delete_one_document(doc_id: str):
         raise HTTPException(status_code=404, detail="Documento não encontrado")
 
     file_dir = DATA_DIR / row["directory"]
-    filepath = file_dir / row["filename"]
+    filepath = file_dir / f"{row['id']}.{row['file_type']}"
     if filepath.exists():
         filepath.unlink()
 

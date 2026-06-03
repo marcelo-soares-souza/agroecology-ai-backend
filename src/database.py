@@ -44,8 +44,10 @@ async def insert_document(
     title: str | None = None,
     authors: str | None = None,
     url: str | None = None,
+    doc_id: str | None = None,
 ) -> dict[str, Any]:
-    doc_id = uuid7()
+    if doc_id is None:
+        doc_id = uuid7()
     now = datetime.now(timezone.utc)
     async with _get_pool().connection() as conn:
         async with conn.cursor(row_factory=dict_row) as cur:
@@ -184,3 +186,12 @@ async def get_ingestion_run(run_id: str) -> dict[str, Any] | None:
             await cur.execute("SELECT * FROM ingestion_runs WHERE id = %s", (run_id,))
             result = await cur.fetchone()
             return dict(result) if result else None
+
+
+async def filename_exists(filename: str) -> bool:
+    async with _get_pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT 1 FROM documents WHERE filename = %s LIMIT 1", (filename,)
+            )
+            return await cur.fetchone() is not None

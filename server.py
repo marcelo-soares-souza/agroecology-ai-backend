@@ -25,6 +25,7 @@ from src.database import (
     filename_exists,
     get_document,
     get_ingestion_run,
+    get_title_map,
     init_pool,
     insert_document,
     list_documents,
@@ -195,8 +196,10 @@ async def ask(body: AskRequest):
 
     task_id = app.state.tasks.create(body.question, body.top_k)
 
+    title_map = await get_title_map()
+
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _process_task, task_id, body.question, body.top_k, cache)
+    loop.run_in_executor(None, _process_task, task_id, body.question, body.top_k, cache, title_map)
 
     return AskResponse(task_id=task_id, status="processing")
 
@@ -461,9 +464,18 @@ def _process_task(
     question: str,
     top_k: int,
     cache: ValkeyCache,
+    title_map: dict[str, str | None],
 ) -> None:
     try:
         result = ask_with_sources(question, top_k=top_k)
+
+        for src in result.get("sources", []):
+            meta = src.get("metadata", {})
+            file_path = meta.get("source", "")
+            title = title_map.get(file_path)
+            if title:
+                meta["title"] = title
+
         app.state.tasks.update(
             task_id,
             status="done",

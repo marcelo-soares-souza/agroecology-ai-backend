@@ -195,3 +195,12 @@ async def filename_exists(filename: str) -> bool:
                 "SELECT 1 FROM documents WHERE filename = %s LIMIT 1", (filename,)
             )
             return await cur.fetchone() is not None
+
+
+async def get_title_map() -> dict[str, str | None]:
+    """Returns a dict mapping 'directory/id.file_type' -> title (or None)."""
+    async with _get_pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT directory, id, file_type, title FROM documents")
+            rows = await cur.fetchall()
+            return {f"{r[0]}/{r[1]}.{r[2]}": r[3] for r in rows}

@@ -100,7 +100,10 @@ class PostgresUserRepository(UserRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("SELECT * FROM users ORDER BY created_at DESC")
                 rows = await cur.fetchall()
-                return [self._to_user(dict(r)) for r in rows]
+                users = []
+                for r in rows:
+                    users.append(await self._enrich_user(dict(r)))
+                return users
 
     async def update(self, user_id: str, **kwargs) -> User | None:
         sets = []

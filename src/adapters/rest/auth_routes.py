@@ -75,6 +75,13 @@ async def register(body: RegisterRequest):
     slug_base = re.sub(r"[^a-z0-9]+", "-", slug_base).strip("-")
     slug = slug_base or body.email.split("@")[0]
 
+    existing = await repo.get_by_slug(slug)
+    counter = 1
+    while existing:
+        counter += 1
+        slug = f"{slug_base}-{counter}"
+        existing = await repo.get_by_slug(slug)
+
     password_hash = hash_password(body.password)
     user = await repo.create(
         email=body.email,
@@ -90,9 +97,30 @@ async def register(body: RegisterRequest):
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     await repo.create_confirmation(user.id, token_hash, expires_at)
 
+    import asyncio as _asyncio
+
+    _asyncio.create_task(
+        _send_emails_async(
+            email=body.email,
+            full_name=body.full_name,
+            token=token,
+            locale=body.locale,
+        )
+    )
+
     return MessageResponse(
         message="Registration successful. Check your email to confirm your account."
     )
+
+
+async def _send_emails_async(email: str, full_name: str, token: str, locale: str) -> None:
+    from src.infrastructure.email.smtp_service import (
+        send_admin_new_user_notification,
+        send_confirmation_email,
+    )
+
+    await send_confirmation_email(email, token, locale)
+    await send_admin_new_user_notification(email, full_name, locale)
 
 
 @router.post("/confirm-email/resend", response_model=MessageResponse)
@@ -110,6 +138,12 @@ async def resend_confirmation(email: str):
     token_hash = hash_token(token)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     await repo.create_confirmation(user.id, token_hash, expires_at)
+
+    import asyncio as _asyncio2
+    from src.infrastructure.email.smtp_service import send_confirmation_email
+    _asyncio2.create_task(
+        send_confirmation_email(user.email, token, user.locale)
+    )
 
     return MessageResponse(message="Confirmation email resent. Check your inbox.")
 
@@ -215,6 +249,10 @@ async def request_password_reset(email: str):
     token_hash = hash_token(token)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
     await repo.create_confirmation(user.id, token_hash, expires_at)
+
+    from src.infrastructure.email.smtp_service import send_reset_email
+    import asyncio as _asyncio3
+    _asyncio3.create_task(send_reset_email(user.email, token, user.locale))
 
     return MessageResponse(message="If the email exists, a reset link has been sent.")
 

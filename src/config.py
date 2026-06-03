@@ -29,6 +29,14 @@ PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "agroecology-pepper")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@agroecologymap.org")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "noreply@agroecologymap.org")
+
+APP_URL = os.getenv("APP_URL", "http://localhost:5173")
+
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "5"))

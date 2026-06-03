@@ -50,9 +50,7 @@ def ensure_database() -> bool:
             exists = cur.fetchone() is not None
 
             if not exists:
-                cur.execute(
-                    f'CREATE DATABASE "{target_db}"'
-                )
+                cur.execute(f'CREATE DATABASE "{target_db}"')
                 return True
     finally:
         conn.close()

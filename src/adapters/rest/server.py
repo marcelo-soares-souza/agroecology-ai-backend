@@ -236,9 +236,7 @@ async def ask(body: AskRequest):
     task_id = tasks.create(body.question, body.top_k)
 
     manage_docs = get_manage_docs()
-    title_map = (
-        await manage_docs.get_title_map() if manage_docs else {}
-    )
+    title_map = await manage_docs.get_title_map() if manage_docs else {}
 
     loop = asyncio.get_event_loop()
     loop.run_in_executor(

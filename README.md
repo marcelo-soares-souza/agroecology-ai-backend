@@ -10,6 +10,7 @@ cp .env.example .env                  # edit .env with your API key
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python main.py db:migrate              # create database and run migrations
+# python main.py db:create              # create database only
 python main.py serve                  # http://localhost:8000 (Swagger: /docs)
 ```
 
@@ -82,12 +83,12 @@ DEEPSEEK_MODEL=qwen3:14b
 | `POST` | `/api/v1/ask` | Submit a question (async, returns `task_id`) |
 | `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
 | `GET` | `/api/v1/status` | Server health, cache stats, last ingestion |
-| `POST` | `/api/v1/ingest` | Start document ingestion |
+| `POST` | `/api/v1/ingest` | Start document ingestion. Use `?force=true` for full rebuild. |
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | Ingestion history |
-| `POST` | `/api/v1/documents` | Upload files (PDF, MD) |
-| `GET` | `/api/v1/documents` | List all documents |
-| `GET` | `/api/v1/documents/{id}` | Get document details |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD). Deduplicated by SHA256 hash. |
+| `GET` | `/api/v1/documents` | List all documents (includes `ingested` status) |
+| `GET` | `/api/v1/documents/{id}` | Get document details (includes `ingested` status) |
 | `GET` | `/api/v1/documents/{id}/download` | Download original file |
 | `PUT` | `/api/v1/documents/{id}` | Update document metadata |
 | `DELETE` | `/api/v1/documents/{id}` | Delete document + file |
@@ -109,6 +110,30 @@ Starts PostgreSQL 18, Valkey 9, and the backend. Migrations run automatically on
 
 ## Project Structure
 
+```
+backend/
+├── main.py              # CLI (serve, ingest, ask, chat, migrate, status)
+├── src/
+│   ├── adapters/
+│   │   ├── rest/        # FastAPI app, schemas, DI wiring
+│   │   └── cli/         # (reserved)
+│   ├── application/     # Use cases (AskQuestion, IngestDocuments, ManageDocuments, GetStatus)
+│   ├── domain/          # Pure business logic
+│   │   ├── models/      # Document, IngestionRun (dataclasses)
+│   │   ├── ports/       # Interfaces (ABCs): repositories, LLM, embeddings, vector store, cache
+│   │   └── services/    # Chunker, Retriever (hybrid search logic)
+│   ├── infrastructure/  # Concrete adapters
+│   │   ├── ai/          # OpenAILLM, SentenceTransformerEmbedder, OllamaEmbedder
+│   │   ├── cache/       # ValkeyCache
+│   │   ├── persistence/ # PostgresDocumentRepo, IngestionRepo, LanceDBVectorStore
+│   │   └── storage/     # LocalFileStorage
+│   └── shared/          # Config, UUIDv7 generator
+├── migrations/          # Idempotent SQL scripts
+├── data/                # Uploaded files (gitignored)
+├── index/               # LanceDB vector store (gitignored)
+├── .env.example         # Configuration template
+├── Dockerfile           # Multi-stage build
+└── requirements.txt     # Python dependencies
 ```
 backend/
 ├── main.py              # CLI (serve, ingest, ask, chat, migrate, status)

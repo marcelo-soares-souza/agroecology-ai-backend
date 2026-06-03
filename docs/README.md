@@ -47,8 +47,9 @@ See [../docs/HOW_AI_FLOW_WORKS.md](../docs/HOW_AI_FLOW_WORKS.md) for the full de
 - **Source citation**: Every answer includes source file references, titles, and retrieval scores
 - **Multilingual**: bge-m3 supports 102 languages; answers match the query language
 - **REST API**: Async polling API with Valkey/Redis response caching
-- **Document management**: Upload, list, edit metadata, download, delete
+- **Document management**: Upload, list, edit metadata, download, delete. SHA256-based deduplication prevents duplicate uploads.
 - **Ingestion history**: Tracks every ingestion run with status, chunk count, and timing
+- **Incremental ingestion**: Only processes new documents by default. `?force=true` rebuilds the entire index.
 
 ## Project structure
 
@@ -203,9 +204,9 @@ All settings can be overridden via environment variables in `.env`:
 
 - **Chunking**: Sentence-boundary splitting can occasionally break mid-concept in dense technical texts.
 - **PDF quality**: Complex PDFs with heavy formatting or scanned pages may not parse well. OCR preprocessing would be needed for scanned documents.
-- **No incremental ingestion**: Running `ingest` rebuilds the entire index from scratch.
 - **BM25 in-memory**: The BM25 index is rebuilt on each query from all LanceDB rows. For very large collections (100k+ chunks), this adds latency.
 - **Ollama embeddings**: When switching embedding backends, the vector dimension may change, requiring re-ingestion.
+- **Re-ingestion**: Documents must be re-ingested if the embedding model or chunking parameters change.
 
 ## License
 

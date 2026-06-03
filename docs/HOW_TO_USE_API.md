@@ -22,11 +22,15 @@ Swagger: `http://localhost:8000/docs`
 | `GET` | `/api/v1/status` | Server health and cache stats |
 | `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
-| `POST` | `/api/v1/documents` | Upload files (PDF, MD, TXT) |
+| `GET` | `/api/v1/ingestion/runs` | List ingestion run history |
+| `GET` | `/api/v1/ingestion/runs/{id}` | Get ingestion run details |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD) |
 | `GET` | `/api/v1/documents` | List all documents |
 | `GET` | `/api/v1/documents/{id}` | Get document by ID |
 | `PUT` | `/api/v1/documents/{id}` | Update document metadata |
+| `GET` | `/api/v1/documents/{id}/download` | Download original file |
 | `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
+| `POST` | `/api/v1/ingest?force=true` | Full index rebuild |
 
 ---
 
@@ -169,7 +173,8 @@ curl http://localhost:8000/api/v1/status
   "chunks_indexed": 21,
   "active_tasks": 0,
   "cache_enabled": true,
-  "cache_hits": 3
+  "cache_hits": 3,
+  "pending_docs": 0
 }
 ```
 
@@ -181,12 +186,21 @@ curl http://localhost:8000/api/v1/status
 | `active_tasks` | integer | Tarefas de query em processamento |
 | `cache_enabled` | boolean | Cache Valkey/Redis ativo |
 | `cache_hits` | integer | Total de cache hits desde o startup |
+| `pending_docs` | integer | Documentos ainda não indexados |
 
 ---
 
 ### `POST /api/v1/ingest` — Trigger ingestion
 
 Inicia a ingestão de documentos em background. Apenas uma ingestão por vez — se já houver uma em andamento, retorna `already_running`.
+
+By default, only processes documents not yet ingested (incremental). Use `?force=true` to rebuild the entire index from scratch.
+
+**Query Parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `force` | boolean | `false` | Set to `true` for full rebuild |
 
 **Response `200 OK`**
 
@@ -197,7 +211,11 @@ Inicia a ingestão de documentos em background. Apenas uma ingestão por vez —
 **Example**
 
 ```bash
+# Incremental (default)
 curl -X POST http://localhost:8000/api/v1/ingest
+
+# Full rebuild
+curl -X POST "http://localhost:8000/api/v1/ingest?force=true"
 ```
 
 ```json
@@ -370,6 +388,22 @@ Response: registro atualizado completo.
 |---|---|
 | `404` | Documento não encontrado |
 | `422` | Nenhum campo enviado |
+
+---
+
+### `GET /api/v1/documents/{id}/download` — Download file
+
+Serves the original file from disk with its original filename.
+
+```bash
+curl -O http://localhost:8000/api/v1/documents/1/download
+```
+
+**Errors**
+
+| Code | Condition |
+|---|---|
+| `404` | Documento ou arquivo não encontrado |
 
 ---
 

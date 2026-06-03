@@ -22,7 +22,6 @@ from src.config import (
 from src.database import (
     close_pool,
     delete_document,
-    filename_exists,
     get_document,
     get_ingestion_run,
     get_title_map,
@@ -30,6 +29,7 @@ from src.database import (
     insert_document,
     list_documents,
     list_ingestion_runs,
+    sha256_exists,
     update_document,
 )
 from src.embedder import get_embedder
@@ -357,7 +357,11 @@ async def upload_documents(
             )
             continue
 
-        if await filename_exists(f.filename):
+        import hashlib
+
+        sha256_hash = hashlib.sha256(content).hexdigest()
+
+        if await sha256_exists(sha256_hash):
             skipped.append(
                 DocumentSkipped(
                     filename=f.filename, reason="arquivo já enviado anteriormente"
@@ -378,6 +382,7 @@ async def upload_documents(
             authors=authors,
             url=url,
             doc_id=doc_id,
+            sha256=sha256_hash,
         )
 
         uploaded.append(

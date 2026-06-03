@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
+import unicodedata
 from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,10 @@ class ValkeyCache:
             logger.warning("Valkey unavailable at %s, cache disabled", url)
 
     def _key(self, question: str) -> str:
-        normalized = question.lower().strip()
+        normalized = unicodedata.normalize("NFKD", question.lower().strip())
+        normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+        normalized = re.sub(r"[^\w\s]", "", normalized)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
         h = hashlib.md5(normalized.encode()).hexdigest()
         return f"rag:cache:{h}"
 

@@ -167,6 +167,7 @@ async def init_services() -> None:
         ingest=_ingest,
         cache=get_cache(),
         ingestion_repo=_ingestion_repo,
+        doc_repo=_doc_repo,
     )
 
 

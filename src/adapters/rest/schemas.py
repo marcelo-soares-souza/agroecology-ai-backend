@@ -35,6 +35,7 @@ class StatusResponse(BaseModel):
     active_tasks: int
     cache_enabled: bool
     cache_hits: int
+    pending_docs: int = 0
     last_ingestion: IngestionRunSchema | None = None
 
 
@@ -63,6 +64,7 @@ class DocumentRecord(BaseModel):
     file_type: str
     file_size: int
     directory: str
+    ingested: bool = False
     created_at: str
     updated_at: str
 

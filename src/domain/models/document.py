@@ -16,6 +16,8 @@ class Document:
     title: str | None = None
     authors: str | None = None
     url: str | None = None
+    sha256: str | None = None
+    ingested: bool = False
 
 
 @dataclass
@@ -28,6 +30,7 @@ class DocumentCreate:
     title: str | None = None
     authors: str | None = None
     url: str | None = None
+    sha256: str | None = None
 
 
 @dataclass

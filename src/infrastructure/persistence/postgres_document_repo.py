@@ -30,8 +30,8 @@ class PostgresDocumentRepository(DocumentRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
                     """INSERT INTO documents (id, filename, title, authors, url,
-                       file_type, file_size, directory, created_at, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                        file_type, file_size, directory, sha256, created_at, updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                     (
                         doc_id,
                         doc.filename,
@@ -41,6 +41,7 @@ class PostgresDocumentRepository(DocumentRepository):
                         doc.file_type,
                         doc.file_size,
                         doc.directory,
+                        doc.sha256,
                         now,
                         now,
                     ),
@@ -113,6 +114,15 @@ class PostgresDocumentRepository(DocumentRepository):
                 )
                 return await cur.fetchone() is not None
 
+    async def sha256_exists(self, sha256: str) -> bool:
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT 1 FROM documents WHERE sha256 = %s LIMIT 1",
+                    (sha256,),
+                )
+                return await cur.fetchone() is not None
+
     async def get_title_map(self) -> dict[str, str | None]:
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
@@ -133,6 +143,8 @@ class PostgresDocumentRepository(DocumentRepository):
             file_type=row["file_type"],
             file_size=row["file_size"],
             directory=row["directory"],
+            sha256=row.get("sha256"),
+            ingested=bool(row.get("ingested", False)),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

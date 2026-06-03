@@ -154,6 +154,7 @@ def _serialize_doc(doc) -> dict:
         "file_type": doc.file_type,
         "file_size": doc.file_size,
         "directory": doc.directory,
+        "ingested": doc.ingested,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat(),
     }
@@ -284,9 +285,9 @@ async def status():
 
 
 @app.post("/api/v1/ingest", response_model=IngestResponse)
-async def ingest_start():
+async def ingest_start(force: bool = False):
     ingest = get_ingest()
-    started = ingest.start()
+    started = ingest.start(force=force)
     if not started:
         return IngestResponse(status="already_running")
     return IngestResponse(status="processing")
@@ -373,6 +374,10 @@ async def upload_documents(
         content = await f.read()
         size = len(content)
 
+        import hashlib
+
+        sha256_hash = hashlib.sha256(content).hexdigest()
+
         if size == 0:
             skipped.append(DocumentSkipped(filename=f.filename, reason="empty file"))
             continue
@@ -386,11 +391,11 @@ async def upload_documents(
             )
             continue
 
-        if await manage.filename_exists(f.filename):
+        if await manage.sha256_exists(sha256_hash):
             skipped.append(
                 DocumentSkipped(
                     filename=f.filename,
-                    reason="file already uploaded",
+                    reason="file already uploaded (identical content)",
                 )
             )
             continue
@@ -482,4 +487,8 @@ async def delete_one_document(doc_id: str):
     doc = await manage.delete(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    ingest = get_ingest()
+    ingest.remove_chunks(doc_id)
+
     return _serialize_doc(doc)

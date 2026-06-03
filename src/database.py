@@ -45,6 +45,7 @@ async def insert_document(
     authors: str | None = None,
     url: str | None = None,
     doc_id: str | None = None,
+    sha256: str | None = None,
 ) -> dict[str, Any]:
     if doc_id is None:
         doc_id = uuid7()
@@ -52,8 +53,8 @@ async def insert_document(
     async with _get_pool().connection() as conn:
         async with conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(
-                """INSERT INTO documents (id, filename, title, authors, url, file_type, file_size, directory, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """INSERT INTO documents (id, filename, title, authors, url, file_type, file_size, directory, sha256, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING *""",
                 (
                     doc_id,
@@ -64,6 +65,7 @@ async def insert_document(
                     file_type,
                     file_size,
                     directory,
+                    sha256,
                     now,
                     now,
                 ),
@@ -188,11 +190,11 @@ async def get_ingestion_run(run_id: str) -> dict[str, Any] | None:
             return dict(result) if result else None
 
 
-async def filename_exists(filename: str) -> bool:
+async def sha256_exists(sha256: str) -> bool:
     async with _get_pool().connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT 1 FROM documents WHERE filename = %s LIMIT 1", (filename,)
+                "SELECT 1 FROM documents WHERE sha256 = %s LIMIT 1", (sha256,)
             )
             return await cur.fetchone() is not None
 

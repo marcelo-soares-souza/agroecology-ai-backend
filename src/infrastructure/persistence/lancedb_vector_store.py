@@ -39,3 +39,15 @@ class LanceDBVectorStore(VectorStorePort):
     def get_all_rows(self) -> list[dict[str, Any]]:
         table = self._get_table()
         return table.to_arrow().to_pylist()
+
+    def add_rows(self, rows: list[dict[str, Any]]) -> None:
+        table = self._get_table()
+        table.add(rows)
+
+    def delete_by_prefix(self, id_prefix: str) -> None:
+        table = self._get_table()
+        table.delete(f"id LIKE '{id_prefix}%'")
+
+    def count_chunks(self) -> int:
+        table = self._get_table()
+        return table.count_rows()

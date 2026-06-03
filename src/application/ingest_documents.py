@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from pathlib import Path
 
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
@@ -25,7 +26,7 @@ class IngestDocuments:
         self.error: str | None = None
         self.current_run_id: str | None = None
 
-    def start(self) -> bool:
+    def start(self, force: bool = False) -> bool:
         with self._lock:
             if self.status == "processing":
                 return False
@@ -34,11 +35,11 @@ class IngestDocuments:
             self.error = None
             self.current_run_id = None
 
-        thread = threading.Thread(target=self._run, daemon=True)
+        thread = threading.Thread(target=self._run, args=(force,), daemon=True)
         thread.start()
         return True
 
-    def _run(self) -> None:
+    def _run(self, force: bool) -> None:
         run_id: str | None = None
         try:
             run = asyncio.run(self._ingestion_repo.insert())
@@ -46,7 +47,7 @@ class IngestDocuments:
             with self._lock:
                 self.current_run_id = run_id
 
-            count = self._ingest_all()
+            count = self._ingest_all(force=force)
 
             asyncio.run(
                 self._ingestion_repo.update(run_id, status="done", chunks_indexed=count)
@@ -73,9 +74,7 @@ class IngestDocuments:
                 except Exception:
                     pass
 
-    def _ingest_all(self) -> int:
-        from pathlib import Path
-
+    def _ingest_all(self, force: bool = False) -> int:
         from src.domain.services.chunker import chunk_text
         from src.shared.config import (
             DATA_DIR_MARKDOWN,
@@ -83,44 +82,79 @@ class IngestDocuments:
             DATA_DIR_WEB,
         )
 
-        docs = self._load_all(DATA_DIR_PDFS, DATA_DIR_MARKDOWN, DATA_DIR_WEB)
-        if not docs:
+        if force:
+            asyncio.run(self._mark_all_not_ingested())
+
+        all_docs = self._load_all(DATA_DIR_PDFS, DATA_DIR_MARKDOWN, DATA_DIR_WEB)
+        if not all_docs:
             raise ValueError(
                 "No documents found. "
                 "Add files to data/pdfs/, data/markdown/ or data/web/"
             )
 
+        doc_ids = set()
+        source_to_id: dict[str, str] = {}
+        for doc in all_docs:
+            stem = Path(doc["source"]).stem
+            doc_ids.add(stem)
+            source_to_id[doc["source"]] = stem
+
+        existing_ingested = asyncio.run(self._get_ingested_doc_ids(doc_ids))
+
+        new_docs = [
+            d for d in all_docs if source_to_id[d["source"]] not in existing_ingested
+        ]
+
+        if not new_docs:
+            if self._vector_store.index_exists():
+                return 0
+            force = True
+
         rows: list[dict] = []
-        for doc in docs:
+        for doc in new_docs:
+            doc_id = source_to_id[doc["source"]]
             chunks = chunk_text(doc["text"], CHUNK_SIZE, CHUNK_OVERLAP)
             for i, chunk in enumerate(chunks):
                 if not chunk.strip():
                     continue
                 rows.append(
                     {
-                        "id": f"{Path(doc['source']).stem}_{i}",
+                        "id": f"{doc_id}_{i}",
                         "text": chunk,
                         "source": doc["source"],
                         "chunk_index": i,
                     }
                 )
 
+        if not rows:
+            return 0
+
         texts = [r["text"] for r in rows]
         vectors = self._embedder.embed_texts(texts)
         for i, row in enumerate(rows):
             row["vector"] = vectors[i]
 
-        self._vector_store.build_index(rows, self._embedder.get_dimension())
+        if force or not self._vector_store.index_exists():
+            self._vector_store.build_index(rows, self._embedder.get_dimension())
+        else:
+            # Incremental: append to existing table
+            self._vector_store.add_rows(rows)
+
+        new_ids = {source_to_id[d["source"]] for d in new_docs}
+        asyncio.run(self._mark_as_ingested(new_ids))
+
         return len(rows)
+
+    def remove_chunks(self, doc_id: str) -> None:
+        if self._vector_store.index_exists():
+            self._vector_store.delete_by_prefix(f"{doc_id}_")
 
     @staticmethod
     def _load_all(pdf_dir, md_dir, web_dir) -> list[dict]:
-
         import fitz
         from src.shared.config import DATA_DIR
 
         sources: list[dict] = []
-
         for fp in pdf_dir.glob("*.pdf"):
             try:
                 pdf = fitz.open(str(fp))
@@ -131,20 +165,26 @@ class IngestDocuments:
                     sources.append({"text": text, "source": rel})
             except Exception:
                 pass
-
         for fp in md_dir.glob("*.md"):
             text = fp.read_text(encoding="utf-8")
             if text.strip():
                 rel = str(fp.relative_to(DATA_DIR))
                 sources.append({"text": text, "source": rel})
-
         for fp in web_dir.glob("*.txt"):
             text = fp.read_text(encoding="utf-8")
             if text.strip():
                 rel = str(fp.relative_to(DATA_DIR))
                 sources.append({"text": text, "source": rel})
-
         return sources
+
+    async def _get_ingested_doc_ids(self, doc_ids: set[str]) -> set[str]:
+        return await self._ingestion_repo.get_ingested_ids(doc_ids)
+
+    async def _mark_as_ingested(self, doc_ids: set[str]) -> None:
+        await self._ingestion_repo.mark_as_ingested(doc_ids)
+
+    async def _mark_all_not_ingested(self) -> None:
+        await self._ingestion_repo.mark_all_not_ingested()
 
     def to_dict(self) -> dict:
         with self._lock:

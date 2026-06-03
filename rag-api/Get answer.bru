@@ -1,0 +1,15 @@
+meta {
+  name: Get answer
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/api/v1/answer/{{task_id}}
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  base_url: http://localhost:8000
+}

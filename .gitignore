@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+index/
+data/pdfs/*.pdf
+data/markdown/agroecologia.md
+data/web/*.txt
+.venv/
+venv/
+*.egg-info/
+dist/
+build/

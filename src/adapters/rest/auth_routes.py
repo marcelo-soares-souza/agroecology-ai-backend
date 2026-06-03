@@ -95,6 +95,25 @@ async def register(body: RegisterRequest):
     )
 
 
+@router.post("/confirm-email/resend", response_model=MessageResponse)
+async def resend_confirmation(email: str):
+    from src.adapters.rest.dependencies import get_user_repo
+
+    repo = await get_user_repo()
+    user = await repo.get_by_email(email)
+    if not user:
+        raise HTTPException(status_code=400, detail="Email not found")
+    if user.email_confirmed_at:
+        raise HTTPException(status_code=400, detail="Email already confirmed")
+
+    token = generate_token()
+    token_hash = hash_token(token)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    await repo.create_confirmation(user.id, token_hash, expires_at)
+
+    return MessageResponse(message="Confirmation email resent. Check your inbox.")
+
+
 @router.post("/confirm-email", response_model=MessageResponse)
 async def confirm_email(body: ConfirmEmailRequest):
     from src.adapters.rest.dependencies import get_user_repo
@@ -183,6 +202,57 @@ async def logout(user: User = Depends(get_current_user)):
     return MessageResponse(message="Logged out successfully")
 
 
+@router.post("/password-reset/request", response_model=MessageResponse)
+async def request_password_reset(email: str):
+    from src.adapters.rest.dependencies import get_user_repo
+
+    repo = await get_user_repo()
+    user = await repo.get_by_email(email)
+    if not user:
+        return MessageResponse(message="If the email exists, a reset link has been sent.")
+
+    token = generate_token()
+    token_hash = hash_token(token)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    await repo.create_confirmation(user.id, token_hash, expires_at)
+
+    return MessageResponse(message="If the email exists, a reset link has been sent.")
+
+
+@router.post("/password-reset/confirm", response_model=MessageResponse)
+async def confirm_password_reset(token: str, new_password: str):
+    from src.adapters.rest.dependencies import get_user_repo
+
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    repo = await get_user_repo()
+    token_hash = hash_token(token)
+    confirmation = await repo.get_confirmation(token_hash)
+
+    if not confirmation or confirmation["expires_at"] < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    password_hash = hash_password(new_password)
+    await repo.update(confirmation["user_id"], password_hash=password_hash)
+    await repo.mark_confirmation_done(confirmation["id"])
+
+    return MessageResponse(message="Password reset successfully")
+
+
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
+    return _serialize_user(user)
+
+
+@router.get("/users/by-slug/{slug}", response_model=UserResponse)
+async def get_user_by_slug(slug: str):
+    from src.adapters.rest.dependencies import get_user_repo
+
+    repo = await get_user_repo()
+    user = await repo.get_by_slug(slug)
+    if not user:
+        user = await repo.get_by_id(slug)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     return _serialize_user(user)

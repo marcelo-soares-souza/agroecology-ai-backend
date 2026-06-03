@@ -35,8 +35,8 @@ def create_challenge(locale: str = "pt-BR") -> dict:
     locale_questions = _QUESTIONS.get(locale, _QUESTIONS["pt-BR"])
     import random
 
-    question_text, _ = random.choice(locale_questions)
-    question_id = _QUESTIONS[locale].index((question_text, _QUESTIONS[locale][0][1]))
+    question_text, valid_answers = random.choice(locale_questions)
+    question_id = locale_questions.index((question_text, valid_answers))
 
     now = int(time.time())
     token = jwt.encode(

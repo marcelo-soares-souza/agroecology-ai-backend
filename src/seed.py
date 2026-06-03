@@ -14,7 +14,8 @@ def seed_roles_and_admin() -> tuple[bool, bool]:
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM roles")
-            roles_count = cur.fetchone()[0]
+            row = cur.fetchone()
+            roles_count = row[0] if row else 0
 
             roles_created = False
             if roles_count == 0:

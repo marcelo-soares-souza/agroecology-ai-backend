@@ -27,6 +27,8 @@ async def get_current_user(
 
     from src.adapters.rest.dependencies import _user_repo
 
+    if _user_repo is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
     user = await _user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")

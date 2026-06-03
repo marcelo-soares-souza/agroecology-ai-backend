@@ -59,6 +59,7 @@ class PostgresUserRepository(UserRepository):
                     ),
                 )
                 user_row = await cur.fetchone()
+                assert user_row is not None
 
                 await cur.execute(
                     "INSERT INTO user_roles (id, user_id, role_id) VALUES (%s,%s,%s)",
@@ -72,7 +73,7 @@ class PostgresUserRepository(UserRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
                 row = await cur.fetchone()
-                if row:
+                if row is not None:
                     return await self._enrich_user(dict(row))
                 return None
 
@@ -81,7 +82,16 @@ class PostgresUserRepository(UserRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = await cur.fetchone()
-                if row:
+                if row is not None:
+                    return await self._enrich_user(dict(row))
+                return None
+
+    async def get_by_slug(self, slug: str) -> User | None:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("SELECT * FROM users WHERE slug = %s", (slug,))
+                row = await cur.fetchone()
+                if row is not None:
                     return await self._enrich_user(dict(row))
                 return None
 
@@ -99,6 +109,7 @@ class PostgresUserRepository(UserRepository):
             if key in (
                 "email",
                 "full_name",
+                "password_hash",
                 "slug",
                 "status",
                 "locale",
@@ -122,7 +133,7 @@ class PostgresUserRepository(UserRepository):
                     params,
                 )
                 row = await cur.fetchone()
-                if row:
+                if row is not None:
                     return await self._enrich_user(dict(row))
                 return None
 

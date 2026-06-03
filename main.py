@@ -141,6 +141,27 @@ def cmd_db_create(args):
         sys.exit(1)
 
 
+def cmd_db_seed(args):
+    from src.seed import seed_roles_and_admin
+
+    console.print("[bold]Seeding roles and admin user...[/bold]")
+    try:
+        roles_created, admin_created = seed_roles_and_admin()
+        if roles_created:
+            console.print("[green]Roles created (admin, user)![/green]")
+        else:
+            console.print("[dim]Roles already exist.[/dim]")
+        if admin_created:
+            console.print("[green]Admin user created successfully![/green]")
+        else:
+            console.print(
+                "[yellow]Admin user already exists. Password updated.[/yellow]"
+            )
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
 def cmd_serve(args):
     import uvicorn
     from src.adapters.rest.server import app
@@ -211,6 +232,9 @@ Examples:
 
     sub_dbcreate = subparsers.add_parser("db:create", help="Create database only")
     sub_dbcreate.set_defaults(func=cmd_db_create)
+
+    sub_dbseed = subparsers.add_parser("db:seed", help="Seed roles and admin user")
+    sub_dbseed.set_defaults(func=cmd_db_seed)
 
     args = parser.parse_args()
 

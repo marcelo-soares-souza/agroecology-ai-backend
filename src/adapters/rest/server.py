@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -23,6 +23,9 @@ from src.adapters.rest.dependencies import (
     init_services,
     shutdown_services,
 )
+from src.adapters.rest.admin_routes import router as admin_router
+from src.adapters.rest.auth_middleware import get_current_user, require_role
+from src.adapters.rest.auth_routes import router as auth_router
 from src.adapters.rest.schemas import (
     AskRequest,
     AskResponse,
@@ -37,6 +40,7 @@ from src.adapters.rest.schemas import (
     IngestionRunSchema,
     StatusResponse,
 )
+from src.domain.models.user import User
 from src.shared.config import (
     AUTO_EXTRACT_METADATA,
     CLEANUP_INTERVAL,
@@ -221,6 +225,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+app.include_router(admin_router)
+
 
 # ── ask / answer ──────────────────────────────────────────────────────────
 
@@ -248,7 +255,7 @@ def _process_task(
 
 
 @app.post("/api/v1/ask", response_model=AskResponse)
-async def ask(body: AskRequest):
+async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     retriever = get_retriever()
 
     try:
@@ -290,7 +297,7 @@ async def ask(body: AskRequest):
 
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
-async def answer(task_id: str):
+async def answer(task_id: str, current_user: User = Depends(get_current_user)):
     task = tasks.get(task_id)
     if task is None:
         raise HTTPException(
@@ -310,7 +317,7 @@ async def answer(task_id: str):
 
 
 @app.get("/api/v1/status", response_model=StatusResponse)
-async def status():
+async def status(current_user: User = Depends(get_current_user)):
     use_case = get_status_service()
     if use_case is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -322,7 +329,9 @@ async def status():
 
 
 @app.post("/api/v1/ingest", response_model=IngestResponse)
-async def ingest_start(force: bool = False):
+async def ingest_start(
+    force: bool = False, current_user: User = Depends(require_role("admin"))
+):
     ingest = get_ingest()
     started = ingest.start(force=force)
     if not started:
@@ -331,13 +340,13 @@ async def ingest_start(force: bool = False):
 
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
-async def ingest_status():
+async def ingest_status(current_user: User = Depends(get_current_user)):
     ingest = get_ingest()
     return IngestStatusResponse(**ingest.to_dict())
 
 
 @app.get("/api/v1/ingestion/runs", response_model=list[IngestionRunSchema])
-async def list_runs():
+async def list_runs(current_user: User = Depends(get_current_user)):
     repo = await get_ingestion_repo()
     runs = await repo.list_all()
     return [
@@ -357,7 +366,7 @@ async def list_runs():
     "/api/v1/ingestion/runs/{run_id}",
     response_model=IngestionRunSchema,
 )
-async def get_run(run_id: str):
+async def get_run(run_id: str, current_user: User = Depends(get_current_user)):
     repo = await get_ingestion_repo()
     run = await repo.get(run_id)
     if not run:
@@ -381,6 +390,7 @@ async def upload_documents(
     title: str | None = Form(None),
     authors: str | None = Form(None),
     url: str | None = Form(None),
+    current_user: User = Depends(require_role("admin")),
 ):
     manage = get_manage_docs()
     if manage is None:
@@ -465,7 +475,7 @@ async def upload_documents(
 
 
 @app.get("/api/v1/documents", response_model=list[DocumentRecord])
-async def list_all_documents():
+async def list_all_documents(current_user: User = Depends(get_current_user)):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -474,7 +484,7 @@ async def list_all_documents():
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def get_one_document(doc_id: str):
+async def get_one_document(doc_id: str, current_user: User = Depends(get_current_user)):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -485,7 +495,11 @@ async def get_one_document(doc_id: str):
 
 
 @app.put("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def update_one_document(doc_id: str, body: DocumentUpdateBody):
+async def update_one_document(
+    doc_id: str,
+    body: DocumentUpdateBody,
+    current_user: User = Depends(require_role("admin")),
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -506,7 +520,10 @@ async def extract_document_metadata(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     if doc.file_type != "pdf":
-        raise HTTPException(status_code=400, detail="Metadata extraction is only available for PDF files")
+        raise HTTPException(
+            status_code=400,
+            detail="Metadata extraction is only available for PDF files",
+        )
 
     filepath = manage.get_file_path(doc)
     from pathlib import Path
@@ -532,7 +549,9 @@ async def extract_document_metadata(doc_id: str):
 
 
 @app.get("/api/v1/documents/{doc_id}/download")
-async def download_document(doc_id: str):
+async def download_document(
+    doc_id: str, current_user: User = Depends(get_current_user)
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -550,12 +569,16 @@ async def download_document(doc_id: str):
     return FileResponse(
         path=str(p),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"},
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"
+        },
     )
 
 
 @app.delete("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def delete_one_document(doc_id: str):
+async def delete_one_document(
+    doc_id: str, current_user: User = Depends(require_role("admin"))
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")

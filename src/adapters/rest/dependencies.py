@@ -28,6 +28,9 @@ from src.infrastructure.persistence.postgres_document_repo import (
 from src.infrastructure.persistence.postgres_ingestion_repo import (
     PostgresIngestionRepository,
 )
+from src.infrastructure.persistence.postgres_user_repo import (
+    PostgresUserRepository,
+)
 from src.shared.config import (
     CACHE_TTL,
     DEEPSEEK_API_KEY,
@@ -48,6 +51,7 @@ _llm: LLMPort | None = None
 _cache: CachePort | None = None
 _doc_repo: PostgresDocumentRepository | None = None
 _ingestion_repo: PostgresIngestionRepository | None = None
+_user_repo: PostgresUserRepository | None = None
 _ingest: IngestDocuments | None = None
 _retriever: RetrieverService | None = None
 _ask_question: AskQuestion | None = None
@@ -108,6 +112,14 @@ async def get_ingestion_repo() -> IngestionRepository:
     return _ingestion_repo
 
 
+async def get_user_repo() -> PostgresUserRepository:
+    global _user_repo
+    if _user_repo is None:
+        _user_repo = PostgresUserRepository()
+        await _user_repo.initialize()
+    return _user_repo
+
+
 def get_retriever() -> RetrieverService:
     global _retriever
     if _retriever is None:
@@ -146,7 +158,7 @@ def get_ask_question() -> AskQuestion:
 
 
 async def init_services() -> None:
-    global _doc_repo, _ingestion_repo, _ingest, _manage_docs, _get_status
+    global _doc_repo, _ingestion_repo, _user_repo, _ingest, _manage_docs, _get_status
 
     if _doc_repo is None:
         _doc_repo = PostgresDocumentRepository()
@@ -155,6 +167,10 @@ async def init_services() -> None:
     if _ingestion_repo is None:
         _ingestion_repo = PostgresIngestionRepository()
         await _ingestion_repo.initialize()
+
+    if _user_repo is None:
+        _user_repo = PostgresUserRepository()
+        await _user_repo.initialize()
 
     _manage_docs = ManageDocuments(_doc_repo)
 
@@ -178,6 +194,8 @@ async def shutdown_services() -> None:
         await _doc_repo.close()
     if _ingestion_repo:
         await _ingestion_repo.close()
+    if _user_repo:
+        await _user_repo.close()
     get_cache().close()
 
 

@@ -21,6 +21,14 @@ OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
 AUTO_EXTRACT_METADATA = os.getenv("AUTO_EXTRACT_METADATA", "true").lower() == "true"
 
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
+JWT_TTL_SECONDS = int(os.getenv("JWT_TTL_SECONDS", "900"))
+REFRESH_TOKEN_TTL_DAYS = int(os.getenv("REFRESH_TOKEN_TTL_DAYS", "7"))
+PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "agroecology-pepper")
+
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@agroecologymap.org")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "5"))

@@ -85,3 +85,63 @@ class DocumentUpdateBody(BaseModel):
     title: str | None = None
     authors: str | None = None
     url: str | None = None
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────
+
+
+class RegisterRequest(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=200)
+    email: str = Field(..., min_length=1, max_length=320)
+    password: str = Field(
+        ..., min_length=8, max_length=128, description="Minimum 8 characters"
+    )
+    challenge_id: str
+    challenge_answer: str = Field(..., min_length=1, max_length=200)
+    locale: str = Field(default="pt-BR")
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ConfirmEmailRequest(BaseModel):
+    token: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    status: str
+    slug: str
+    locale: str
+    roles: list[str]
+    email_confirmed_at: str | None = None
+    last_login_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+    status: str | None = None
+    role_key: str | None = None
+    locale: str | None = None
+
+
+class ChallengeResponse(BaseModel):
+    challenge_id: str
+    question: str
+
+
+class MessageResponse(BaseModel):
+    message: str

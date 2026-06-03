@@ -14,5 +14,8 @@ echo "PostgreSQL is ready."
 echo "Running migrations..."
 python main.py db:migrate
 
+echo "Seeding database..."
+python main.py db:seed
+
 echo "Starting API server..."
 exec python main.py serve --host 0.0.0.0 --port "${PORT:-8000}"

@@ -8,6 +8,7 @@ import unicodedata
 from typing import TYPE_CHECKING, Any
 
 from src.domain.ports.cache_port import CachePort
+from src.shared.logging_utils import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class ValkeyCache(CachePort):  # noqa: F811
         self._ttl = ttl
 
         if redis is None:
-            logger.warning("redis package not installed, cache disabled")
+            log_event(logger, logging.WARNING, "cache_disabled", reason="redis_missing")
             return
 
         try:
@@ -36,9 +37,15 @@ class ValkeyCache(CachePort):  # noqa: F811
             )
             self._client.ping()
             self.enabled = True
-            logger.info("Valkey cache connected: %s", url)
+            log_event(logger, logging.INFO, "cache_connected", backend="valkey", url=url)
         except Exception:
-            logger.warning("Valkey unavailable at %s, cache disabled", url)
+            log_event(
+                logger,
+                logging.WARNING,
+                "cache_disabled",
+                reason="connection_failed",
+                url=url,
+            )
 
     def _key(self, question: str) -> str:
         normalized = unicodedata.normalize("NFKD", question.lower().strip())
@@ -55,9 +62,11 @@ class ValkeyCache(CachePort):  # noqa: F811
             raw: Any = self._client.get(self._key(question))
             if raw:
                 self._client.incr("rag:stats:cache_hits")
+                log_event(logger, logging.INFO, "cache_hit")
                 return dict(json.loads(str(raw)))
         except Exception:
             pass
+        log_event(logger, logging.INFO, "cache_miss")
         return None
 
     def set(self, question: str, result: dict[str, Any]) -> None:
@@ -69,6 +78,7 @@ class ValkeyCache(CachePort):  # noqa: F811
                 self._ttl,
                 json.dumps(result, ensure_ascii=False),
             )
+            log_event(logger, logging.INFO, "cache_set", ttl=self._ttl)
         except Exception:
             pass
 
@@ -85,5 +95,6 @@ class ValkeyCache(CachePort):  # noqa: F811
         if self._client:
             try:
                 self._client.close()
+                log_event(logger, logging.INFO, "cache_closed")
             except Exception:
                 pass

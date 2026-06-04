@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -27,8 +28,10 @@ from src.infrastructure.auth.password_hasher import (
     verify_password,
 )
 from src.shared.config import REFRESH_TOKEN_TTL_DAYS
+from src.shared.logging_utils import log_event, mask_email
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger("agroecology.auth")
 
 
 def _serialize_user(user: User) -> dict:
@@ -60,11 +63,32 @@ async def register(body: RegisterRequest):
 
     repo = await get_user_repo()
 
+    log_event(
+        logger,
+        logging.INFO,
+        "register_attempted",
+        email=mask_email(body.email),
+        locale=body.locale,
+    )
     if not verify_challenge(body.challenge_id, body.challenge_answer):
+        log_event(
+            logger,
+            logging.WARNING,
+            "register_failed",
+            reason="invalid_challenge",
+            email=mask_email(body.email),
+        )
         raise HTTPException(status_code=400, detail="Invalid challenge answer")
 
     existing = await repo.get_by_email(body.email)
     if existing:
+        log_event(
+            logger,
+            logging.WARNING,
+            "register_failed",
+            reason="email_already_registered",
+            email=mask_email(body.email),
+        )
         raise HTTPException(status_code=400, detail="Email already registered")
 
     import re
@@ -108,6 +132,15 @@ async def register(body: RegisterRequest):
         )
     )
 
+    log_event(
+        logger,
+        logging.INFO,
+        "register_completed",
+        user_id=user.id,
+        email=mask_email(body.email),
+        locale=body.locale,
+    )
+
     return MessageResponse(
         message="Registration successful. Check your email to confirm your account."
     )
@@ -132,8 +165,23 @@ async def resend_confirmation(email: str):
     repo = await get_user_repo()
     user = await repo.get_by_email(email)
     if not user:
+        log_event(
+            logger,
+            logging.WARNING,
+            "confirm_email_resend_failed",
+            reason="email_not_found",
+            email=mask_email(email),
+        )
         raise HTTPException(status_code=400, detail="Email not found")
     if user.email_confirmed_at:
+        log_event(
+            logger,
+            logging.WARNING,
+            "confirm_email_resend_failed",
+            reason="already_confirmed",
+            email=mask_email(email),
+            user_id=user.id,
+        )
         raise HTTPException(status_code=400, detail="Email already confirmed")
 
     token = generate_token()
@@ -145,6 +193,14 @@ async def resend_confirmation(email: str):
     from src.infrastructure.email.smtp_service import send_confirmation_email
 
     _asyncio2.create_task(send_confirmation_email(user.email, token, user.locale))
+
+    log_event(
+        logger,
+        logging.INFO,
+        "confirm_email_resent",
+        user_id=user.id,
+        email=mask_email(user.email),
+    )
 
     return MessageResponse(message="Confirmation email resent. Check your inbox.")
 
@@ -158,14 +214,33 @@ async def confirm_email(body: ConfirmEmailRequest):
     confirmation = await repo.get_confirmation(token_hash)
 
     if not confirmation:
+        log_event(
+            logger,
+            logging.WARNING,
+            "confirm_email_failed",
+            reason="invalid_or_expired_token",
+        )
         raise HTTPException(
             status_code=400, detail="Invalid or expired confirmation token"
         )
     if confirmation["expires_at"] < datetime.now(timezone.utc):
+        log_event(
+            logger,
+            logging.WARNING,
+            "confirm_email_failed",
+            reason="token_expired",
+            user_id=confirmation["user_id"],
+        )
         raise HTTPException(status_code=400, detail="Confirmation token expired")
 
     await repo.confirm_email(confirmation["user_id"])
     await repo.mark_confirmation_done(confirmation["id"])
+    log_event(
+        logger,
+        logging.INFO,
+        "confirm_email_completed",
+        user_id=confirmation["user_id"],
+    )
 
     return MessageResponse(message="Email confirmed successfully. You can now login.")
 
@@ -178,10 +253,33 @@ async def login(body: LoginRequest):
     user = await repo.get_by_email(body.email)
 
     if not user or not verify_password(body.password, user.password_hash):
+        log_event(
+            logger,
+            logging.WARNING,
+            "login_failed",
+            reason="invalid_credentials",
+            email=mask_email(body.email),
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if user.email_confirmed_at is None:
+        log_event(
+            logger,
+            logging.WARNING,
+            "login_failed",
+            reason="email_not_confirmed",
+            user_id=user.id,
+            email=mask_email(body.email),
+        )
         raise HTTPException(status_code=401, detail="Email not confirmed")
     if user.status != "active":
+        log_event(
+            logger,
+            logging.WARNING,
+            "login_failed",
+            reason="account_not_active",
+            user_id=user.id,
+            email=mask_email(body.email),
+        )
         raise HTTPException(status_code=401, detail="Account is not active")
 
     await repo.update_last_login(user.id)
@@ -192,6 +290,14 @@ async def login(body: LoginRequest):
     refresh_hash = hash_token(raw_refresh)
     exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
     await repo.store_refresh_token(user.id, refresh_hash, exp)
+    log_event(
+        logger,
+        logging.INFO,
+        "login_completed",
+        user_id=user.id,
+        email=mask_email(user.email),
+        roles=",".join(roles),
+    )
 
     return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
@@ -205,17 +311,39 @@ async def refresh(refresh_token: str):
     stored = await repo.get_refresh_token(token_hash)
 
     if not stored:
+        log_event(logger, logging.WARNING, "refresh_failed", reason="invalid_token")
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     if stored["expires_at"] < datetime.now(timezone.utc):
+        log_event(
+            logger,
+            logging.WARNING,
+            "refresh_failed",
+            reason="token_expired",
+            user_id=stored["user_id"],
+        )
         raise HTTPException(status_code=401, detail="Refresh token expired")
     if stored.get("revoked_at"):
         await repo.revoke_all_refresh_tokens(stored["user_id"])
+        log_event(
+            logger,
+            logging.WARNING,
+            "refresh_failed",
+            reason="token_reuse_detected",
+            user_id=stored["user_id"],
+        )
         raise HTTPException(status_code=401, detail="Token reuse detected")
 
     await repo.revoke_refresh_token(token_hash)
 
     user = await repo.get_by_id(stored["user_id"])
     if not user or user.status != "active":
+        log_event(
+            logger,
+            logging.WARNING,
+            "refresh_failed",
+            reason="account_not_active",
+            user_id=stored["user_id"],
+        )
         raise HTTPException(status_code=401, detail="Account not active")
 
     roles = user.roles or []
@@ -224,6 +352,13 @@ async def refresh(refresh_token: str):
     new_hash = hash_token(raw_refresh)
     exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
     await repo.store_refresh_token(user.id, new_hash, exp)
+    log_event(
+        logger,
+        logging.INFO,
+        "refresh_completed",
+        user_id=user.id,
+        email=mask_email(user.email),
+    )
 
     return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
@@ -234,6 +369,7 @@ async def logout(user: User = Depends(get_current_user)):
 
     repo = await get_user_repo()
     await repo.revoke_all_refresh_tokens(user.id)
+    log_event(logger, logging.INFO, "logout_completed", user_id=user.id)
     return MessageResponse(message="Logged out successfully")
 
 
@@ -244,6 +380,13 @@ async def request_password_reset(email: str):
     repo = await get_user_repo()
     user = await repo.get_by_email(email)
     if not user:
+        log_event(
+            logger,
+            logging.INFO,
+            "password_reset_requested",
+            email=mask_email(email),
+            user_exists=False,
+        )
         return MessageResponse(
             message="If the email exists, a reset link has been sent."
         )
@@ -258,6 +401,15 @@ async def request_password_reset(email: str):
 
     _asyncio3.create_task(send_reset_email(user.email, token, user.locale))
 
+    log_event(
+        logger,
+        logging.INFO,
+        "password_reset_requested",
+        user_id=user.id,
+        email=mask_email(user.email),
+        user_exists=True,
+    )
+
     return MessageResponse(message="If the email exists, a reset link has been sent.")
 
 
@@ -266,6 +418,12 @@ async def confirm_password_reset(token: str, new_password: str):
     from src.adapters.rest.dependencies import get_user_repo
 
     if len(new_password) < 8:
+        log_event(
+            logger,
+            logging.WARNING,
+            "password_reset_confirm_failed",
+            reason="password_too_short",
+        )
         raise HTTPException(
             status_code=400, detail="Password must be at least 8 characters"
         )
@@ -275,11 +433,23 @@ async def confirm_password_reset(token: str, new_password: str):
     confirmation = await repo.get_confirmation(token_hash)
 
     if not confirmation or confirmation["expires_at"] < datetime.now(timezone.utc):
+        log_event(
+            logger,
+            logging.WARNING,
+            "password_reset_confirm_failed",
+            reason="invalid_or_expired_token",
+        )
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     password_hash = hash_password(new_password)
     await repo.update(confirmation["user_id"], password_hash=password_hash)
     await repo.mark_confirmation_done(confirmation["id"])
+    log_event(
+        logger,
+        logging.INFO,
+        "password_reset_confirmed",
+        user_id=confirmation["user_id"],
+    )
 
     return MessageResponse(message="Password reset successfully")
 

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.adapters.rest.auth_middleware import require_role
 from src.adapters.rest.schemas import MessageResponse, UserResponse, UserUpdateRequest
 from src.domain.models.user import User
+from src.shared.logging_utils import log_event, mask_email
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+logger = logging.getLogger("agroecology.admin")
 
 
 def _serialize_user(user: User) -> dict:
@@ -33,6 +37,13 @@ async def list_users(user: User = Depends(require_role("admin"))):
 
     repo = await get_user_repo()
     users = await repo.list_all()
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_list_users_completed",
+        actor_user_id=user.id,
+        total_users=len(users),
+    )
     return [_serialize_user(u) for u in users]
 
 
@@ -43,7 +54,22 @@ async def get_user(user_id: str, user: User = Depends(require_role("admin"))):
     repo = await get_user_repo()
     u = await repo.get_by_id(user_id)
     if not u:
+        log_event(
+            logger,
+            logging.WARNING,
+            "admin_get_user_failed",
+            actor_user_id=user.id,
+            target_user_id=user_id,
+            reason="not_found",
+        )
         raise HTTPException(status_code=404, detail="User not found")
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_get_user_completed",
+        actor_user_id=user.id,
+        target_user_id=user_id,
+    )
     return _serialize_user(u)
 
 
@@ -66,6 +92,14 @@ async def update_user(
 
     u = await repo.update(user_id, **kwargs)
     if not u:
+        log_event(
+            logger,
+            logging.WARNING,
+            "admin_update_user_failed",
+            actor_user_id=user.id,
+            target_user_id=user_id,
+            reason="not_found",
+        )
         raise HTTPException(status_code=404, detail="User not found")
 
     if body.role_key is not None:
@@ -86,6 +120,17 @@ async def update_user(
                     (uuid7(), user_id, role_id),
                 )
 
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_update_user_completed",
+        actor_user_id=user.id,
+        target_user_id=user_id,
+        email=mask_email(u.email),
+        status=u.status,
+        locale=u.locale,
+        role_key=body.role_key,
+    )
     return _serialize_user(u)
 
 
@@ -96,5 +141,21 @@ async def delete_user(user_id: str, user: User = Depends(require_role("admin")))
     repo = await get_user_repo()
     deleted = await repo.delete(user_id)
     if not deleted:
+        log_event(
+            logger,
+            logging.WARNING,
+            "admin_delete_user_failed",
+            actor_user_id=user.id,
+            target_user_id=user_id,
+            reason="not_found",
+        )
         raise HTTPException(status_code=404, detail="User not found")
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_delete_user_completed",
+        actor_user_id=user.id,
+        target_user_id=user_id,
+        email=mask_email(deleted.email),
+    )
     return MessageResponse(message="User deleted successfully")

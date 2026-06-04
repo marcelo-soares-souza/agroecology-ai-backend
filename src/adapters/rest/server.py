@@ -53,6 +53,7 @@ from src.shared.config import (
     DATA_DIR_WEB,
     TASK_TTL,
 )
+from src.shared.logging_utils import log_event
 from src.shared.uuid7 import uuid7
 
 logger = logging.getLogger("agroecology.http")
@@ -291,8 +292,24 @@ def _process_task(
         )
         if should_cache:
             get_cache().set(question, result)
+        log_event(
+            logger,
+            logging.INFO,
+            "ask_task_completed",
+            task_id=task_id,
+            retrieved_sources=len(result["sources"]),
+            answer_chars=len(result["answer"]),
+            cached=should_cache,
+        )
     except Exception as e:
         tasks.update(task_id, status="error", error=str(e))
+        log_event(
+            logger,
+            logging.ERROR,
+            "ask_task_failed",
+            task_id=task_id,
+            error=e,
+        )
 
 
 @app.post("/api/v1/ask", response_model=AskResponse)
@@ -318,9 +335,25 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
             answer=cached["answer"],
             sources=cached.get("sources", []),
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "ask_completed_from_cache",
+            task_id=task_id,
+            top_k=body.top_k,
+            history_messages=len(body.history),
+        )
         return AskResponse(task_id=task_id, status="done")
 
     task_id = tasks.create(body.question, body.top_k)
+    log_event(
+        logger,
+        logging.INFO,
+        "ask_task_created",
+        task_id=task_id,
+        top_k=body.top_k,
+        history_messages=len(body.history),
+    )
 
     manage_docs = get_manage_docs()
     title_map = await manage_docs.get_title_map() if manage_docs else {}
@@ -379,7 +412,9 @@ async def ingest_start(
     ingest = get_ingest()
     started = ingest.start(force=force)
     if not started:
+        log_event(logger, logging.WARNING, "ingest_start_rejected", force=force)
         return IngestResponse(status="already_running")
+    log_event(logger, logging.INFO, "ingest_start_accepted", force=force)
     return IngestResponse(status="processing")
 
 
@@ -454,6 +489,13 @@ async def upload_documents(
         target_dir = _ALLOWED_EXT.get(ext)
 
         if target_dir is None:
+            log_event(
+                logger,
+                logging.WARNING,
+                "document_upload_skipped",
+                filename=f.filename,
+                reason="unsupported_format",
+            )
             skipped.append(
                 DocumentSkipped(
                     filename=f.filename,
@@ -470,10 +512,25 @@ async def upload_documents(
         sha256_hash = hashlib.sha256(content).hexdigest()
 
         if size == 0:
+            log_event(
+                logger,
+                logging.WARNING,
+                "document_upload_skipped",
+                filename=f.filename,
+                reason="empty_file",
+            )
             skipped.append(DocumentSkipped(filename=f.filename, reason="empty file"))
             continue
 
         if size > _MAX_FILE_SIZE:
+            log_event(
+                logger,
+                logging.WARNING,
+                "document_upload_skipped",
+                filename=f.filename,
+                reason="file_too_large",
+                file_size=size,
+            )
             skipped.append(
                 DocumentSkipped(
                     filename=f.filename,
@@ -483,6 +540,13 @@ async def upload_documents(
             continue
 
         if await manage.sha256_exists(sha256_hash):
+            log_event(
+                logger,
+                logging.WARNING,
+                "document_upload_skipped",
+                filename=f.filename,
+                reason="duplicate_content",
+            )
             skipped.append(
                 DocumentSkipped(
                     filename=f.filename,
@@ -502,6 +566,16 @@ async def upload_documents(
             title=title,
             authors=authors,
             url=url,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "document_uploaded",
+            document_id=doc.id,
+            filename=doc.filename,
+            file_type=doc.file_type,
+            file_size=doc.file_size,
+            directory=doc.directory,
         )
 
         uploaded.append(
@@ -524,6 +598,13 @@ async def list_all_documents(current_user: User = Depends(get_current_user)):
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     docs = await manage.list_all()
+    log_event(
+        logger,
+        logging.INFO,
+        "documents_list_completed",
+        total_documents=len(docs),
+        user_id=current_user.id,
+    )
     return [_serialize_doc(d) for d in docs]
 
 
@@ -535,6 +616,13 @@ async def get_one_document(doc_id: str, current_user: User = Depends(get_current
     doc = await manage.get(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    log_event(
+        logger,
+        logging.INFO,
+        "document_get_completed",
+        document_id=doc_id,
+        user_id=current_user.id,
+    )
     return _serialize_doc(doc)
 
 
@@ -552,6 +640,13 @@ async def update_one_document(
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    log_event(
+        logger,
+        logging.INFO,
+        "document_update_completed",
+        document_id=doc_id,
+        user_id=current_user.id,
+    )
     return _serialize_doc(doc)
 
 
@@ -563,6 +658,13 @@ async def extract_document_metadata(doc_id: str):
     doc = await manage.get(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    log_event(
+        logger,
+        logging.INFO,
+        "document_download_requested",
+        document_id=doc_id,
+        user_id=current_user.id,
+    )
     if doc.file_type != "pdf":
         raise HTTPException(
             status_code=400,
@@ -699,5 +801,12 @@ async def delete_one_document(
 
     ingest = get_ingest()
     ingest.remove_chunks(doc_id)
+    log_event(
+        logger,
+        logging.INFO,
+        "document_delete_completed",
+        document_id=doc_id,
+        user_id=current_user.id,
+    )
 
     return _serialize_doc(doc)

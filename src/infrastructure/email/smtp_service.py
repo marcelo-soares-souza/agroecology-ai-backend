@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from src.shared.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM
+from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,14 @@ def _enabled() -> bool:
 
 async def send_email(to_email: str, subject: str, body_html: str) -> bool:
     if not _enabled():
-        logger.info("SMTP not configured, skipping email to %s", to_email)
+        log_event(
+            logger,
+            logging.INFO,
+            "email_skipped",
+            reason="smtp_not_configured",
+            to_email=mask_email(to_email),
+            subject=subject,
+        )
         return False
 
     msg = MIMEMultipart("alternative")
@@ -29,6 +37,13 @@ async def send_email(to_email: str, subject: str, body_html: str) -> bool:
     msg.attach(MIMEText(body_html, "html", "utf-8"))
 
     try:
+        log_event(
+            logger,
+            logging.INFO,
+            "email_send_started",
+            to_email=mask_email(to_email),
+            subject=subject,
+        )
         await aiosmtplib.send(
             msg,
             hostname=SMTP_HOST,
@@ -37,10 +52,23 @@ async def send_email(to_email: str, subject: str, body_html: str) -> bool:
             password=SMTP_PASSWORD,
             start_tls=True,
         )
-        logger.info("Email sent to %s: %s", to_email, subject)
+        log_event(
+            logger,
+            logging.INFO,
+            "email_send_completed",
+            to_email=mask_email(to_email),
+            subject=subject,
+        )
         return True
     except Exception as e:
-        logger.error("Failed to send email to %s: %s", to_email, e)
+        log_event(
+            logger,
+            logging.ERROR,
+            "email_send_failed",
+            to_email=mask_email(to_email),
+            subject=subject,
+            error=e,
+        )
         return False
 
 

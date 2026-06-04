@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
+import time
 from pathlib import Path
 
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.shared.config import CHUNK_OVERLAP, CHUNK_SIZE
+from src.shared.logging_utils import log_event
+
+logger = logging.getLogger("agroecology.ingestion")
 
 
 class IngestDocuments:
@@ -29,6 +34,13 @@ class IngestDocuments:
     def start(self, force: bool = False) -> bool:
         with self._lock:
             if self.status == "processing":
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "ingestion_start_rejected",
+                    reason="already_processing",
+                    force=force,
+                )
                 return False
             self.status = "processing"
             self.chunks_indexed = 0
@@ -37,9 +49,11 @@ class IngestDocuments:
 
         thread = threading.Thread(target=self._run, args=(force,), daemon=True)
         thread.start()
+        log_event(logger, logging.INFO, "ingestion_started", mode="async", force=force)
         return True
 
     def execute(self, force: bool = False) -> int:
+        started_at = time.perf_counter()
         with self._lock:
             self.status = "processing"
             self.chunks_indexed = 0
@@ -48,6 +62,7 @@ class IngestDocuments:
 
         run_id: str | None = None
         try:
+            log_event(logger, logging.INFO, "ingestion_started", mode="sync", force=force)
             run = asyncio.run(self._ingestion_repo.insert())
             run_id = run.id
             with self._lock:
@@ -62,6 +77,16 @@ class IngestDocuments:
                 self.status = "done"
                 self.chunks_indexed = count
                 self.error = None
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log_event(
+                logger,
+                logging.INFO,
+                "ingestion_completed",
+                mode="sync",
+                run_id=run_id,
+                chunks_indexed=count,
+                duration_ms=duration_ms,
+            )
             return count
         except Exception as e:
             error_msg = str(e)
@@ -80,9 +105,20 @@ class IngestDocuments:
                     )
                 except Exception:
                     pass
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log_event(
+                logger,
+                logging.ERROR,
+                "ingestion_failed",
+                mode="sync",
+                run_id=run_id,
+                duration_ms=duration_ms,
+                error=error_msg,
+            )
             raise
 
     def _run(self, force: bool) -> None:
+        started_at = time.perf_counter()
         run_id: str | None = None
         try:
             run = asyncio.run(self._ingestion_repo.insert())
@@ -99,6 +135,16 @@ class IngestDocuments:
                 self.status = "done"
                 self.chunks_indexed = count
                 self.error = None
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log_event(
+                logger,
+                logging.INFO,
+                "ingestion_completed",
+                mode="async",
+                run_id=run_id,
+                chunks_indexed=count,
+                duration_ms=duration_ms,
+            )
         except Exception as e:
             error_msg = str(e)
             with self._lock:
@@ -116,6 +162,16 @@ class IngestDocuments:
                     )
                 except Exception:
                     pass
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log_event(
+                logger,
+                logging.ERROR,
+                "ingestion_failed",
+                mode="async",
+                run_id=run_id,
+                duration_ms=duration_ms,
+                error=error_msg,
+            )
 
     def _ingest_all(self, force: bool = False) -> int:
         from src.domain.services.chunker import chunk_text
@@ -150,6 +206,13 @@ class IngestDocuments:
 
         if not new_docs:
             if self._vector_store.index_exists():
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "ingestion_no_new_documents",
+                    total_documents=len(all_docs),
+                    index_exists=True,
+                )
                 return 0
             force = True
 
@@ -170,6 +233,12 @@ class IngestDocuments:
                 )
 
         if not rows:
+            log_event(
+                logger,
+                logging.INFO,
+                "ingestion_no_chunks_generated",
+                new_documents=len(new_docs),
+            )
             return 0
 
         texts = [r["text"] for r in rows]
@@ -185,6 +254,16 @@ class IngestDocuments:
 
         new_ids = {source_to_id[d["source"]] for d in new_docs}
         asyncio.run(self._mark_as_ingested(new_ids))
+
+        log_event(
+            logger,
+            logging.INFO,
+            "ingestion_batch_processed",
+            force=force,
+            total_documents=len(all_docs),
+            new_documents=len(new_docs),
+            chunks_generated=len(rows),
+        )
 
         return len(rows)
 

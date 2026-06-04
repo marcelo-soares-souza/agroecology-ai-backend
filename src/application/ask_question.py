@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 
 from src.domain.ports.llm_port import LLMPort
 from src.domain.services.retriever import RetrieverService
 from src.shared.config import HYBRID_TOP_K, SYSTEM_PROMPT, USER_PROMPT
+from src.shared.logging_utils import log_event
 
 _CONTEXT_DEPENDENT_PATTERNS = (
     re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
@@ -15,6 +17,7 @@ _CONTEXT_DEPENDENT_PATTERNS = (
     ),
 )
 _MAX_HISTORY_SNIPPET_CHARS = 500
+logger = logging.getLogger("agroecology.rag")
 
 
 class AskQuestion:
@@ -33,6 +36,16 @@ class AskQuestion:
         title_map: dict[str, str | None] | None = None,
         history: list[dict] | None = None,
     ) -> dict:
+        follow_up = bool(history) and self._is_context_dependent_question(question)
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_question_started",
+            question_chars=len(question),
+            top_k=top_k or HYBRID_TOP_K,
+            history_messages=len(history or []),
+            follow_up_detected=follow_up,
+        )
         search_query = self._build_search_query(question, history or [])
         retrieved = self._retriever.hybrid_search(
             search_query,
@@ -67,6 +80,15 @@ class AskQuestion:
                 }
             )
 
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_question_completed",
+            question_chars=len(question),
+            retrieved_sources=len(sources),
+            answer_chars=len(answer),
+            search_query_rewritten=search_query != question,
+        )
         return {"answer": answer, "sources": sources}
 
     @staticmethod

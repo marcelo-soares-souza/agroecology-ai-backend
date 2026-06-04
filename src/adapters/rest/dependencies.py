@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 
 from src.application.ask_question import AskQuestion
 from src.application.extract_metadata import ExtractMetadata
@@ -44,6 +45,9 @@ from src.shared.config import (
     OLLAMA_EMBEDDING_MODEL,
     VALKEY_URL,
 )
+from src.shared.logging_utils import log_event
+
+logger = logging.getLogger("agroecology.bootstrap")
 
 # ── Singleton wiring ─────────────────────────────────────────────────────
 
@@ -68,8 +72,22 @@ def get_embedder() -> EmbeddingPort:
     if _embedder is None:
         if EMBEDDING_BACKEND == "ollama":
             _embedder = OllamaEmbedder(OLLAMA_BASE_URL, OLLAMA_EMBEDDING_MODEL)
+            log_event(
+                logger,
+                logging.INFO,
+                "embedder_initialized",
+                backend="ollama",
+                model=OLLAMA_EMBEDDING_MODEL,
+            )
         else:
             _embedder = SentenceTransformerEmbedder(EMBEDDING_MODEL)
+            log_event(
+                logger,
+                logging.INFO,
+                "embedder_initialized",
+                backend="sentence_transformer",
+                model=EMBEDDING_MODEL,
+            )
     return _embedder
 
 
@@ -77,6 +95,7 @@ def get_vector_store() -> VectorStorePort:
     global _vector_store
     if _vector_store is None:
         _vector_store = LanceDBVectorStore()
+        log_event(logger, logging.INFO, "vector_store_initialized", type="lancedb")
     return _vector_store
 
 
@@ -87,6 +106,14 @@ def get_llm() -> LLMPort:
             api_key=DEEPSEEK_API_KEY,
             base_url=DEEPSEEK_BASE_URL,
             model=DEEPSEEK_MODEL,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "llm_initialized",
+            provider="openai_compatible",
+            model=DEEPSEEK_MODEL,
+            base_url=DEEPSEEK_BASE_URL,
         )
     return _llm
 
@@ -168,17 +195,22 @@ async def init_services() -> None:
         _manage_docs, \
         _get_status
 
+    log_event(logger, logging.INFO, "services_init_started")
+
     if _doc_repo is None:
         _doc_repo = PostgresDocumentRepository()
         await _doc_repo.initialize()
+        log_event(logger, logging.INFO, "document_repo_initialized")
 
     if _ingestion_repo is None:
         _ingestion_repo = PostgresIngestionRepository()
         await _ingestion_repo.initialize()
+        log_event(logger, logging.INFO, "ingestion_repo_initialized")
 
     if _user_repo is None:
         _user_repo = PostgresUserRepository()
         await _user_repo.initialize()
+        log_event(logger, logging.INFO, "user_repo_initialized")
 
     _manage_docs = ManageDocuments(_doc_repo)
 
@@ -200,9 +232,13 @@ async def init_services() -> None:
         _queue = QueueRepository()
         _queue.open()
         start_job_worker(_queue)
+        log_event(logger, logging.INFO, "job_worker_initialized")
+
+    log_event(logger, logging.INFO, "services_init_completed")
 
 
 async def shutdown_services() -> None:
+    log_event(logger, logging.INFO, "services_shutdown_started")
     if _doc_repo:
         await _doc_repo.close()
     if _ingestion_repo:
@@ -210,6 +246,7 @@ async def shutdown_services() -> None:
     if _user_repo:
         await _user_repo.close()
     get_cache().close()
+    log_event(logger, logging.INFO, "services_shutdown_completed")
 
 
 def get_manage_docs() -> ManageDocuments | None:

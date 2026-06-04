@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import logging
 import os
+import time
 from typing import Any
 
 from openai import OpenAI
 
 from src.domain.ports.llm_port import LLMPort
+from src.shared.logging_utils import log_event
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
+logger = logging.getLogger("agroecology.llm")
 
 
 class OpenAILLM(LLMPort):
@@ -38,10 +42,46 @@ class OpenAILLM(LLMPort):
 
         messages.append({"role": "user", "content": user_prompt})
 
-        response = self._client.chat.completions.create(
+        started_at = time.perf_counter()
+        temperature = kwargs.get("temperature", self._temperature)
+        max_tokens = kwargs.get("max_tokens", self._max_tokens)
+        history_count = max(0, len(messages) - 2)
+        log_event(
+            logger,
+            logging.INFO,
+            "llm_request_started",
             model=self._model,
-            messages=messages,
-            temperature=kwargs.get("temperature", self._temperature),
-            max_tokens=kwargs.get("max_tokens", self._max_tokens),
+            history_messages=history_count,
+            prompt_chars=len(user_prompt),
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
-        return response.choices[0].message.content or ""
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            answer = response.choices[0].message.content or ""
+            log_event(
+                logger,
+                logging.INFO,
+                "llm_request_completed",
+                model=self._model,
+                duration_ms=duration_ms,
+                answer_chars=len(answer),
+            )
+            return answer
+        except Exception as exc:
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log_event(
+                logger,
+                logging.ERROR,
+                "llm_request_failed",
+                model=self._model,
+                duration_ms=duration_ms,
+                error=exc,
+            )
+            raise

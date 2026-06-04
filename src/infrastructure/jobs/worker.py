@@ -7,6 +7,7 @@ import time
 from typing import Callable
 
 from src.infrastructure.persistence.queue_repository import QueueRepository
+from src.shared.logging_utils import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,12 @@ def _handle_extract_metadata(payload: dict) -> None:
     import asyncio
 
     doc_id = payload["document_id"]
+    log_event(
+        logger,
+        logging.INFO,
+        "metadata_job_started",
+        document_id=doc_id,
+    )
 
     async def _run():
         from src.infrastructure.persistence.postgres_document_repo import (
@@ -77,6 +84,14 @@ def _handle_extract_metadata(payload: dict) -> None:
                         authors=ext_authors or doc.authors or None,
                     ),
                 )
+            log_event(
+                logger,
+                logging.INFO,
+                "metadata_job_completed",
+                document_id=doc_id,
+                has_title=bool(ext_title),
+                has_authors=bool(ext_authors),
+            )
         finally:
             await db.close()
 
@@ -122,5 +137,5 @@ def start_job_worker(queue_repo: QueueRepository) -> threading.Thread:
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    logger.info("Job worker started (polling every %ds)", interval)
+    log_event(logger, logging.INFO, "job_worker_started", poll_interval_seconds=interval)
     return thread

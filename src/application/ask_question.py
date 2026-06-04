@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.llm_port import LLMPort
 from src.domain.services.retriever import RetrieverService
 from src.shared.config import HYBRID_TOP_K, SYSTEM_PROMPT, USER_PROMPT
@@ -23,11 +22,9 @@ class AskQuestion:
         self,
         retriever: RetrieverService,
         llm: LLMPort,
-        doc_repo: DocumentRepository,
     ) -> None:
         self._retriever = retriever
         self._llm = llm
-        self._doc_repo = doc_repo
 
     def execute(
         self,

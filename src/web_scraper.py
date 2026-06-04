@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 import trafilatura
 
-from .config import DATA_DIR_WEB
+from .shared.config import DATA_DIR_WEB
 
 
 def url_to_filename(url: str) -> str:

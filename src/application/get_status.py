@@ -53,15 +53,3 @@ class GetStatus:
             "pending_docs": pending_docs,
             "last_ingestion": last_ingestion,
         }
-
-        return {
-            "index_ready": self._vector_store.index_exists(),
-            "ingest_status": self._ingest.status,
-            "chunks_indexed": self._vector_store.count_chunks()
-            if self._vector_store.index_exists()
-            else 0,
-            "active_tasks": active_tasks,
-            "cache_enabled": self._cache.enabled,
-            "cache_hits": self._cache.hit_count(),
-            "last_ingestion": last_ingestion,
-        }

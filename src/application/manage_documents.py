@@ -7,6 +7,8 @@ from src.domain.ports.document_repository import DocumentRepository
 from src.shared.config import DATA_DIR
 from src.shared.uuid7 import uuid7
 
+_FILE_EXTENSIONS = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
+
 
 class ManageDocuments:
     def __init__(self, repo: DocumentRepository) -> None:
@@ -24,8 +26,7 @@ class ManageDocuments:
     ) -> Document:
         sha256_hash = hashlib.sha256(content).hexdigest()
         doc_id = uuid7()
-        ext_map = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
-        ext = ext_map.get(file_type, "")
+        ext = _FILE_EXTENSIONS.get(file_type, "")
         stored_name = f"{doc_id}{ext}"
         dest = DATA_DIR / directory / stored_name
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -66,8 +67,7 @@ class ManageDocuments:
     async def delete(self, doc_id: str) -> Document | None:
         doc = await self._repo.delete(doc_id)
         if doc:
-            ext_map = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
-            ext = ext_map.get(doc.file_type, "")
+            ext = _FILE_EXTENSIONS.get(doc.file_type, "")
             stored_name = f"{doc.id}{ext}"
             filepath = DATA_DIR / doc.directory / stored_name
             if filepath.exists():
@@ -84,7 +84,6 @@ class ManageDocuments:
         return await self._repo.get_title_map()
 
     def get_file_path(self, doc: Document) -> str:
-        ext_map = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
-        ext = ext_map.get(doc.file_type, "")
+        ext = _FILE_EXTENSIONS.get(doc.file_type, "")
         stored_name = f"{doc.id}{ext}"
         return str(DATA_DIR / doc.directory / stored_name)

@@ -9,33 +9,52 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from src.config import DATA_DIR_MARKDOWN, DATA_DIR_PDFS, DATA_DIR_WEB, LANCEDB_DIR
-from src.ingest import check_index_exists
+from src.adapters.rest.dependencies import (
+    get_ask_question,
+    get_ingest,
+    get_manage_docs,
+    get_vector_store,
+    init_services,
+    shutdown_services,
+)
+from src.shared.config import DATA_DIR_MARKDOWN, DATA_DIR_PDFS, DATA_DIR_WEB
 
 console = Console()
 
 
 def cmd_ingest(args):
-    from src.ingest import ingest_all
+    import asyncio
 
     console.print("[bold]Ingesting documents...[/bold]")
     try:
-        _table, count = ingest_all()
+        asyncio.run(init_services())
+        count = get_ingest().execute(force=False)
         console.print(f"[green]OK[/green] {count} chunks indexed successfully!")
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
+    finally:
+        asyncio.run(shutdown_services())
 
 
 def cmd_ask(args):
-    from src.query import ask_with_sources
+    import asyncio
 
     question = " ".join(args.question)
     try:
-        result = ask_with_sources(question, top_k=args.top_k)
+        asyncio.run(init_services())
+        manage_docs = get_manage_docs()
+        title_map = asyncio.run(manage_docs.get_title_map()) if manage_docs else {}
+        result = get_ask_question().execute(
+            question,
+            top_k=args.top_k,
+            title_map=title_map,
+        )
     except (ValueError, FileNotFoundError) as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
+    finally:
+        asyncio.run(shutdown_services())
 
     console.print(
         Panel(
@@ -74,6 +93,8 @@ def cmd_scrape(args):
 
 
 def cmd_status(args):
+    import asyncio
+
     table = Table(title="Project Status")
     table.add_column("Component", style="cyan")
     table.add_column("Count", style="green")
@@ -83,21 +104,20 @@ def cmd_status(args):
     mds = list(DATA_DIR_MARKDOWN.glob("*.md"))
     webs = list(DATA_DIR_WEB.glob("*.txt"))
 
-    db_exists = check_index_exists()
-    chunk_count = 0
-    if db_exists:
-        import lancedb
+    try:
+        asyncio.run(init_services())
+        vector_store = get_vector_store()
+        db_exists = vector_store.index_exists()
+        chunk_count = vector_store.count_chunks() if db_exists else 0
 
-        db = lancedb.connect(str(LANCEDB_DIR))
-        t = db.open_table("chunks")
-        chunk_count = t.count_rows()
+        table.add_row("PDFs", str(len(pdfs)), str(DATA_DIR_PDFS))
+        table.add_row("Markdown", str(len(mds)), str(DATA_DIR_MARKDOWN))
+        table.add_row("Web (scraped)", str(len(webs)), str(DATA_DIR_WEB))
+        table.add_row("Chunks indexed", str(chunk_count), "LanceDB")
 
-    table.add_row("PDFs", str(len(pdfs)), str(DATA_DIR_PDFS))
-    table.add_row("Markdown", str(len(mds)), str(DATA_DIR_MARKDOWN))
-    table.add_row("Web (scraped)", str(len(webs)), str(DATA_DIR_WEB))
-    table.add_row("Chunks indexed", str(chunk_count), str(LANCEDB_DIR))
-
-    console.print(table)
+        console.print(table)
+    finally:
+        asyncio.run(shutdown_services())
 
 
 def cmd_db_migrate(args):

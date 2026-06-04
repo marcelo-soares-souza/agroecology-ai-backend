@@ -115,8 +115,7 @@ backend/
 ├── main.py              # CLI (serve, ingest, ask, chat, migrate, status)
 ├── src/
 │   ├── adapters/
-│   │   ├── rest/        # FastAPI app, schemas, DI wiring
-│   │   └── cli/         # (reserved)
+│   │   └── rest/        # FastAPI app, schemas, DI wiring
 │   ├── application/     # Use cases (AskQuestion, IngestDocuments, ManageDocuments, GetStatus)
 │   ├── domain/          # Pure business logic
 │   │   ├── models/      # Document, IngestionRun (dataclasses)
@@ -126,38 +125,12 @@ backend/
 │   │   ├── ai/          # OpenAILLM, SentenceTransformerEmbedder, OllamaEmbedder
 │   │   ├── cache/       # ValkeyCache
 │   │   ├── persistence/ # PostgresDocumentRepo, IngestionRepo, LanceDBVectorStore
-│   │   └── storage/     # LocalFileStorage
 │   └── shared/          # Config, UUIDv7 generator
 ├── migrations/          # Idempotent SQL scripts
 ├── data/                # Uploaded files (gitignored)
 ├── index/               # LanceDB vector store (gitignored)
 ├── .env.example         # Configuration template
 ├── Dockerfile           # Multi-stage build
-└── requirements.txt     # Python dependencies
-```
-backend/
-├── main.py              # CLI (serve, ingest, ask, chat, migrate, status)
-├── server.py            # FastAPI app + all route handlers
-├── src/
-│   ├── config.py        # Environment variables and defaults
-│   ├── embedder.py      # Embedding abstraction (ST + Ollama backends)
-│   ├── chunker.py       # Sentence-aware text chunking
-│   ├── loader.py        # Document loading (PDF/MD/TXT)
-│   ├── ingest.py        # Ingestion pipeline
-│   ├── ingest_state.py  # Ingestion singleton + DB tracking
-│   ├── retriever.py     # Hybrid search (vector + BM25 + RRF)
-│   ├── query.py         # LLM query engine with source citation
-│   ├── chat.py          # Interactive CLI chat
-│   ├── database.py      # PostgreSQL async CRUD (documents + ingestion_runs)
-│   ├── migrate.py       # SQL migration runner
-│   ├── task_manager.py  # In-memory async task store
-│   ├── valkey_cache.py  # Valkey/Redis response cache
-│   ├── web_scraper.py   # Web scraping utility
-│   └── uuid7.py         # UUIDv7 generator
-├── migrations/          # Idempotent SQL scripts
-├── data/                # Uploaded files (gitignored)
-├── index/               # LanceDB vector store (gitignored)
-├── .env.example         # Configuration template
 └── requirements.txt     # Python dependencies
 ```
 

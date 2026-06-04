@@ -39,6 +39,49 @@ class IngestDocuments:
         thread.start()
         return True
 
+    def execute(self, force: bool = False) -> int:
+        with self._lock:
+            self.status = "processing"
+            self.chunks_indexed = 0
+            self.error = None
+            self.current_run_id = None
+
+        run_id: str | None = None
+        try:
+            run = asyncio.run(self._ingestion_repo.insert())
+            run_id = run.id
+            with self._lock:
+                self.current_run_id = run_id
+
+            count = self._ingest_all(force=force)
+
+            asyncio.run(
+                self._ingestion_repo.update(run_id, status="done", chunks_indexed=count)
+            )
+            with self._lock:
+                self.status = "done"
+                self.chunks_indexed = count
+                self.error = None
+            return count
+        except Exception as e:
+            error_msg = str(e)
+            with self._lock:
+                self.status = "error"
+                self.chunks_indexed = 0
+                self.error = error_msg
+                if self.current_run_id:
+                    run_id = self.current_run_id
+            if run_id:
+                try:
+                    asyncio.run(
+                        self._ingestion_repo.update(
+                            run_id, status="error", error=error_msg
+                        )
+                    )
+                except Exception:
+                    pass
+            raise
+
     def _run(self, force: bool) -> None:
         run_id: str | None = None
         try:

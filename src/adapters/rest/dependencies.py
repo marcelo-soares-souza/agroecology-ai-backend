@@ -151,11 +151,9 @@ def get_ingest() -> IngestDocuments:
 def get_ask_question() -> AskQuestion:
     global _ask_question
     if _ask_question is None:
-        # doc_repo needs async init — passed later
         _ask_question = AskQuestion(
             retriever=get_retriever(),
             llm=get_llm(),
-            doc_repo=_doc_repo,  # type: ignore[arg-type]
         )
     return _ask_question
 

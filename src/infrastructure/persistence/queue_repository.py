@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from src.shared.config import DATABASE_URL
+from src.shared.config import DATABASE_URL, QUEUE_MAX_RETRIES_DEFAULT
 from src.shared.uuid7 import uuid7
 
 
@@ -23,15 +23,30 @@ class QueueRepository:
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
 
-    def enqueue(self, job_type: str, payload: dict, delay_seconds: int = 0) -> str:
+    def enqueue(
+        self,
+        job_type: str,
+        payload: dict,
+        delay_seconds: int = 0,
+        max_retries: int | None = None,
+    ) -> str:
         job_id = uuid7()
         now = self._now()
-        scheduled_at = now.replace(second=now.second + delay_seconds)
+        scheduled_at = now + timedelta(seconds=delay_seconds)
+        retries = max_retries if max_retries is not None else QUEUE_MAX_RETRIES_DEFAULT
         with self._pool.connection() as conn:
             conn.execute(
-                """INSERT INTO job_queue (id, job_type, payload, scheduled_at, created_at, updated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (job_id, job_type, json.dumps(payload), scheduled_at, now, now),
+                """INSERT INTO job_queue (id, job_type, payload, max_retries, scheduled_at, created_at, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    job_id,
+                    job_type,
+                    json.dumps(payload),
+                    retries,
+                    scheduled_at,
+                    now,
+                    now,
+                ),
             )
         return job_id
 

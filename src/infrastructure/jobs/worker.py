@@ -99,37 +99,59 @@ def _handle_extract_metadata(payload: dict) -> None:
 
 
 def start_job_worker(queue_repo: QueueRepository) -> threading.Thread:
-    interval = 10  # seconds
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.shared.config import (
+        WORKER_BATCH_SIZE,
+        WORKER_MAX_WORKERS,
+        WORKER_POLL_INTERVAL,
+    )
 
-    def tick():
+    interval = WORKER_POLL_INTERVAL
+    batch_size = WORKER_BATCH_SIZE
+    max_workers = WORKER_MAX_WORKERS
+
+    def process_job(job: dict) -> None:
+        job_type = job["job_type"]
+        handler = _HANDLERS.get(job_type)
+        if not handler:
+            logger.warning("Unknown job type: %s", job_type)
+            queue_repo.complete(job["id"])
+            return
+
         try:
-            jobs = queue_repo.acquire_pending(limit=5)
-            for job in jobs:
-                job_type = job["job_type"]
-                handler = _HANDLERS.get(job_type)
-                if not handler:
-                    logger.warning("Unknown job type: %s", job_type)
-                    queue_repo.complete(job["id"])
-                    continue
+            payload = (
+                json.loads(job["payload"])
+                if isinstance(job["payload"], str)
+                else job["payload"]
+            )
+            logger.info("Processing job %s: %s", job["id"], job_type)
+            handler(payload)
+            queue_repo.complete(job["id"])
+            logger.info("Job completed: %s", job["id"])
+        except Exception as e:
+            error_msg = str(e)
+            logger.error("Job failed %s: %s", job["id"], error_msg)
+            queue_repo.fail(job["id"], error_msg)
 
-                try:
-                    payload = (
-                        json.loads(job["payload"])
-                        if isinstance(job["payload"], str)
-                        else job["payload"]
-                    )
-                    logger.info("Processing job %s: %s", job["id"], job_type)
-                    handler(payload)
-                    queue_repo.complete(job["id"])
-                    logger.info("Job completed: %s", job["id"])
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.error("Job failed %s: %s", job["id"], error_msg)
-                    queue_repo.fail(job["id"], error_msg)
+    def tick() -> None:
+        try:
+            jobs = queue_repo.acquire_pending(limit=batch_size)
+            if not jobs:
+                return
+
+            if max_workers == 1:
+                for job in jobs:
+                    process_job(job)
+                return
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(process_job, job): job for job in jobs}
+                for future in as_completed(futures):
+                    future.result()
         except Exception as e:
             logger.error("Worker tick error: %s", e)
 
-    def loop():
+    def loop() -> None:
         tick()
         while True:
             time.sleep(interval)
@@ -138,6 +160,11 @@ def start_job_worker(queue_repo: QueueRepository) -> threading.Thread:
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
     log_event(
-        logger, logging.INFO, "job_worker_started", poll_interval_seconds=interval
+        logger,
+        logging.INFO,
+        "job_worker_started",
+        poll_interval_seconds=interval,
+        batch_size=batch_size,
+        max_workers=max_workers,
     )
     return thread

@@ -44,6 +44,15 @@ BM25_TOP_K = int(os.getenv("BM25_TOP_K", "5"))
 RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "3"))
 HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "10"))
 
+INGEST_BATCH_SIZE = int(os.getenv("INGEST_BATCH_SIZE", "0"))
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "0"))
+
+WORKER_POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "10"))
+WORKER_BATCH_SIZE = int(os.getenv("WORKER_BATCH_SIZE", "5"))
+WORKER_MAX_WORKERS = int(os.getenv("WORKER_MAX_WORKERS", "1"))
+
+QUEUE_MAX_RETRIES_DEFAULT = int(os.getenv("QUEUE_MAX_RETRIES_DEFAULT", "3"))
+
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = Path(os.getenv("DATA_DIR", str(PROJECT_ROOT / "data")))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", str(PROJECT_ROOT / "index")))

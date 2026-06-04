@@ -48,7 +48,7 @@ Content-Type: application/json
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `question` | string | yes | — | 1-2000 caracteres |
-| `top_k` | integer | no | 5 | Chunks recuperados (1–20) |
+| `top_k` | integer | no | 6 | Chunks recuperados (1–20) |
 
 **Response `200 OK`**
 
@@ -62,7 +62,7 @@ Content-Type: application/json
 ```bash
 curl -X POST http://localhost:8000/api/v1/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "O que são sistemas agroflorestais?", "top_k": 5}'
+  -d '{"question": "O que são sistemas agroflorestais?", "top_k": 6}'
 ```
 
 ```json

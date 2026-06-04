@@ -58,7 +58,9 @@ async def get_human_challenge(request: Request, locale: str = "pt-BR"):
         logger,
         logging.INFO,
         "human_challenge_requested",
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         locale=locale,
     )
     return create_challenge(locale)
@@ -74,7 +76,9 @@ async def register(body: RegisterRequest, request: Request):
         logger,
         logging.INFO,
         "register_attempted",
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -84,7 +88,9 @@ async def register(body: RegisterRequest, request: Request):
             logging.WARNING,
             "register_failed",
             reason="invalid_challenge",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=400, detail="Invalid challenge answer")
@@ -96,7 +102,9 @@ async def register(body: RegisterRequest, request: Request):
             logging.WARNING,
             "register_failed",
             reason="email_already_registered",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -147,7 +155,9 @@ async def register(body: RegisterRequest, request: Request):
         logging.INFO,
         "register_completed",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -181,7 +191,9 @@ async def resend_confirmation(email: str, request: Request):
             logging.WARNING,
             "confirm_email_resend_failed",
             reason="email_not_found",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(email),
         )
         raise HTTPException(status_code=400, detail="Email not found")
@@ -191,7 +203,9 @@ async def resend_confirmation(email: str, request: Request):
             logging.WARNING,
             "confirm_email_resend_failed",
             reason="already_confirmed",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(email),
             user_id=user.id,
         )
@@ -212,7 +226,9 @@ async def resend_confirmation(email: str, request: Request):
         logging.INFO,
         "confirm_email_resent",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(user.email),
     )
 
@@ -233,7 +249,9 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
             logging.WARNING,
             "confirm_email_failed",
             reason="invalid_or_expired_token",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
         )
         raise HTTPException(
             status_code=400, detail="Invalid or expired confirmation token"
@@ -244,7 +262,9 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
             logging.WARNING,
             "confirm_email_failed",
             reason="token_expired",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=confirmation["user_id"],
         )
         raise HTTPException(status_code=400, detail="Confirmation token expired")
@@ -255,7 +275,9 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
         logger,
         logging.INFO,
         "confirm_email_completed",
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         user_id=confirmation["user_id"],
     )
 
@@ -275,7 +297,9 @@ async def login(body: LoginRequest, request: Request):
             logging.WARNING,
             "login_failed",
             reason="invalid_credentials",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -285,7 +309,9 @@ async def login(body: LoginRequest, request: Request):
             logging.WARNING,
             "login_failed",
             reason="email_not_confirmed",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=user.id,
             email=mask_email(body.email),
         )
@@ -296,7 +322,9 @@ async def login(body: LoginRequest, request: Request):
             logging.WARNING,
             "login_failed",
             reason="account_not_active",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=user.id,
             email=mask_email(body.email),
         )
@@ -315,7 +343,9 @@ async def login(body: LoginRequest, request: Request):
         logging.INFO,
         "login_completed",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(user.email),
         roles=",".join(roles),
     )
@@ -337,7 +367,9 @@ async def refresh(refresh_token: str, request: Request):
             logging.WARNING,
             "refresh_failed",
             reason="invalid_token",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
         )
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     if stored["expires_at"] < datetime.now(timezone.utc):
@@ -346,7 +378,9 @@ async def refresh(refresh_token: str, request: Request):
             logging.WARNING,
             "refresh_failed",
             reason="token_expired",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Refresh token expired")
@@ -357,7 +391,9 @@ async def refresh(refresh_token: str, request: Request):
             logging.WARNING,
             "refresh_failed",
             reason="token_reuse_detected",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Token reuse detected")
@@ -371,7 +407,9 @@ async def refresh(refresh_token: str, request: Request):
             logging.WARNING,
             "refresh_failed",
             reason="account_not_active",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Account not active")
@@ -387,7 +425,9 @@ async def refresh(refresh_token: str, request: Request):
         logging.INFO,
         "refresh_completed",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(user.email),
     )
 
@@ -405,7 +445,9 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
         logging.INFO,
         "logout_completed",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
     )
     return MessageResponse(message="Logged out successfully")
 
@@ -421,7 +463,9 @@ async def request_password_reset(email: str, request: Request):
             logger,
             logging.INFO,
             "password_reset_requested",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
             email=mask_email(email),
             user_exists=False,
         )
@@ -444,7 +488,9 @@ async def request_password_reset(email: str, request: Request):
         logging.INFO,
         "password_reset_requested",
         user_id=user.id,
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         email=mask_email(user.email),
         user_exists=True,
     )
@@ -462,7 +508,9 @@ async def confirm_password_reset(token: str, new_password: str, request: Request
             logging.WARNING,
             "password_reset_confirm_failed",
             reason="password_too_short",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
         )
         raise HTTPException(
             status_code=400, detail="Password must be at least 8 characters"
@@ -478,7 +526,9 @@ async def confirm_password_reset(token: str, new_password: str, request: Request
             logging.WARNING,
             "password_reset_confirm_failed",
             reason="invalid_or_expired_token",
-            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+            ip=resolve_client_ip(
+                request.headers, request.client.host if request.client else None
+            ),
         )
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
@@ -489,7 +539,9 @@ async def confirm_password_reset(token: str, new_password: str, request: Request
         logger,
         logging.INFO,
         "password_reset_confirmed",
-        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        ip=resolve_client_ip(
+            request.headers, request.client.host if request.client else None
+        ),
         user_id=confirmation["user_id"],
     )
 

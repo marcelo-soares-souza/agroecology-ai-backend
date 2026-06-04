@@ -241,6 +241,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 
+
 @app.middleware("http")
 async def log_http_requests(request: Request, call_next):
     started_at = time.perf_counter()

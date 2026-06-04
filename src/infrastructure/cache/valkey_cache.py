@@ -37,7 +37,9 @@ class ValkeyCache(CachePort):  # noqa: F811
             )
             self._client.ping()
             self.enabled = True
-            log_event(logger, logging.INFO, "cache_connected", backend="valkey", url=url)
+            log_event(
+                logger, logging.INFO, "cache_connected", backend="valkey", url=url
+            )
         except Exception:
             log_event(
                 logger,

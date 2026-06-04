@@ -137,5 +137,7 @@ def start_job_worker(queue_repo: QueueRepository) -> threading.Thread:
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    log_event(logger, logging.INFO, "job_worker_started", poll_interval_seconds=interval)
+    log_event(
+        logger, logging.INFO, "job_worker_started", poll_interval_seconds=interval
+    )
     return thread

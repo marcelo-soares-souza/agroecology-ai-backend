@@ -62,7 +62,9 @@ class IngestDocuments:
 
         run_id: str | None = None
         try:
-            log_event(logger, logging.INFO, "ingestion_started", mode="sync", force=force)
+            log_event(
+                logger, logging.INFO, "ingestion_started", mode="sync", force=force
+            )
             run = asyncio.run(self._ingestion_repo.insert())
             run_id = run.id
             with self._lock:

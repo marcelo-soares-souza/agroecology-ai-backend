@@ -43,7 +43,11 @@ async def get_current_user(
     user = await _user_repo.get_by_id(user_id)
     if not user:
         log_event(
-            logger, logging.WARNING, "auth_user_not_found", user_id=user_id, ip=client_ip
+            logger,
+            logging.WARNING,
+            "auth_user_not_found",
+            user_id=user_id,
+            ip=client_ip,
         )
         raise HTTPException(status_code=401, detail="User not found")
     if user.status != "active":

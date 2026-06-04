@@ -148,7 +148,54 @@ See `.env.example` for all variables with comments. Key ones:
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Ollama model (Ollama backend) |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL connection |
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
-| `SIMILARITY_TOP_K` | `5` | Chunks passed to LLM |
+| `CHUNK_OVERLAP` | `100` | Overlap between chunks |
+| `SIMILARITY_TOP_K` | `12` | Vector candidates retrieved before fusion |
+| `BM25_TOP_K` | `12` | BM25 candidates retrieved before fusion |
+| `HYBRID_TOP_K` | `8` | Fused chunks used when no explicit `top_k` is sent |
+| API `top_k` default | `6` | Final chunks sent to the LLM in chat/API requests |
+
+## Retrieval Tuning Rationale
+
+The current retrieval defaults are tuned for a scientific RAG corpus built from curated papers, technical texts, and structured agroecology references.
+
+### Why `CHUNK_SIZE=512`
+
+- Large enough to preserve definitions, claims, and short methodological passages in the same chunk.
+- Small enough to avoid sending overly broad sections that dilute retrieval precision.
+- A good middle ground for academic prose, where paragraphs often depend on the immediately surrounding explanation.
+
+### Why `CHUNK_OVERLAP=100`
+
+- Scientific writing often spreads a single argument across paragraph boundaries.
+- The higher overlap reduces the chance that a key sentence is isolated without the qualifier, limitation, or definition that gives it proper meaning.
+- This is especially useful for results, caveats, and terminology-heavy sections.
+
+### Why `SIMILARITY_TOP_K=12` and `BM25_TOP_K=12`
+
+- In a curated scientific corpus, precision is already relatively high, so increasing candidate recall is usually worth it.
+- Vector search helps recover semantically related passages.
+- BM25 helps recover terminology-heavy passages, exact species names, concepts, and uncommon technical expressions.
+- Keeping both candidate pools at `12` gives the fusion stage enough material to work with without making retrieval excessively broad.
+
+### Why `HYBRID_TOP_K=8`
+
+- The fused result set should be smaller than the retrieval candidate pools.
+- `8` keeps enough supporting passages available for downstream use while still trimming obvious tail noise after fusion.
+- This value acts as a sensible fallback when a caller does not explicitly send `top_k`.
+
+### Why API `top_k=6`
+
+- The final context sent to the LLM should usually be narrower than the retrieval candidate pool.
+- `6` is a practical balance for question answering over curated papers:
+  - enough room for complementary evidence;
+  - low enough to avoid flooding the prompt with marginal chunks;
+  - typically better for factual synthesis than aggressively high context windows.
+
+### Practical tradeoff
+
+- Lower values improve speed and reduce prompt noise, but may miss supporting passages.
+- Higher values improve recall, but can increase latency, token cost, and contextual dilution.
+- For this project, the chosen defaults prioritize reliable recall during retrieval and tighter focus during answer generation.
 
 ## License
 

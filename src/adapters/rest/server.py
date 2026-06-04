@@ -490,6 +490,7 @@ async def upload_documents(
 
     uploaded: list[DocumentUploaded] = []
     skipped: list[DocumentSkipped] = []
+    uploaded_pdf_ids: list[str] = []
 
     for f in files:
         if not f.filename:
@@ -599,6 +600,25 @@ async def upload_documents(
                 size=doc.file_size,
             )
         )
+
+        if ft == "pdf":
+            uploaded_pdf_ids.append(doc.id)
+
+    if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
+        try:
+            from src.adapters.rest.dependencies import get_queue as _get_queue
+
+            queue = _get_queue()
+            for pdf_id in uploaded_pdf_ids:
+                queue.enqueue("document.extract_metadata", {"document_id": pdf_id})
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "metadata_extraction_enqueued",
+                    document_id=pdf_id,
+                )
+        except Exception:
+            pass
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 

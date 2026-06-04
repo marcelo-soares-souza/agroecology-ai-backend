@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -52,6 +54,8 @@ from src.shared.config import (
     TASK_TTL,
 )
 from src.shared.uuid7 import uuid7
+
+logger = logging.getLogger("agroecology.http")
 
 
 # ── Task Manager ──────────────────────────────────────────────────────────
@@ -228,6 +232,39 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+
+
+@app.middleware("http")
+async def log_http_requests(request: Request, call_next):
+    started_at = time.perf_counter()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    forwarded_for = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    client_ip = forwarded_for or (request.client.host if request.client else "unknown")
+
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        logger.info(
+            "%s ip=%s method=%s path=%s status=%s duration_ms=%.2f",
+            timestamp,
+            client_ip,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
+    except Exception:
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        logger.exception(
+            "%s ip=%s method=%s path=%s status=500 duration_ms=%.2f",
+            timestamp,
+            client_ip,
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
 
 
 # ── ask / answer ──────────────────────────────────────────────────────────

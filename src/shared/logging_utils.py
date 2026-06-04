@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
+
+_default_formatter_class: type[logging.Formatter] | None
 
 try:
-    from uvicorn.logging import DefaultFormatter
+    from uvicorn.logging import DefaultFormatter as _default_formatter_class
 except Exception:  # pragma: no cover
-    DefaultFormatter = None
+    _default_formatter_class = None
 
 _LOG_FORMAT = "%(levelprefix)s %(asctime)s %(name)s %(message)s"
 _DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    if DefaultFormatter is not None:
-        formatter = DefaultFormatter(fmt=_LOG_FORMAT, datefmt=_DATE_FORMAT)
+    formatter: logging.Formatter
+    if _default_formatter_class is not None:
+        formatter_class = cast(type[logging.Formatter], _default_formatter_class)
+        formatter = formatter_class(fmt=_LOG_FORMAT, datefmt=_DATE_FORMAT)
     else:
         formatter = logging.Formatter(
             _LOG_FORMAT.replace("%(levelprefix)s", "%(levelname)s"),

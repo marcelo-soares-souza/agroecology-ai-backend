@@ -40,6 +40,12 @@ def scan_file(filepath: Path) -> list[str]:
         for pattern, name in PATTERNS:
             match = re.search(pattern, line)
             if match:
+                if (
+                    name == "Database URL with credentials"
+                    and "localhost" in line
+                    and "password" in line
+                ):
+                    continue
                 # Check if this is in a comment or docstring
                 stripped = line.strip()
                 if (

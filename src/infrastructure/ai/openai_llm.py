@@ -3,9 +3,13 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, cast
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletionAssistantMessageParam
+from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionSystemMessageParam
+from openai.types.chat import ChatCompletionUserMessageParam
 
 from src.domain.ports.llm_port import LLMPort
 from src.shared.logging_utils import log_event
@@ -29,7 +33,9 @@ class OpenAILLM(LLMPort):
         self._max_tokens = max_tokens
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
-        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        messages: list[ChatCompletionMessageParam] = [
+            ChatCompletionSystemMessageParam(role="system", content=system_prompt)
+        ]
 
         history = kwargs.get("history") or []
         if history:
@@ -37,10 +43,21 @@ class OpenAILLM(LLMPort):
             for msg in recent:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
-                if role in ("user", "assistant") and content:
-                    messages.append({"role": role, "content": content})
+                if role == "user" and content:
+                    messages.append(
+                        ChatCompletionUserMessageParam(role="user", content=content)
+                    )
+                elif role == "assistant" and content:
+                    messages.append(
+                        ChatCompletionAssistantMessageParam(
+                            role="assistant",
+                            content=cast(str, content),
+                        )
+                    )
 
-        messages.append({"role": "user", "content": user_prompt})
+        messages.append(
+            ChatCompletionUserMessageParam(role="user", content=user_prompt)
+        )
 
         started_at = time.perf_counter()
         temperature = kwargs.get("temperature", self._temperature)

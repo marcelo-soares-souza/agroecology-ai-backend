@@ -6,7 +6,6 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
@@ -665,7 +664,10 @@ async def update_one_document(
 
 
 @app.post("/api/v1/documents/{doc_id}/extract-metadata", response_model=DocumentRecord)
-async def extract_document_metadata(doc_id: str):
+async def extract_document_metadata(
+    doc_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")

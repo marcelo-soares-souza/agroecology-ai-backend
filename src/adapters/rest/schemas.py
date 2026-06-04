@@ -37,6 +37,8 @@ class StatusResponse(BaseModel):
     cache_enabled: bool
     cache_hits: int
     pending_docs: int = 0
+    indexed_docs: int = 0
+    total_docs: int = 0
     last_ingestion: IngestionRunSchema | None = None
 
 

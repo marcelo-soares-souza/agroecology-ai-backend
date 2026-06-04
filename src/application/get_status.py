@@ -40,6 +40,8 @@ class GetStatus:
 
         docs = await self._doc_repo.list_all()
         pending_docs = sum(1 for d in docs if not d.ingested)
+        indexed_docs = sum(1 for d in docs if d.ingested)
+        total_docs = len(docs)
 
         return {
             "index_ready": self._vector_store.index_exists(),
@@ -51,5 +53,7 @@ class GetStatus:
             "cache_enabled": self._cache.enabled,
             "cache_hits": self._cache.hit_count(),
             "pending_docs": pending_docs,
+            "indexed_docs": indexed_docs,
+            "total_docs": total_docs,
             "last_ingestion": last_ingestion,
         }

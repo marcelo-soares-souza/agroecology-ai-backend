@@ -181,6 +181,7 @@ class IngestDocuments:
             DATA_DIR_MARKDOWN,
             DATA_DIR_PDFS,
             DATA_DIR_WEB,
+            INGEST_BATCH_SIZE,
         )
 
         if force:
@@ -202,60 +203,97 @@ class IngestDocuments:
 
         existing_ingested = asyncio.run(self._get_ingested_doc_ids(doc_ids))
 
-        new_docs = [
-            d for d in all_docs if source_to_id[d["source"]] not in existing_ingested
+        if force:
+            docs_to_process = all_docs
+        else:
+            docs_to_process = [
+                d
+                for d in all_docs
+                if source_to_id[d["source"]] not in existing_ingested
+            ]
+            if not docs_to_process:
+                if self._vector_store.index_exists():
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "ingestion_no_new_documents",
+                        total_documents=len(all_docs),
+                        index_exists=True,
+                    )
+                    return 0
+                force = True
+                docs_to_process = all_docs
+
+        batch_size = (
+            INGEST_BATCH_SIZE if INGEST_BATCH_SIZE > 0 else len(docs_to_process)
+        )
+        batches = [
+            docs_to_process[i : i + batch_size]
+            for i in range(0, len(docs_to_process), batch_size)
         ]
 
-        if not new_docs:
-            if self._vector_store.index_exists():
+        total_chunks = 0
+        index_initialized = False
+
+        for batch_num, batch in enumerate(batches, 1):
+            batch_doc_ids = {source_to_id[d["source"]] for d in batch}
+
+            rows: list[dict] = []
+            for doc in batch:
+                doc_id = source_to_id[doc["source"]]
+                chunks = chunk_text(doc["text"], CHUNK_SIZE, CHUNK_OVERLAP)
+                for i, chunk in enumerate(chunks):
+                    if not chunk.strip():
+                        continue
+                    rows.append(
+                        {
+                            "id": f"{doc_id}_{i}",
+                            "text": chunk,
+                            "source": doc["source"],
+                            "chunk_index": i,
+                        }
+                    )
+
+            if not rows:
+                asyncio.run(self._mark_as_ingested(batch_doc_ids))
                 log_event(
                     logger,
                     logging.INFO,
-                    "ingestion_no_new_documents",
-                    total_documents=len(all_docs),
-                    index_exists=True,
+                    "ingestion_batch_skipped",
+                    batch=batch_num,
+                    total_batches=len(batches),
+                    documents=len(batch),
+                    reason="no_chunks_generated",
                 )
-                return 0
-            force = True
+                continue
 
-        rows: list[dict] = []
-        for doc in new_docs:
-            doc_id = source_to_id[doc["source"]]
-            chunks = chunk_text(doc["text"], CHUNK_SIZE, CHUNK_OVERLAP)
-            for i, chunk in enumerate(chunks):
-                if not chunk.strip():
-                    continue
-                rows.append(
-                    {
-                        "id": f"{doc_id}_{i}",
-                        "text": chunk,
-                        "source": doc["source"],
-                        "chunk_index": i,
-                    }
-                )
+            self._embed_rows(rows)
 
-        if not rows:
+            if force and self._vector_store.index_exists():
+                for doc_id in batch_doc_ids:
+                    self._vector_store.delete_by_prefix(f"{doc_id}_")
+
+            if not index_initialized:
+                if force or not self._vector_store.index_exists():
+                    self._vector_store.build_index(rows, self._embedder.get_dimension())
+                else:
+                    self._vector_store.add_rows(rows)
+                index_initialized = True
+            else:
+                self._vector_store.add_rows(rows)
+
+            asyncio.run(self._mark_as_ingested(batch_doc_ids))
+            total_chunks += len(rows)
+
             log_event(
                 logger,
                 logging.INFO,
-                "ingestion_no_chunks_generated",
-                new_documents=len(new_docs),
+                "ingestion_batch_processed",
+                batch=batch_num,
+                total_batches=len(batches),
+                documents=len(batch),
+                chunks=len(rows),
             )
-            return 0
-
-        texts = [r["text"] for r in rows]
-        vectors = self._embedder.embed_texts(texts)
-        for i, row in enumerate(rows):
-            row["vector"] = vectors[i]
-
-        if force or not self._vector_store.index_exists():
-            self._vector_store.build_index(rows, self._embedder.get_dimension())
-        else:
-            # Incremental: append to existing table
-            self._vector_store.add_rows(rows)
-
-        new_ids = {source_to_id[d["source"]] for d in new_docs}
-        asyncio.run(self._mark_as_ingested(new_ids))
 
         log_event(
             logger,
@@ -263,11 +301,25 @@ class IngestDocuments:
             "ingestion_batch_processed",
             force=force,
             total_documents=len(all_docs),
-            new_documents=len(new_docs),
-            chunks_generated=len(rows),
+            new_documents=len(docs_to_process),
+            chunks_generated=total_chunks,
         )
 
-        return len(rows)
+        return total_chunks
+
+    def _embed_rows(self, rows: list[dict]) -> None:
+        from src.shared.config import EMBEDDING_BATCH_SIZE
+
+        if EMBEDDING_BATCH_SIZE > 0:
+            for i in range(0, len(rows), EMBEDDING_BATCH_SIZE):
+                sub = rows[i : i + EMBEDDING_BATCH_SIZE]
+                vectors = self._embedder.embed_texts([r["text"] for r in sub])
+                for r, v in zip(sub, vectors):
+                    r["vector"] = v
+        else:
+            vectors = self._embedder.embed_texts([r["text"] for r in rows])
+            for r, v in zip(rows, vectors):
+                r["vector"] = v
 
     def remove_chunks(self, doc_id: str) -> None:
         if self._vector_store.index_exists():

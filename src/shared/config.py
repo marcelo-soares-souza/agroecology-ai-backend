@@ -43,6 +43,8 @@ SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "5"))
 BM25_TOP_K = int(os.getenv("BM25_TOP_K", "5"))
 RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "3"))
 HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "10"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 
 INGEST_BATCH_SIZE = int(os.getenv("INGEST_BATCH_SIZE", "0"))
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "0"))

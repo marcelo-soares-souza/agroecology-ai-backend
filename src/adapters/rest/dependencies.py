@@ -41,6 +41,8 @@ from src.shared.config import (
     DEEPSEEK_MODEL,
     EMBEDDING_BACKEND,
     EMBEDDING_MODEL,
+    LLM_MAX_TOKENS,
+    LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     VALKEY_URL,
@@ -106,6 +108,8 @@ def get_llm() -> LLMPort:
             api_key=DEEPSEEK_API_KEY,
             base_url=DEEPSEEK_BASE_URL,
             model=DEEPSEEK_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,
         )
         log_event(
             logger,

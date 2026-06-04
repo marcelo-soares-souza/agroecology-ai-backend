@@ -12,12 +12,16 @@ from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.llm_port import LLMPort
+from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.domain.services.retriever import RetrieverService
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
 from src.infrastructure.ai.openai_llm import OpenAILLM
 from src.infrastructure.ai.sentence_transformer_embedder import (
     SentenceTransformerEmbedder,
+)
+from src.infrastructure.ai.sentence_transformer_reranker import (
+    SentenceTransformerReranker,
 )
 from src.infrastructure.cache.valkey_cache import ValkeyCache
 from src.infrastructure.persistence.lancedb_vector_store import (
@@ -45,6 +49,7 @@ from src.shared.config import (
     LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
+    RERANK_MODEL,
     VALKEY_URL,
 )
 from src.shared.logging_utils import log_event
@@ -57,6 +62,7 @@ _embedder: EmbeddingPort | None = None
 _vector_store: VectorStorePort | None = None
 _llm: LLMPort | None = None
 _cache: CachePort | None = None
+_reranker: RerankerPort | None = None
 _doc_repo: PostgresDocumentRepository | None = None
 _ingestion_repo: PostgresIngestionRepository | None = None
 _user_repo: PostgresUserRepository | None = None
@@ -154,12 +160,26 @@ async def get_user_repo() -> PostgresUserRepository:
     return _user_repo
 
 
+def get_reranker() -> RerankerPort | None:
+    global _reranker
+    if _reranker is None and RERANK_MODEL:
+        _reranker = SentenceTransformerReranker(RERANK_MODEL)
+        log_event(
+            logger,
+            logging.INFO,
+            "reranker_initialized",
+            model=RERANK_MODEL,
+        )
+    return _reranker
+
+
 def get_retriever() -> RetrieverService:
     global _retriever
     if _retriever is None:
         _retriever = RetrieverService(
             vector_store=get_vector_store(),
             embedder=get_embedder(),
+            reranker=get_reranker(),
         )
     return _retriever
 

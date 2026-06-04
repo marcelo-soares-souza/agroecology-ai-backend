@@ -152,6 +152,8 @@ See `.env.example` for all variables with comments. Key ones:
 | `SIMILARITY_TOP_K` | `12` | Vector candidates retrieved before fusion |
 | `BM25_TOP_K` | `12` | BM25 candidates retrieved before fusion |
 | `HYBRID_TOP_K` | `8` | Fused chunks used when no explicit `top_k` is sent |
+| `RERANK_MODEL` | (empty) | Cross-encoder model for reranking. Leave empty to disable |
+| `RERANK_TOP_K` | `6` | Fused candidates passed through the cross-encoder before final selection |
 | API `top_k` default | `6` | Final chunks sent to the LLM in chat/API requests |
 
 ## Retrieval Tuning Rationale
@@ -190,6 +192,15 @@ The current retrieval defaults are tuned for a scientific RAG corpus built from 
   - enough room for complementary evidence;
   - low enough to avoid flooding the prompt with marginal chunks;
   - typically better for factual synthesis than aggressively high context windows.
+
+### Reranker (cross-encoder)
+
+When `RERANK_MODEL` is set, a cross-encoder re-ranks the top `RERANK_TOP_K` fused candidates before selecting the final `HYBRID_TOP_K` chunks for the LLM. Unlike the bi-encoder (embeddings), which processes query and document separately, the cross-encoder reads them jointly with cross-attention, yielding better relevance ordering.
+
+- **Enabled**: higher precision, better ordering, ~100-300ms extra per query.
+- **Disabled** (`RERANK_MODEL=""`): falls back to simple RRF fusion (current behavior).
+
+Recommended model: `BAAI/bge-reranker-v2-m3` (multilingual, same family as the BGE embedding model).
 
 ### Practical tradeoff
 

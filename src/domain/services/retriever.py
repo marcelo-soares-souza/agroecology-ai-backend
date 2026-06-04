@@ -3,8 +3,9 @@ from __future__ import annotations
 from rank_bm25 import BM25Okapi
 
 from src.domain.ports.embedding_port import EmbeddingPort
+from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
-from src.shared.config import BM25_TOP_K, HYBRID_TOP_K, SIMILARITY_TOP_K
+from src.shared.config import BM25_TOP_K, HYBRID_TOP_K, RERANK_TOP_K, SIMILARITY_TOP_K
 
 
 class RetrieverService:
@@ -12,9 +13,11 @@ class RetrieverService:
         self,
         vector_store: VectorStorePort,
         embedder: EmbeddingPort,
+        reranker: RerankerPort | None = None,
     ) -> None:
         self._vector_store = vector_store
         self._embedder = embedder
+        self._reranker = reranker
 
     def hybrid_search(self, query: str, top_k: int = HYBRID_TOP_K) -> list[dict]:
         vec_results = self._vector_search(query, top_k=SIMILARITY_TOP_K)
@@ -24,6 +27,11 @@ class RetrieverService:
             return vec_results[:top_k]
 
         fused = self._rrf_fusion(vec_results, bm25_results)
+
+        if self._reranker is not None:
+            candidates = fused[:RERANK_TOP_K]
+            return self._reranker.rerank(query, candidates, top_k)
+
         return fused[:top_k]
 
     def _vector_search(self, query: str, top_k: int) -> list[dict]:

@@ -191,6 +191,8 @@ All settings can be overridden via environment variables in `.env`:
 | `CHUNK_OVERLAP` | `50` | Overlap between chunks |
 | `SIMILARITY_TOP_K` | `5` | Final chunks passed to LLM |
 | `BM25_TOP_K` | `5` | BM25 candidates for hybrid fusion |
+| `RERANK_MODEL` | (empty) | Cross-encoder model for reranking. Leave empty to disable |
+| `RERANK_TOP_K` | `6` | Fused candidates passed through the cross-encoder before final selection |
 | `HYBRID_TOP_K` | `10` | Total candidates after RRF fusion |
 | `DATA_DIR` | `./data` | Document storage directory |
 | `INDEX_DIR` | `./index` | LanceDB index storage directory |
@@ -205,6 +207,7 @@ All settings can be overridden via environment variables in `.env`:
 - **Chunking**: Sentence-boundary splitting can occasionally break mid-concept in dense technical texts.
 - **PDF quality**: Complex PDFs with heavy formatting or scanned pages may not parse well. OCR preprocessing would be needed for scanned documents.
 - **BM25 in-memory**: The BM25 index is rebuilt on each query from all LanceDB rows. For very large collections (100k+ chunks), this adds latency.
+- **Reranker model size**: The default cross-encoder model (`BAAI/bge-reranker-v2-m3`) adds ~2GB memory footprint and ~100-300ms per query. Set `RERANK_MODEL=""` to disable.
 - **Ollama embeddings**: When switching embedding backends, the vector dimension may change, requiring re-ingestion.
 - **Re-ingestion**: Documents must be re-ingested if the embedding model or chunking parameters change.
 

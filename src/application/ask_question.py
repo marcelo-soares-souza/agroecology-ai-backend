@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 from src.domain.ports.llm_port import LLMPort
 from src.domain.services.retriever import RetrieverService
@@ -68,6 +69,9 @@ class AskQuestion:
                 "chunk_index": node.get("chunk_index", 0),
                 "search_type": node.get("_search_type", "unknown"),
             }
+            doc_id = Path(node.get("source", "")).stem
+            if doc_id:
+                meta["document_id"] = doc_id
             if title_map:
                 title = title_map.get(meta["source"])
                 if title:

@@ -235,20 +235,47 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 
 
+def _header_value(request: Request, name: str) -> str:
+    return request.headers.get(name, "").strip()
+
+
+def _resolve_client_ip(request: Request) -> str:
+    cf_connecting_ip = _header_value(request, "cf-connecting-ip")
+    if cf_connecting_ip:
+        return cf_connecting_ip
+
+    forwarded_for = _header_value(request, "x-forwarded-for")
+    if forwarded_for:
+        first_hop = forwarded_for.split(",")[0].strip()
+        if first_hop:
+            return first_hop
+
+    real_ip = _header_value(request, "x-real-ip")
+    if real_ip:
+        return real_ip
+
+    return request.client.host if request.client else "unknown"
+
+
 @app.middleware("http")
 async def log_http_requests(request: Request, call_next):
     started_at = time.perf_counter()
     timestamp = datetime.now(timezone.utc).isoformat()
-    forwarded_for = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    client_ip = forwarded_for or (request.client.host if request.client else "unknown")
+    client_ip = _resolve_client_ip(request)
+    forwarded_for = _header_value(request, "x-forwarded-for")
+    real_ip = _header_value(request, "x-real-ip")
+    cf_connecting_ip = _header_value(request, "cf-connecting-ip")
 
     try:
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
         logger.info(
-            "%s ip=%s method=%s path=%s status=%s duration_ms=%.2f",
+            "%s ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=%s duration_ms=%.2f",
             timestamp,
             client_ip,
+            cf_connecting_ip or "-",
+            forwarded_for or "-",
+            real_ip or "-",
             request.method,
             request.url.path,
             response.status_code,
@@ -258,9 +285,12 @@ async def log_http_requests(request: Request, call_next):
     except Exception:
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
         logger.exception(
-            "%s ip=%s method=%s path=%s status=500 duration_ms=%.2f",
+            "%s ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=500 duration_ms=%.2f",
             timestamp,
             client_ip,
+            cf_connecting_ip or "-",
+            forwarded_for or "-",
+            real_ip or "-",
             request.method,
             request.url.path,
             duration_ms,

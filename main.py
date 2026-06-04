@@ -196,6 +196,8 @@ def cmd_serve(args):
         port=args.port,
         reload=args.reload,
         log_level="info",
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
 
 

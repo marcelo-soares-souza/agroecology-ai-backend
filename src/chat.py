@@ -9,7 +9,7 @@ from .adapters.rest.dependencies import (
     init_services,
     shutdown_services,
 )
-from .shared.config import SIMILARITY_TOP_K
+from .shared.config import HYBRID_TOP_K
 
 console = Console()
 
@@ -32,7 +32,7 @@ def chat():
 
     asyncio.run(init_services())
     try:
-        top_k = SIMILARITY_TOP_K
+        top_k = HYBRID_TOP_K
         history: list[dict] = []
         use_case = get_ask_question()
         manage_docs = get_manage_docs()

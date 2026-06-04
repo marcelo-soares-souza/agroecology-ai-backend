@@ -29,7 +29,7 @@ class OpenAILLM(LLMPort):
 
         history = kwargs.get("history") or []
         if history:
-            recent = history[-(_MAX_HISTORY_TURNS * 2):]
+            recent = history[-(_MAX_HISTORY_TURNS * 2) :]
             for msg in recent:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")

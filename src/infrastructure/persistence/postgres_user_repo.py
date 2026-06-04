@@ -13,7 +13,9 @@ from psycopg_pool import AsyncConnectionPool
 
 class PostgresUserRepository(UserRepository):
     def __init__(self) -> None:
-        self._pool = AsyncConnectionPool(conninfo=DATABASE_URL, min_size=1, max_size=5, open=False)
+        self._pool = AsyncConnectionPool(
+            conninfo=DATABASE_URL, min_size=1, max_size=5, open=False
+        )
 
     async def initialize(self) -> None:
         await self._pool.open()

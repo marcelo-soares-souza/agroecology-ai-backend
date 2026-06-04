@@ -98,8 +98,7 @@ class AskQuestion:
             )
         if last_assistant:
             snippets.append(
-                "Previous assistant answer: "
-                f"{cls._normalize_snippet(last_assistant)}"
+                f"Previous assistant answer: {cls._normalize_snippet(last_assistant)}"
             )
         return "\n".join(snippets)
 
@@ -111,8 +110,7 @@ class AskQuestion:
         if len(compact_question.split()) <= 4:
             return True
         return any(
-            pattern.search(compact_question)
-            for pattern in _CONTEXT_DEPENDENT_PATTERNS
+            pattern.search(compact_question) for pattern in _CONTEXT_DEPENDENT_PATTERNS
         )
 
     @staticmethod

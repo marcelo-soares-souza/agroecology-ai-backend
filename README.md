@@ -149,12 +149,12 @@ See `.env.example` for all variables with comments. Key ones:
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL connection |
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
 | `CHUNK_OVERLAP` | `100` | Overlap between chunks |
-| `SIMILARITY_TOP_K` | `12` | Vector candidates retrieved before fusion |
-| `BM25_TOP_K` | `12` | BM25 candidates retrieved before fusion |
-| `HYBRID_TOP_K` | `8` | Fused chunks used when no explicit `top_k` is sent |
-| `RERANK_MODEL` | (empty) | Cross-encoder model for reranking. Leave empty to disable |
-| `RERANK_TOP_K` | `6` | Fused candidates passed through the cross-encoder before final selection |
-| API `top_k` default | `6` | Final chunks sent to the LLM in chat/API requests |
+| `SIMILARITY_TOP_K` | `30` | Vector candidates retrieved before fusion |
+| `BM25_TOP_K` | `30` | BM25 candidates retrieved before fusion |
+| `HYBRID_TOP_K` | `30` | Fused candidates sent to the reranker (or returned directly when reranker is disabled) |
+| `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking. Leave empty to disable |
+| `RERANK_TOP_K` | `6` | Final chunks sent to the LLM after cross-encoder reranking |
+| API `top_k` default | `6` | Fallback final chunks when API doesn't specify `top_k` |
 
 ## Retrieval Tuning Rationale
 
@@ -172,33 +172,33 @@ The current retrieval defaults are tuned for a scientific RAG corpus built from 
 - The higher overlap reduces the chance that a key sentence is isolated without the qualifier, limitation, or definition that gives it proper meaning.
 - This is especially useful for results, caveats, and terminology-heavy sections.
 
-### Why `SIMILARITY_TOP_K=12` and `BM25_TOP_K=12`
+### Why `SIMILARITY_TOP_K=30` and `BM25_TOP_K=30`
 
-- In a curated scientific corpus, precision is already relatively high, so increasing candidate recall is usually worth it.
-- Vector search helps recover semantically related passages.
+- Widens the retrieval funnel to capture semantic nuances and terminology-heavy passages alike.
+- Vector search helps recover semantically related passages that cosine distance alone might rank lower.
 - BM25 helps recover terminology-heavy passages, exact species names, concepts, and uncommon technical expressions.
-- Keeping both candidate pools at `12` gives the fusion stage enough material to work with without making retrieval excessively broad.
+- `30` per retriever gives the fusion stage rich material without excessive noise — the reranker handles precision downstream.
 
-### Why `HYBRID_TOP_K=8`
+### Why `HYBRID_TOP_K=30`
 
-- The fused result set should be smaller than the retrieval candidate pools.
-- `8` keeps enough supporting passages available for downstream use while still trimming obvious tail noise after fusion.
-- This value acts as a sensible fallback when a caller does not explicitly send `top_k`.
+- The RRF-fused candidate pool fed into the cross-encoder reranker.
+- `30` provides enough candidate diversity for the reranker to distinguish truly relevant passages from borderline ones.
+- When the reranker is disabled, this value becomes the final output sent to the LLM.
 
-### Why API `top_k=6`
+### Why `RERANK_TOP_K=6`
 
-- The final context sent to the LLM should usually be narrower than the retrieval candidate pool.
-- `6` is a practical balance for question answering over curated papers:
+- Controls the final context precision: only the top 6 reranked chunks reach the LLM.
+- `6` is a practical balance for scientific question answering:
   - enough room for complementary evidence;
   - low enough to avoid flooding the prompt with marginal chunks;
-  - typically better for factual synthesis than aggressively high context windows.
+  - tighter focus improves factual synthesis and reduces hallucination.
 
 ### Reranker (cross-encoder)
 
-When `RERANK_MODEL` is set, a cross-encoder re-ranks the top `RERANK_TOP_K` fused candidates before selecting the final `HYBRID_TOP_K` chunks for the LLM. Unlike the bi-encoder (embeddings), which processes query and document separately, the cross-encoder reads them jointly with cross-attention, yielding better relevance ordering.
+When `RERANK_MODEL` is set, the cross-encoder re-ranks the top `HYBRID_TOP_K` fused candidates and returns the best `RERANK_TOP_K` chunks for the LLM. Unlike the bi-encoder (embeddings), which processes query and document separately, the cross-encoder reads them jointly with cross-attention, yielding better relevance ordering.
 
 - **Enabled**: higher precision, better ordering, ~100-300ms extra per query.
-- **Disabled** (`RERANK_MODEL=""`): falls back to simple RRF fusion (current behavior).
+- **Disabled** (`RERANK_MODEL=""`): falls back to simple RRF fusion, returning top `HYBRID_TOP_K` directly.
 
 Recommended model: `BAAI/bge-reranker-v2-m3` (multilingual, same family as the BGE embedding model).
 

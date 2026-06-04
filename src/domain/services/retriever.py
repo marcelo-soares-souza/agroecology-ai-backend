@@ -29,8 +29,8 @@ class RetrieverService:
         fused = self._rrf_fusion(vec_results, bm25_results)
 
         if self._reranker is not None:
-            candidates = fused[:RERANK_TOP_K]
-            return self._reranker.rerank(query, candidates, top_k)
+            candidates = fused[:top_k]
+            return self._reranker.rerank(query, candidates, RERANK_TOP_K)
 
         return fused[:top_k]
 

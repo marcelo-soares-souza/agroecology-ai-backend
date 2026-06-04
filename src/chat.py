@@ -1,3 +1,5 @@
+import time
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -62,17 +64,20 @@ def chat():
                 continue
 
             try:
+                start = time.time()
                 result = use_case.execute(
                     question,
                     top_k=top_k,
                     title_map=title_map,
                     history=history,
                 )
+                elapsed = time.time() - start
                 used = result["sources"][:top_k]
 
                 console.print()
                 answer = result["answer"]
                 console.print(answer)
+                console.print(f"[dim]({elapsed:.2f}s)[/dim]")
 
                 history.append({"role": "user", "content": question})
                 history.append({"role": "assistant", "content": answer})

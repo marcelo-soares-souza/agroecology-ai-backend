@@ -189,11 +189,11 @@ All settings can be overridden via environment variables in `.env`:
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Ollama embedding model |
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
 | `CHUNK_OVERLAP` | `50` | Overlap between chunks |
-| `SIMILARITY_TOP_K` | `5` | Final chunks passed to LLM |
-| `BM25_TOP_K` | `5` | BM25 candidates for hybrid fusion |
-| `RERANK_MODEL` | (empty) | Cross-encoder model for reranking. Leave empty to disable |
-| `RERANK_TOP_K` | `6` | Fused candidates passed through the cross-encoder before final selection |
-| `HYBRID_TOP_K` | `10` | Total candidates after RRF fusion |
+| `SIMILARITY_TOP_K` | `30` | Vector candidates retrieved before fusion |
+| `BM25_TOP_K` | `30` | BM25 candidates for hybrid fusion |
+| `HYBRID_TOP_K` | `30` | Fused candidates sent to reranker (or returned directly when reranker disabled) |
+| `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking. Leave empty to disable |
+| `RERANK_TOP_K` | `6` | Final chunks sent to the LLM after cross-encoder reranking |
 | `DATA_DIR` | `./data` | Document storage directory |
 | `INDEX_DIR` | `./index` | LanceDB index storage directory |
 | `VALKEY_URL` | `redis://localhost:6379/0` | Cache connection (optional) |

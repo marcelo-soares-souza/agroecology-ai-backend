@@ -80,6 +80,7 @@ app.add_middleware(
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=SIMILARITY_TOP_K, ge=1, le=20)
+    history: list[dict] = Field(default_factory=list)
 
 
 class AskResponse(BaseModel):
@@ -183,7 +184,8 @@ async def ask(body: AskRequest):
         )
 
     cache = app.state.cache
-    cached = cache.get(body.question)
+    should_use_cache = not body.history
+    cached = cache.get(body.question) if should_use_cache else None
     if cached:
         task_id = app.state.tasks.create(body.question, body.top_k)
         app.state.tasks.update(
@@ -200,7 +202,15 @@ async def ask(body: AskRequest):
 
     loop = asyncio.get_event_loop()
     loop.run_in_executor(
-        None, _process_task, task_id, body.question, body.top_k, cache, title_map
+        None,
+        _process_task,
+        task_id,
+        body.question,
+        body.top_k,
+        cache,
+        title_map,
+        body.history,
+        should_use_cache,
     )
 
     return AskResponse(task_id=task_id, status="processing")
@@ -474,9 +484,11 @@ def _process_task(
     top_k: int,
     cache: ValkeyCache,
     title_map: dict[str, str | None],
+    history: list[dict],
+    should_cache: bool,
 ) -> None:
     try:
-        result = ask_with_sources(question, top_k=top_k)
+        result = ask_with_sources(question, top_k=top_k, history=history)
 
         for src in result.get("sources", []):
             meta = src.get("metadata", {})
@@ -491,7 +503,8 @@ def _process_task(
             answer=result["answer"],
             sources=result["sources"],
         )
-        cache.set(question, result)
+        if should_cache:
+            cache.set(question, result)
     except Exception as e:
         app.state.tasks.update(
             task_id,

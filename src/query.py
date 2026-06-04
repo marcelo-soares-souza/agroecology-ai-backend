@@ -1,3 +1,5 @@
+import re
+
 from openai import OpenAI
 
 from .config import (
@@ -12,6 +14,16 @@ from .ingest import check_index_exists
 from .retriever import hybrid_search
 
 _client: OpenAI | None = None
+_CONTEXT_DEPENDENT_PATTERNS = (
+    re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
+    re.compile(r"\b(this|that|it|they|them|those|these)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(tell me more|more detail|more details|expand on|go deeper)\b",
+        re.IGNORECASE,
+    ),
+)
+_MAX_HISTORY_TURNS = 6
+_MAX_HISTORY_SNIPPET_CHARS = 500
 
 
 def _get_client() -> OpenAI:
@@ -47,23 +59,34 @@ def ask(question: str, top_k: int = SIMILARITY_TOP_K) -> str:
 def ask_with_sources(
     question: str,
     top_k: int = SIMILARITY_TOP_K,
+    history: list[dict] | None = None,
 ) -> dict:
     if not check_index_exists():
         raise FileNotFoundError("Index not found. Run: python main.py ingest")
 
-    retrieved = _retrieve_context(question, top_k=top_k)
+    search_query = _build_search_query(question, history or [])
+    retrieved = _retrieve_context(search_query, top_k=top_k)
     context = build_context(retrieved)
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        recent = history[-(_MAX_HISTORY_TURNS * 2) :]
+        for msg in recent:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+    messages.append(
+        {
+            "role": "user",
+            "content": USER_PROMPT.format(context=context, question=question),
+        }
+    )
 
     client = _get_client()
     response = client.chat.completions.create(
         model=DEEPSEEK_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": USER_PROMPT.format(context=context, question=question),
-            },
-        ],
+        messages=messages,
         temperature=0.2,
         max_tokens=2048,
     )
@@ -87,3 +110,45 @@ def ask_with_sources(
         )
 
     return {"answer": answer, "sources": sources}
+
+
+def _build_search_query(question: str, history: list[dict]) -> str:
+    if not history or not _is_context_dependent_question(question):
+        return question
+
+    last_user = _find_last_message(history, "user")
+    last_assistant = _find_last_message(history, "assistant")
+    if not last_user and not last_assistant:
+        return question
+
+    snippets = [f"Current follow-up question: {question.strip()}"]
+    if last_user:
+        snippets.append(f"Previous user question: {_normalize_snippet(last_user)}")
+    if last_assistant:
+        snippets.append(
+            f"Previous assistant answer: {_normalize_snippet(last_assistant)}"
+        )
+    return "\n".join(snippets)
+
+
+def _is_context_dependent_question(question: str) -> bool:
+    compact_question = " ".join(question.strip().split())
+    if not compact_question:
+        return False
+    if len(compact_question.split()) <= 4:
+        return True
+    return any(
+        pattern.search(compact_question) for pattern in _CONTEXT_DEPENDENT_PATTERNS
+    )
+
+
+def _find_last_message(history: list[dict], role: str) -> str:
+    for message in reversed(history):
+        if message.get("role") == role and message.get("content"):
+            return str(message["content"])
+    return ""
+
+
+def _normalize_snippet(content: str) -> str:
+    compact_content = " ".join(content.split())
+    return compact_content[:_MAX_HISTORY_SNIPPET_CHARS]

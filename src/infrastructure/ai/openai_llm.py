@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from openai import OpenAI
 
 from src.domain.ports.llm_port import LLMPort
+
+_MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
 
 
 class OpenAILLM(LLMPort):
@@ -22,12 +25,22 @@ class OpenAILLM(LLMPort):
         self._max_tokens = max_tokens
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+        history = kwargs.get("history") or []
+        if history:
+            recent = history[-(_MAX_HISTORY_TURNS * 2):]
+            for msg in recent:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": user_prompt})
+
         response = self._client.chat.completions.create(
             model=self._model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            messages=messages,
             temperature=kwargs.get("temperature", self._temperature),
             max_tokens=kwargs.get("max_tokens", self._max_tokens),
         )

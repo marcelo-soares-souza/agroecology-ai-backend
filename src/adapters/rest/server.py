@@ -238,19 +238,22 @@ def _process_task(
     question: str,
     top_k: int,
     title_map: dict[str, str | None],
+    history: list[dict],
+    should_cache: bool,
 ) -> None:
     try:
         from src.adapters.rest.dependencies import get_ask_question
 
         use_case = get_ask_question()
-        result = use_case.execute(question, top_k, title_map)
+        result = use_case.execute(question, top_k, title_map, history=history)
         tasks.update(
             task_id,
             status="done",
             answer=result["answer"],
             sources=result["sources"],
         )
-        get_cache().set(question, result)
+        if should_cache:
+            get_cache().set(question, result)
     except Exception as e:
         tasks.update(task_id, status="error", error=str(e))
 
@@ -268,7 +271,8 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
         )
 
     cache = get_cache()
-    cached = cache.get(body.question)
+    should_use_cache = not body.history
+    cached = cache.get(body.question) if should_use_cache else None
     if cached:
         task_id = tasks.create(body.question, body.top_k)
         tasks.update(
@@ -292,6 +296,8 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
         body.question,
         body.top_k,
         title_map,
+        body.history,
+        should_use_cache,
     )
 
     return AskResponse(task_id=task_id, status="processing")

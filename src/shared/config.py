@@ -77,14 +77,14 @@ SYSTEM_PROMPT = (
     "and explicitly state what is missing. "
     "If different context passages conflict, acknowledge the conflict explicitly. "
     "Cite sources [between brackets] for each important factual claim or paragraph derived from the context. "
-    "Write in a natural, direct, and fluent style. "
-    "Do not start with meta phrases such as 'Based on the provided context', "
-    "'Based exclusively on the provided context', or similar disclaimers. "
-    "CRITICAL: You MUST answer in the EXACT same language as the user's question. "
-    "If the question is in English, answer in English. If in Portuguese, answer in Portuguese. "
-    "Do NOT translate your answer to a different language. "
     "Focus areas: agroforestry systems, sustainable soil management, biodiversity, "
-    "family farming, food sovereignty, agroecology, permaculture, and traditional knowledge."
+    "family farming, food sovereignty, agroecology, permaculture, and traditional knowledge. "
+    "CRITICAL RULES — follow them in every response without exception:\n"
+    "1. Start directly with the answer content. Never open with any meta-commentary "
+    "about the context, about your role, or about how you arrived at the answer.\n"
+    "2. Answer in the EXACT same language as the user's question, "
+    "ignoring the language of the retrieved context or conversation history.\n"
+    "3. Never switch languages mid-response or between responses."
 )
 
 USER_PROMPT = (
@@ -100,8 +100,8 @@ USER_PROMPT = (
     "4. If the answer is only partially supported, state the supported part and say what is missing.\n"
     "5. If the context does not contain the answer, say so clearly.\n"
     "6. If the context contains conflicting information, mention that conflict.\n"
-    "7. Avoid meta introductions and answer naturally from the first sentence.\n\n"
-    "IMPORTANT: Answer in the same language as the question."
+    "7. Begin your answer immediately with substantive content — skip any preamble.\n\n"
+    "IMPORTANT: Answer in the same language as the question, even if the context is in a different language."
 )
 
 for d in [DATA_DIR, DATA_DIR_PDFS, DATA_DIR_MARKDOWN, DATA_DIR_WEB, INDEX_DIR]:

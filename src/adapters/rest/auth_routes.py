@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.adapters.rest.auth_middleware import get_current_user
 from src.adapters.rest.schemas import (
@@ -28,7 +28,7 @@ from src.infrastructure.auth.password_hasher import (
     verify_password,
 )
 from src.shared.config import REFRESH_TOKEN_TTL_DAYS
-from src.shared.logging_utils import log_event, mask_email
+from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger("agroecology.auth")
@@ -53,12 +53,19 @@ def _serialize_user(user: User) -> dict:
 
 
 @router.get("/human-challenge", response_model=ChallengeResponse)
-async def get_human_challenge(locale: str = "pt-BR"):
+async def get_human_challenge(request: Request, locale: str = "pt-BR"):
+    log_event(
+        logger,
+        logging.INFO,
+        "human_challenge_requested",
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        locale=locale,
+    )
     return create_challenge(locale)
 
 
 @router.post("/register", response_model=MessageResponse)
-async def register(body: RegisterRequest):
+async def register(body: RegisterRequest, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -67,6 +74,7 @@ async def register(body: RegisterRequest):
         logger,
         logging.INFO,
         "register_attempted",
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -76,6 +84,7 @@ async def register(body: RegisterRequest):
             logging.WARNING,
             "register_failed",
             reason="invalid_challenge",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=400, detail="Invalid challenge answer")
@@ -87,6 +96,7 @@ async def register(body: RegisterRequest):
             logging.WARNING,
             "register_failed",
             reason="email_already_registered",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -137,6 +147,7 @@ async def register(body: RegisterRequest):
         logging.INFO,
         "register_completed",
         user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -159,7 +170,7 @@ async def _send_emails_async(
 
 
 @router.post("/confirm-email/resend", response_model=MessageResponse)
-async def resend_confirmation(email: str):
+async def resend_confirmation(email: str, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -170,6 +181,7 @@ async def resend_confirmation(email: str):
             logging.WARNING,
             "confirm_email_resend_failed",
             reason="email_not_found",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(email),
         )
         raise HTTPException(status_code=400, detail="Email not found")
@@ -179,6 +191,7 @@ async def resend_confirmation(email: str):
             logging.WARNING,
             "confirm_email_resend_failed",
             reason="already_confirmed",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(email),
             user_id=user.id,
         )
@@ -199,6 +212,7 @@ async def resend_confirmation(email: str):
         logging.INFO,
         "confirm_email_resent",
         user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(user.email),
     )
 
@@ -206,7 +220,7 @@ async def resend_confirmation(email: str):
 
 
 @router.post("/confirm-email", response_model=MessageResponse)
-async def confirm_email(body: ConfirmEmailRequest):
+async def confirm_email(body: ConfirmEmailRequest, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -219,6 +233,7 @@ async def confirm_email(body: ConfirmEmailRequest):
             logging.WARNING,
             "confirm_email_failed",
             reason="invalid_or_expired_token",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         )
         raise HTTPException(
             status_code=400, detail="Invalid or expired confirmation token"
@@ -229,6 +244,7 @@ async def confirm_email(body: ConfirmEmailRequest):
             logging.WARNING,
             "confirm_email_failed",
             reason="token_expired",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=confirmation["user_id"],
         )
         raise HTTPException(status_code=400, detail="Confirmation token expired")
@@ -239,6 +255,7 @@ async def confirm_email(body: ConfirmEmailRequest):
         logger,
         logging.INFO,
         "confirm_email_completed",
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         user_id=confirmation["user_id"],
     )
 
@@ -246,7 +263,7 @@ async def confirm_email(body: ConfirmEmailRequest):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -258,6 +275,7 @@ async def login(body: LoginRequest):
             logging.WARNING,
             "login_failed",
             reason="invalid_credentials",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(body.email),
         )
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -267,6 +285,7 @@ async def login(body: LoginRequest):
             logging.WARNING,
             "login_failed",
             reason="email_not_confirmed",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=user.id,
             email=mask_email(body.email),
         )
@@ -277,6 +296,7 @@ async def login(body: LoginRequest):
             logging.WARNING,
             "login_failed",
             reason="account_not_active",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=user.id,
             email=mask_email(body.email),
         )
@@ -295,6 +315,7 @@ async def login(body: LoginRequest):
         logging.INFO,
         "login_completed",
         user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(user.email),
         roles=",".join(roles),
     )
@@ -303,7 +324,7 @@ async def login(body: LoginRequest):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(refresh_token: str):
+async def refresh(refresh_token: str, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -311,7 +332,13 @@ async def refresh(refresh_token: str):
     stored = await repo.get_refresh_token(token_hash)
 
     if not stored:
-        log_event(logger, logging.WARNING, "refresh_failed", reason="invalid_token")
+        log_event(
+            logger,
+            logging.WARNING,
+            "refresh_failed",
+            reason="invalid_token",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+        )
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     if stored["expires_at"] < datetime.now(timezone.utc):
         log_event(
@@ -319,6 +346,7 @@ async def refresh(refresh_token: str):
             logging.WARNING,
             "refresh_failed",
             reason="token_expired",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Refresh token expired")
@@ -329,6 +357,7 @@ async def refresh(refresh_token: str):
             logging.WARNING,
             "refresh_failed",
             reason="token_reuse_detected",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Token reuse detected")
@@ -342,6 +371,7 @@ async def refresh(refresh_token: str):
             logging.WARNING,
             "refresh_failed",
             reason="account_not_active",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             user_id=stored["user_id"],
         )
         raise HTTPException(status_code=401, detail="Account not active")
@@ -357,6 +387,7 @@ async def refresh(refresh_token: str):
         logging.INFO,
         "refresh_completed",
         user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(user.email),
     )
 
@@ -364,17 +395,23 @@ async def refresh(refresh_token: str):
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(user: User = Depends(get_current_user)):
+async def logout(request: Request, user: User = Depends(get_current_user)):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
     await repo.revoke_all_refresh_tokens(user.id)
-    log_event(logger, logging.INFO, "logout_completed", user_id=user.id)
+    log_event(
+        logger,
+        logging.INFO,
+        "logout_completed",
+        user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
+    )
     return MessageResponse(message="Logged out successfully")
 
 
 @router.post("/password-reset/request", response_model=MessageResponse)
-async def request_password_reset(email: str):
+async def request_password_reset(email: str, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     repo = await get_user_repo()
@@ -384,6 +421,7 @@ async def request_password_reset(email: str):
             logger,
             logging.INFO,
             "password_reset_requested",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
             email=mask_email(email),
             user_exists=False,
         )
@@ -406,6 +444,7 @@ async def request_password_reset(email: str):
         logging.INFO,
         "password_reset_requested",
         user_id=user.id,
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         email=mask_email(user.email),
         user_exists=True,
     )
@@ -414,7 +453,7 @@ async def request_password_reset(email: str):
 
 
 @router.post("/password-reset/confirm", response_model=MessageResponse)
-async def confirm_password_reset(token: str, new_password: str):
+async def confirm_password_reset(token: str, new_password: str, request: Request):
     from src.adapters.rest.dependencies import get_user_repo
 
     if len(new_password) < 8:
@@ -423,6 +462,7 @@ async def confirm_password_reset(token: str, new_password: str):
             logging.WARNING,
             "password_reset_confirm_failed",
             reason="password_too_short",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         )
         raise HTTPException(
             status_code=400, detail="Password must be at least 8 characters"
@@ -438,6 +478,7 @@ async def confirm_password_reset(token: str, new_password: str):
             logging.WARNING,
             "password_reset_confirm_failed",
             reason="invalid_or_expired_token",
+            ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         )
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
@@ -448,6 +489,7 @@ async def confirm_password_reset(token: str, new_password: str):
         logger,
         logging.INFO,
         "password_reset_confirmed",
+        ip=resolve_client_ip(request.headers, request.client.host if request.client else None),
         user_id=confirmation["user_id"],
     )
 

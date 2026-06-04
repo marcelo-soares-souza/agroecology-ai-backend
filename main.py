@@ -18,8 +18,10 @@ from src.adapters.rest.dependencies import (
     shutdown_services,
 )
 from src.shared.config import DATA_DIR_MARKDOWN, DATA_DIR_PDFS, DATA_DIR_WEB
+from src.shared.logging_utils import configure_logging
 
 console = Console()
+configure_logging()
 
 
 def cmd_ingest(args):

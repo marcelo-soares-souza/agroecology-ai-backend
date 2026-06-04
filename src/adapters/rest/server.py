@@ -53,8 +53,15 @@ from src.shared.config import (
     DATA_DIR_WEB,
     TASK_TTL,
 )
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import (
+    configure_logging,
+    header_value,
+    log_event,
+    resolve_client_ip,
+)
 from src.shared.uuid7 import uuid7
+
+configure_logging()
 
 logger = logging.getLogger("agroecology.http")
 
@@ -234,44 +241,21 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 
-
-def _header_value(request: Request, name: str) -> str:
-    return request.headers.get(name, "").strip()
-
-
-def _resolve_client_ip(request: Request) -> str:
-    cf_connecting_ip = _header_value(request, "cf-connecting-ip")
-    if cf_connecting_ip:
-        return cf_connecting_ip
-
-    forwarded_for = _header_value(request, "x-forwarded-for")
-    if forwarded_for:
-        first_hop = forwarded_for.split(",")[0].strip()
-        if first_hop:
-            return first_hop
-
-    real_ip = _header_value(request, "x-real-ip")
-    if real_ip:
-        return real_ip
-
-    return request.client.host if request.client else "unknown"
-
-
 @app.middleware("http")
 async def log_http_requests(request: Request, call_next):
     started_at = time.perf_counter()
-    timestamp = datetime.now(timezone.utc).isoformat()
-    client_ip = _resolve_client_ip(request)
-    forwarded_for = _header_value(request, "x-forwarded-for")
-    real_ip = _header_value(request, "x-real-ip")
-    cf_connecting_ip = _header_value(request, "cf-connecting-ip")
+    client_ip = resolve_client_ip(
+        request.headers, request.client.host if request.client else None
+    )
+    forwarded_for = header_value(request.headers, "x-forwarded-for")
+    real_ip = header_value(request.headers, "x-real-ip")
+    cf_connecting_ip = header_value(request.headers, "cf-connecting-ip")
 
     try:
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
         logger.info(
-            "%s ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=%s duration_ms=%.2f",
-            timestamp,
+            "ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=%s duration_ms=%.2f",
             client_ip,
             cf_connecting_ip or "-",
             forwarded_for or "-",
@@ -285,8 +269,7 @@ async def log_http_requests(request: Request, call_next):
     except Exception:
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
         logger.exception(
-            "%s ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=500 duration_ms=%.2f",
-            timestamp,
+            "ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=500 duration_ms=%.2f",
             client_ip,
             cf_connecting_ip or "-",
             forwarded_for or "-",

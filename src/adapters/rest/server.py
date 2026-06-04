@@ -626,7 +626,7 @@ async def upload_documents(
 
 
 @app.get("/api/v1/documents", response_model=list[DocumentRecord])
-async def list_all_documents(current_user: User = Depends(get_current_user)):
+async def list_all_documents():
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -636,13 +636,12 @@ async def list_all_documents(current_user: User = Depends(get_current_user)):
         logging.INFO,
         "documents_list_completed",
         total_documents=len(docs),
-        user_id=current_user.id,
     )
     return [_serialize_doc(d) for d in docs]
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def get_one_document(doc_id: str, current_user: User = Depends(get_current_user)):
+async def get_one_document(doc_id: str):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -654,7 +653,6 @@ async def get_one_document(doc_id: str, current_user: User = Depends(get_current
         logging.INFO,
         "document_get_completed",
         document_id=doc_id,
-        user_id=current_user.id,
     )
     return _serialize_doc(doc)
 
@@ -731,18 +729,7 @@ async def extract_document_metadata(
 
 
 @app.get("/api/v1/documents/{doc_id}/view")
-async def view_document(doc_id: str, token: str):
-    # Allow iframe embeds via token query param
-    from src.infrastructure.auth.jwt_handler import decode_token
-
-    try:
-        payload = decode_token(token)
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
+async def view_document(doc_id: str):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -767,9 +754,7 @@ async def view_document(doc_id: str, token: str):
 
 
 @app.get("/api/v1/documents/{doc_id}/download")
-async def download_document(
-    doc_id: str, current_user: User = Depends(get_current_user)
-):
+async def download_document(doc_id: str):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")

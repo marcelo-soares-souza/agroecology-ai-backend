@@ -30,7 +30,7 @@ def cmd_ingest(args):
     console.print("[bold]Ingesting documents...[/bold]")
     try:
         asyncio.run(init_services())
-        count = get_ingest().execute(force=False)
+        count = get_ingest().execute(force=args.force)
         console.print(f"[green]OK[/green] {count} chunks indexed successfully!")
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -222,6 +222,9 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Available command")
 
     sub_ingest = subparsers.add_parser("ingest", help="Index documents")
+    sub_ingest.add_argument(
+        "--force", action="store_true", help="Force re-ingestion of all documents"
+    )
     sub_ingest.set_defaults(func=cmd_ingest)
 
     sub_ask = subparsers.add_parser("ask", help="Ask a question")

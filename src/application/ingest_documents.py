@@ -9,7 +9,10 @@ from pathlib import Path
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
-from src.shared.config import CHUNK_OVERLAP, CHUNK_SIZE
+from src.shared.config import (
+    bump_index_version,
+    write_schema_version,
+)
 from src.shared.logging_utils import log_event
 
 logger = logging.getLogger("agroecology.ingestion")
@@ -30,6 +33,17 @@ class IngestDocuments:
         self.chunks_indexed: int = 0
         self.error: str | None = None
         self.current_run_id: str | None = None
+        self._on_complete_callbacks: list = []
+
+    def register_on_complete(self, callback) -> None:
+        self._on_complete_callbacks.append(callback)
+
+    def _notify_complete(self) -> None:
+        for cb in self._on_complete_callbacks:
+            try:
+                cb()
+            except Exception as e:
+                logger.warning("ingestion_callback_failed error=%s", e)
 
     def start(self, force: bool = False) -> bool:
         with self._lock:
@@ -72,6 +86,8 @@ class IngestDocuments:
 
             count = self._ingest_all(force=force)
 
+            write_schema_version()
+            bump_index_version()
             asyncio.run(
                 self._ingestion_repo.update(run_id, status="done", chunks_indexed=count)
             )
@@ -79,6 +95,7 @@ class IngestDocuments:
                 self.status = "done"
                 self.chunks_indexed = count
                 self.error = None
+            self._notify_complete()
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             log_event(
                 logger,
@@ -130,6 +147,8 @@ class IngestDocuments:
 
             count = self._ingest_all(force=force)
 
+            write_schema_version()
+            bump_index_version()
             asyncio.run(
                 self._ingestion_repo.update(run_id, status="done", chunks_indexed=count)
             )
@@ -137,6 +156,7 @@ class IngestDocuments:
                 self.status = "done"
                 self.chunks_indexed = count
                 self.error = None
+            self._notify_complete()
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             log_event(
                 logger,
@@ -176,7 +196,7 @@ class IngestDocuments:
             )
 
     def _ingest_all(self, force: bool = False) -> int:
-        from src.domain.services.chunker import chunk_text
+        from src.domain.services.chunker import chunk_blocks
         from src.shared.config import (
             DATA_DIR_MARKDOWN,
             DATA_DIR_PDFS,
@@ -190,16 +210,17 @@ class IngestDocuments:
         all_docs = self._load_all(DATA_DIR_PDFS, DATA_DIR_MARKDOWN, DATA_DIR_WEB)
         if not all_docs:
             raise ValueError(
-                "No documents found. "
-                "Add files to data/pdfs/, data/markdown/ or data/web/"
+                "No documents found. Add files to data/pdfs/, data/markdown/ or data/web/"
             )
 
         doc_ids = set()
         source_to_id: dict[str, str] = {}
+        source_to_parsed: dict[str, object] = {}
         for doc in all_docs:
             stem = Path(doc["source"]).stem
             doc_ids.add(stem)
             source_to_id[doc["source"]] = stem
+            source_to_parsed[doc["source"]] = doc["parsed"]
 
         existing_ingested = asyncio.run(self._get_ingested_doc_ids(doc_ids))
 
@@ -241,83 +262,103 @@ class IngestDocuments:
             rows: list[dict] = []
             for doc in batch:
                 doc_id = source_to_id[doc["source"]]
-                chunks = chunk_text(doc["text"], CHUNK_SIZE, CHUNK_OVERLAP)
-                for i, chunk in enumerate(chunks):
-                    if not chunk.strip():
+                parsed = doc.get("parsed")
+                if parsed is None:
+                    continue
+
+                chunks = chunk_blocks(
+                    blocks=parsed.blocks,
+                    document_id=doc_id,
+                    title=parsed.title,
+                    authors=parsed.authors,
+                    year=parsed.year,
+                )
+                for i, (text, embedding_text, meta) in enumerate(chunks):
+                    if not text.strip():
                         continue
                     rows.append(
                         {
                             "id": f"{doc_id}_{i}",
-                            "text": chunk,
+                            "text": text,
+                            "embedding_text": embedding_text,
                             "source": doc["source"],
                             "chunk_index": i,
+                            "page_start": meta.page_start,
+                            "page_end": meta.page_end,
+                            "section_title": meta.section_title or "",
+                            "block_types": ",".join(meta.block_types),
                         }
                     )
 
-            if not rows:
+                if not rows:
+                    asyncio.run(self._mark_as_ingested(batch_doc_ids))
+                    log_event(
+                        logger,
+                        logging.INFO,
+                        "ingestion_batch_skipped",
+                        batch=batch_num,
+                        total_batches=len(batches),
+                        documents=len(batch),
+                        reason="no_chunks_generated",
+                    )
+                    continue
+
+                self._embed_rows(rows)
+
+                if force and self._vector_store.index_exists():
+                    for doc_id in batch_doc_ids:
+                        self._vector_store.delete_by_prefix(f"{doc_id}_")
+
+                if not index_initialized:
+                    if force or not self._vector_store.index_exists():
+                        self._vector_store.build_index(
+                            rows, self._embedder.get_dimension()
+                        )
+                    else:
+                        self._vector_store.add_rows(rows)
+                    index_initialized = True
+                else:
+                    self._vector_store.add_rows(rows)
+
                 asyncio.run(self._mark_as_ingested(batch_doc_ids))
+                total_chunks += len(rows)
+
                 log_event(
                     logger,
                     logging.INFO,
-                    "ingestion_batch_skipped",
+                    "ingestion_batch_processed",
                     batch=batch_num,
                     total_batches=len(batches),
                     documents=len(batch),
-                    reason="no_chunks_generated",
+                    chunks=len(rows),
                 )
-                continue
-
-            self._embed_rows(rows)
-
-            if force and self._vector_store.index_exists():
-                for doc_id in batch_doc_ids:
-                    self._vector_store.delete_by_prefix(f"{doc_id}_")
-
-            if not index_initialized:
-                if force or not self._vector_store.index_exists():
-                    self._vector_store.build_index(rows, self._embedder.get_dimension())
-                else:
-                    self._vector_store.add_rows(rows)
-                index_initialized = True
-            else:
-                self._vector_store.add_rows(rows)
-
-            asyncio.run(self._mark_as_ingested(batch_doc_ids))
-            total_chunks += len(rows)
 
             log_event(
                 logger,
                 logging.INFO,
                 "ingestion_batch_processed",
-                batch=batch_num,
-                total_batches=len(batches),
-                documents=len(batch),
-                chunks=len(rows),
+                force=force,
+                total_documents=len(all_docs),
+                new_documents=len(docs_to_process),
+                chunks_generated=total_chunks,
             )
 
-        log_event(
-            logger,
-            logging.INFO,
-            "ingestion_batch_processed",
-            force=force,
-            total_documents=len(all_docs),
-            new_documents=len(docs_to_process),
-            chunks_generated=total_chunks,
-        )
-
-        return total_chunks
+            return total_chunks
 
     def _embed_rows(self, rows: list[dict]) -> None:
         from src.shared.config import EMBEDDING_BATCH_SIZE
 
+        texts_to_embed = [r.get("embedding_text", r.get("text", "")) for r in rows]
+
         if EMBEDDING_BATCH_SIZE > 0:
             for i in range(0, len(rows), EMBEDDING_BATCH_SIZE):
                 sub = rows[i : i + EMBEDDING_BATCH_SIZE]
-                vectors = self._embedder.embed_texts([r["text"] for r in sub])
+                sub_texts = texts_to_embed[i : i + EMBEDDING_BATCH_SIZE]
+                vectors = self._embedder.embed_texts(sub_texts)
                 for r, v in zip(sub, vectors):
                     r["vector"] = v
         else:
-            vectors = self._embedder.embed_texts([r["text"] for r in rows])
+            vectors = self._embedder.embed_texts(texts_to_embed)
             for r, v in zip(rows, vectors):
                 r["vector"] = v
 
@@ -327,30 +368,64 @@ class IngestDocuments:
 
     @staticmethod
     def _load_all(pdf_dir, md_dir, web_dir) -> list[dict]:
-        import fitz
+        from src.infrastructure.parsers.markdown_parser import MarkdownDocumentParser
+        from src.infrastructure.parsers.pymupdf_parser import PyMuPdfDocumentParser
+        from src.infrastructure.parsers.text_parser import TextDocumentParser
         from src.shared.config import DATA_DIR
 
         sources: list[dict] = []
+        pdf_parser = PyMuPdfDocumentParser()
+        md_parser = MarkdownDocumentParser()
+        txt_parser = TextDocumentParser()
+
         for fp in pdf_dir.glob("*.pdf"):
             try:
-                pdf = fitz.open(str(fp))
-                text = "\n".join(page.get_text() for page in pdf)
-                pdf.close()
-                if text.strip():
-                    rel = str(fp.relative_to(DATA_DIR))
-                    sources.append({"text": text, "source": rel})
-            except Exception:
-                pass
+                rel = str(fp.relative_to(DATA_DIR))
+                doc_id = fp.stem
+                parsed = pdf_parser.parse(fp, doc_id, rel)
+                sources.append(
+                    {
+                        "parsed": parsed,
+                        "source": rel,
+                        "doc_id": doc_id,
+                        "file_type": "pdf",
+                    }
+                )
+            except Exception as e:
+                logger.warning("pdf_parse_failed file=%s error=%s", fp.name, e)
+
         for fp in md_dir.glob("*.md"):
-            text = fp.read_text(encoding="utf-8")
-            if text.strip():
+            try:
                 rel = str(fp.relative_to(DATA_DIR))
-                sources.append({"text": text, "source": rel})
+                doc_id = fp.stem
+                parsed = md_parser.parse(fp, doc_id, rel)
+                sources.append(
+                    {
+                        "parsed": parsed,
+                        "source": rel,
+                        "doc_id": doc_id,
+                        "file_type": "md",
+                    }
+                )
+            except Exception as e:
+                logger.warning("md_parse_failed file=%s error=%s", fp.name, e)
+
         for fp in web_dir.glob("*.txt"):
-            text = fp.read_text(encoding="utf-8")
-            if text.strip():
+            try:
                 rel = str(fp.relative_to(DATA_DIR))
-                sources.append({"text": text, "source": rel})
+                doc_id = fp.stem
+                parsed = txt_parser.parse(fp, doc_id, rel)
+                sources.append(
+                    {
+                        "parsed": parsed,
+                        "source": rel,
+                        "doc_id": doc_id,
+                        "file_type": "txt",
+                    }
+                )
+            except Exception as e:
+                logger.warning("txt_parse_failed file=%s error=%s", fp.name, e)
+
         return sources
 
     async def _get_ingested_doc_ids(self, doc_ids: set[str]) -> set[str]:

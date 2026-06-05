@@ -31,6 +31,8 @@ class IngestionRunSchema(BaseModel):
 
 class StatusResponse(BaseModel):
     index_ready: bool
+    schema_mismatch: bool = False
+    index_version: str = "0"
     ingest_status: str
     chunks_indexed: int
     active_tasks: int

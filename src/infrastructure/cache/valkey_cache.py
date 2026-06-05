@@ -20,12 +20,18 @@ else:
     except ImportError:
         redis = None  # type: ignore[assignment]
 
+_KEY_PREFIX = "rag:cache:v"
+
 
 class ValkeyCache(CachePort):  # noqa: F811
     def __init__(self, url: str, ttl: int = 3600) -> None:
         self.enabled = False
         self._client: redis.Redis | None = None  # type: ignore[name-defined]
         self._ttl = ttl
+        self._index_version = "0"
+        self._embedding_model = ""
+        self._reranker_model = ""
+        self._top_k = 0
 
         if redis is None:
             log_event(logger, logging.WARNING, "cache_disabled", reason="redis_missing")
@@ -49,13 +55,53 @@ class ValkeyCache(CachePort):  # noqa: F811
                 url=url,
             )
 
+    def set_index_version(self, version: str) -> None:
+        self._index_version = version
+        log_event(logger, logging.INFO, "cache_index_version_updated", version=version)
+
+    def invalidate_all(self) -> None:
+        if not self.enabled or self._client is None:
+            return
+        try:
+            pattern = f"{_KEY_PREFIX}:{self._index_version}:*"
+            cursor = 0
+            deleted = 0
+            while True:
+                cursor, keys = self._client.scan(
+                    cursor=cursor, match=pattern, count=100
+                )
+                if keys:
+                    deleted += self._client.delete(*keys)
+                if cursor == 0:
+                    break
+            log_event(
+                logger,
+                logging.INFO,
+                "cache_invalidated",
+                version=self._index_version,
+                keys_deleted=deleted,
+            )
+        except Exception:
+            pass
+
+    def configure(
+        self,
+        embedding_model: str,
+        reranker_model: str,
+        top_k: int,
+    ) -> None:
+        self._embedding_model = embedding_model
+        self._reranker_model = reranker_model
+        self._top_k = top_k
+
     def _key(self, question: str) -> str:
         normalized = unicodedata.normalize("NFKD", question.lower().strip())
         normalized = "".join(c for c in normalized if not unicodedata.combining(c))
         normalized = re.sub(r"[^\w\s]", "", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
-        h = hashlib.md5(normalized.encode()).hexdigest()
-        return f"rag:cache:{h}"
+        payload = f"{normalized}|v{self._index_version}|emb={self._embedding_model}|rerank={self._reranker_model}|k={self._top_k}"
+        h = hashlib.md5(payload.encode()).hexdigest()
+        return f"{_KEY_PREFIX}:{self._index_version}:{h}"
 
     def get(self, question: str) -> dict[str, Any] | None:
         if not self.enabled or self._client is None:

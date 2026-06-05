@@ -21,12 +21,35 @@ class LanceDBVectorStore(VectorStorePort):
             )
         return db.open_table("chunks")
 
-    def search(self, query_vector: list[float], top_k: int) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         table = self._get_table()
-        results = table.search(query_vector).metric("cosine").limit(top_k).to_list()
+        query = table.search(query_vector).metric("cosine").limit(top_k)
+        if filters:
+            where_clause = self._build_where(filters)
+            if where_clause:
+                query = query.where(where_clause)
+        results = query.to_list()
         for r in results:
             r["_search_type"] = "vector"
         return results
+
+    @staticmethod
+    def _build_where(filters: dict[str, Any]) -> str | None:
+        conditions: list[str] = []
+        for key, value in filters.items():
+            if isinstance(value, int):
+                conditions.append(f"{key} = {value}")
+            elif isinstance(value, str):
+                escaped = value.replace("'", "''")
+                conditions.append(f"{key} = '{escaped}'")
+            elif isinstance(value, tuple) and len(value) == 2:
+                conditions.append(f"{key} >= {value[0]} AND {key} <= {value[1]}")
+        return " AND ".join(conditions) if conditions else None
 
     def index_exists(self) -> bool:
         if not self._dir.exists():

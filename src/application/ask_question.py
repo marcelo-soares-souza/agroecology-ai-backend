@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from src.domain.ports.llm_port import LLMPort
+from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
 from src.shared.config import HYBRID_TOP_K, SYSTEM_PROMPT, USER_PROMPT
 from src.shared.logging_utils import log_event
@@ -20,15 +21,87 @@ _CONTEXT_DEPENDENT_PATTERNS = (
 _MAX_HISTORY_SNIPPET_CHARS = 500
 logger = logging.getLogger("agroecology.rag")
 
+_INTENT_PATTERNS: dict[str, re.Pattern] = {
+    "specific_document": re.compile(
+        r'\b(no paper|no artigo|no documento|segundo\s+\w|de acordo com\s+\w|"[^"]+"|"[^"]+")\b',
+        re.IGNORECASE,
+    ),
+    "comparison": re.compile(
+        r"\b(compare|comparação|diferenca entre|diferença entre|vs\.?|versus|qual a diferença|qual é a diferença)\b",
+        re.IGNORECASE,
+    ),
+    "methodology": re.compile(
+        r"\b(como foi feito|metodologia|método|métodos|metodo|metodos|amostra|delineamento|experimento|protocolo|técnica)\b",
+        re.IGNORECASE,
+    ),
+    "results": re.compile(
+        r"\b(resultado|resultados|encontrou|observou|concluiu|achado|achados|evidência|evidências)\b",
+        re.IGNORECASE,
+    ),
+    "definition": re.compile(
+        r"\b(o que é|o que são|defina|conceito de|significa|qual a definição|qual é a definição|explique o que|explique o conceito)\b",
+        re.IGNORECASE,
+    ),
+}
+
+_INTENT_PROMPT_EXTRA: dict[str, str] = {
+    "definition": "Provide a concise definition with citations. Prioritize terminological precision.",
+    "methodology": "Separate: experimental design, sample size, variables, and limitations. If methodology details are not in the context, state that clearly.",
+    "results": "Separate: main findings, quantitative measures, context, and uncertainties. Never extrapolate statistical significance beyond what is reported.",
+    "comparison": "If the context supports it, present a textual comparison table. List comparison criteria explicitly.",
+    "broad_synthesis": "Group findings by convergences, divergences, and gaps in the literature. Cite multiple documents when possible.",
+    "specific_document": "Prioritize depth over breadth. Cite page and section when available.",
+}
+
+
+def _classify_intent(question: str) -> str:
+    compact = " ".join(question.strip().split()).lower()
+    for intent, pattern in _INTENT_PATTERNS.items():
+        if pattern.search(compact):
+            return intent
+    return "broad_synthesis"
+
+
+def _normalize_scores(retrieved: list[dict]) -> None:
+    by_type: dict[str, list[dict]] = {}
+    for r in retrieved:
+        st = r.get("_search_type", "unknown")
+        by_type.setdefault(st, []).append(r)
+
+    for st, items in by_type.items():
+        if st == "vector":
+            for r in items:
+                dist = float(r.get("_distance", 0))
+                similarity = 1.0 - max(0.0, min(2.0, dist))
+                r["_score"] = round(similarity, 4)
+                r["_score_type"] = "cosine_similarity"
+        elif st == "bm25":
+            raw_scores = [float(r.get("_distance", 0)) for r in items]
+            min_s, max_s = min(raw_scores), max(raw_scores)
+            for r in items:
+                raw = float(r.get("_distance", 0))
+                if max_s > min_s:
+                    r["_score"] = round((raw - min_s) / (max_s - min_s), 4)
+                else:
+                    r["_score"] = 1.0
+                r["_score_type"] = "bm25_normalized"
+        elif st == "rerank":
+            for r in items:
+                raw = float(r.get("_rerank_score", r.get("_distance", 0)))
+                r["_score"] = round(raw, 4)
+                r["_score_type"] = "reranker_logit"
+
 
 class AskQuestion:
     def __init__(
         self,
         retriever: RetrieverService,
         llm: LLMPort,
+        query_rewriter: QueryRewritePort | None = None,
     ) -> None:
         self._retriever = retriever
         self._llm = llm
+        self._query_rewriter = query_rewriter
 
     def execute(
         self,
@@ -47,23 +120,38 @@ class AskQuestion:
             history_messages=len(history or []),
             follow_up_detected=follow_up,
         )
-        search_query = self._build_search_query(question, history or [])
+        search_query = question
+        if self._query_rewriter and history:
+            search_query = self._query_rewriter.rewrite(question, history)
         retrieved = self._retriever.hybrid_search(
             search_query,
             top_k=top_k or HYBRID_TOP_K,
         )
 
+        # Enrich chunks with document metadata from title_map
+        if title_map:
+            for node in retrieved:
+                source = node.get("source", "")
+                doc_title = title_map.get(source)
+                if doc_title:
+                    node["_title"] = doc_title
+
         context = self._build_context(retrieved)
+        intent = _classify_intent(question)
+        intent_instruction = _INTENT_PROMPT_EXTRA.get(intent, "")
+        user_prompt = USER_PROMPT.format(context=context, question=question)
+        if intent_instruction:
+            user_prompt += f"\n\nAnswer style: {intent_instruction}"
         answer = self._llm.complete(
             SYSTEM_PROMPT,
-            USER_PROMPT.format(context=context, question=question),
+            user_prompt,
             history=history,
         )
 
+        _normalize_scores(retrieved)
+
         sources = []
-        for node in retrieved:
-            dist = node.get("_distance", 0)
-            score = 1.0 / (1.0 + float(dist)) if dist else 0.0
+        for rank, node in enumerate(retrieved, 1):
             meta = {
                 "source": node.get("source", "unknown"),
                 "chunk_index": node.get("chunk_index", 0),
@@ -76,10 +164,17 @@ class AskQuestion:
                 title = title_map.get(meta["source"])
                 if title:
                     meta["title"] = title
+            # Structural metadata from parsed chunks
+            for field in ("page_start", "page_end", "section_title", "block_types"):
+                val = node.get(field, "")
+                if val:
+                    meta[field] = val
             sources.append(
                 {
                     "text": node["text"][:300],
-                    "score": round(score, 4),
+                    "score": node.get("_score", 0.0),
+                    "score_type": node.get("_score_type", "unknown"),
+                    "rank": rank,
                     "metadata": meta,
                 }
             )
@@ -101,7 +196,37 @@ class AskQuestion:
         for i, r in enumerate(retrieved, 1):
             source = r.get("source", "unknown")
             text = r["text"].strip()
-            parts.append(f"[{i}] (source: {source})\n{text}")
+
+            lines = [f"[{i}]"]
+            title = r.get("title", "") or r.get("_title", "")
+            authors = r.get("authors", "") or r.get("_authors", "")
+            year = r.get("year", "") or r.get("_year", "")
+            section = r.get("section_title", "") or r.get("_section_title", "")
+            page_start = r.get("page_start", 0) or r.get("_page_start", 0)
+            page_end = r.get("page_end", 0) or r.get("_page_end", 0)
+
+            if title:
+                lines.append(f"Title: {title}")
+            if authors:
+                lines.append(f"Authors: {authors}")
+            if year:
+                lines.append(f"Year: {year}")
+            if section:
+                lines.append(f"Section: {section}")
+
+            page_info = ""
+            if page_start and page_end and page_start != page_end:
+                page_info = f", pp. {page_start}-{page_end}"
+            elif page_start:
+                page_info = f", p. {page_start}"
+
+            if page_info:
+                lines.append(f"Pages{page_info}")
+
+            lines.append(f"Source: {source}")
+            lines.append(f"Text:\n{text}")
+            parts.append("\n".join(lines))
+
         return "\n\n".join(parts)
 
     @classmethod

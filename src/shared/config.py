@@ -44,6 +44,7 @@ BM25_TOP_K = int(os.getenv("BM25_TOP_K", "5"))
 RERANK_MODEL = os.getenv("RERANK_MODEL", "")
 RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "6"))
 HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "10"))
+MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 
@@ -60,11 +61,61 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = Path(os.getenv("DATA_DIR", str(PROJECT_ROOT / "data")))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", str(PROJECT_ROOT / "index")))
 
+if not DATA_DIR.is_absolute():
+    DATA_DIR = Path.cwd() / DATA_DIR
+    DATA_DIR = DATA_DIR.resolve()
+if not INDEX_DIR.is_absolute():
+    INDEX_DIR = Path.cwd() / INDEX_DIR
+    INDEX_DIR = INDEX_DIR.resolve()
+
 DATA_DIR_PDFS = DATA_DIR / "pdfs"
 DATA_DIR_MARKDOWN = DATA_DIR / "markdown"
 DATA_DIR_WEB = DATA_DIR / "web"
 
 LANCEDB_DIR = INDEX_DIR / "lancedb"
+
+INDEX_VERSION_FILE = INDEX_DIR / "index_version.txt"
+SCHEMA_VERSION_FILE = INDEX_DIR / "schema_version.txt"
+_CURRENT_SCHEMA_VERSION = "1"
+
+
+def read_index_version() -> str:
+    try:
+        return INDEX_VERSION_FILE.read_text().strip()
+    except (FileNotFoundError, OSError):
+        return "0"
+
+
+def write_index_version(version: str) -> None:
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    INDEX_VERSION_FILE.write_text(version.strip())
+
+
+def bump_index_version() -> str:
+    current = read_index_version()
+    try:
+        next_version = str(int(current) + 1)
+    except ValueError:
+        from datetime import datetime, timezone
+
+        next_version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    write_index_version(next_version)
+    return next_version
+
+
+def check_schema_version() -> tuple[bool, str, str]:
+    expected = _CURRENT_SCHEMA_VERSION
+    try:
+        actual = SCHEMA_VERSION_FILE.read_text().strip()
+    except (FileNotFoundError, OSError):
+        return False, expected, "(no version file)"
+    return actual == expected, expected, actual
+
+
+def write_schema_version() -> None:
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    SCHEMA_VERSION_FILE.write_text(_CURRENT_SCHEMA_VERSION)
+
 
 VALKEY_URL = os.getenv("VALKEY_URL", "redis://localhost:6379/0")
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))

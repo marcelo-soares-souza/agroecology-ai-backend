@@ -4,7 +4,12 @@ from typing import Any
 
 class VectorStorePort(ABC):
     @abstractmethod
-    def search(self, query_vector: list[float], top_k: int) -> list[dict[str, Any]]: ...
+    def search(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]: ...
 
     @abstractmethod
     def index_exists(self) -> bool: ...

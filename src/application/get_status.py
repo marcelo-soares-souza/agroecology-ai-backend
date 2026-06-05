@@ -5,6 +5,7 @@ from src.domain.ports.cache_port import CachePort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
+from src.shared.config import check_schema_version, read_index_version
 
 
 class GetStatus:
@@ -43,8 +44,13 @@ class GetStatus:
         indexed_docs = sum(1 for d in docs if d.ingested)
         total_docs = len(docs)
 
+        schema_ok, expected_schema, actual_schema = check_schema_version()
+        index_ready = self._vector_store.index_exists()
+
         return {
-            "index_ready": self._vector_store.index_exists(),
+            "index_ready": index_ready and schema_ok,
+            "schema_mismatch": not schema_ok,
+            "index_version": read_index_version(),
             "ingest_status": self._ingest.status,
             "chunks_indexed": self._vector_store.count_chunks()
             if self._vector_store.index_exists()

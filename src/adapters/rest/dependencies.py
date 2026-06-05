@@ -23,6 +23,7 @@ from src.infrastructure.ai.sentence_transformer_embedder import (
 from src.infrastructure.ai.sentence_transformer_reranker import (
     SentenceTransformerReranker,
 )
+from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.cache.valkey_cache import ValkeyCache
 from src.infrastructure.persistence.lancedb_vector_store import (
     LanceDBVectorStore,
@@ -45,12 +46,14 @@ from src.shared.config import (
     DEEPSEEK_MODEL,
     EMBEDDING_BACKEND,
     EMBEDDING_MODEL,
+    HYBRID_TOP_K,
     LLM_MAX_TOKENS,
     LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     RERANK_MODEL,
     VALKEY_URL,
+    read_index_version,
 )
 from src.shared.logging_utils import log_event
 
@@ -132,6 +135,12 @@ def get_cache() -> CachePort:
     global _cache
     if _cache is None:
         _cache = ValkeyCache(VALKEY_URL, ttl=CACHE_TTL)
+        _cache.set_index_version(read_index_version())
+        _cache.configure(
+            embedding_model=EMBEDDING_MODEL,
+            reranker_model=RERANK_MODEL,
+            top_k=HYBRID_TOP_K,
+        )
     assert _cache is not None
     return _cache
 
@@ -202,9 +211,11 @@ def get_ingest() -> IngestDocuments:
 def get_ask_question() -> AskQuestion:
     global _ask_question
     if _ask_question is None:
+        _rewriter = LLMQueryRewriter(llm=get_llm())
         _ask_question = AskQuestion(
             retriever=get_retriever(),
             llm=get_llm(),
+            query_rewriter=_rewriter,
         )
     return _ask_question
 
@@ -243,6 +254,7 @@ async def init_services() -> None:
         embedder=get_embedder(),
         ingestion_repo=_ingestion_repo,
     )
+    _ingest.register_on_complete(lambda: get_retriever().invalidate_bm25_cache())
 
     _get_status = GetStatus(
         vector_store=get_vector_store(),

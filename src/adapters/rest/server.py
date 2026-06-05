@@ -51,6 +51,7 @@ from src.shared.config import (
     DATA_DIR_PDFS,
     DATA_DIR_WEB,
     TASK_TTL,
+    check_schema_version,
 )
 from src.shared.logging_utils import (
     configure_logging,
@@ -327,6 +328,16 @@ def _process_task(
 
 @app.post("/api/v1/ask", response_model=AskResponse)
 async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
+    schema_ok, expected, actual = check_schema_version()
+    if not schema_ok:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Index schema is outdated (expected={expected}, found={actual}). "
+                "An administrator must re-ingest documents via POST /api/v1/ingest?force=true."
+            ),
+        )
+
     retriever = get_retriever()
 
     try:

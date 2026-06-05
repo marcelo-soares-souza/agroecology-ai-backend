@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import logging
+
 import torch
 from sentence_transformers import CrossEncoder
 
 from src.domain.ports.reranker_port import RerankerPort
+
+logger = logging.getLogger(__name__)
 
 
 class SentenceTransformerReranker(RerankerPort):
     def __init__(self, model_name: str, device: str = "cpu") -> None:
         self._model_name = model_name
         if device == "cuda" and not torch.cuda.is_available():
+            logger.warning("CUDA not available, falling back to CPU")
             device = "cpu"
+        logger.info("Reranker using device: %s", device)
         self._device = torch.device(device)
         self._model: CrossEncoder | None = None
 

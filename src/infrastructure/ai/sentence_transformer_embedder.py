@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import contextmanager
 
@@ -7,6 +8,8 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 from src.domain.ports.embedding_port import EmbeddingPort
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -25,7 +28,9 @@ def _suppress_stderr():
 class SentenceTransformerEmbedder(EmbeddingPort):
     def __init__(self, model_name: str, device: str = "cpu") -> None:
         if device == "cuda" and not torch.cuda.is_available():
+            logger.warning("CUDA not available, falling back to CPU")
             device = "cpu"
+        logger.info("Embedder using device: %s", device)
         self._device = torch.device(device)
         with _suppress_stderr():
             self._model = SentenceTransformer(model_name, device=self._device)

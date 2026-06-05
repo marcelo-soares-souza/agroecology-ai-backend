@@ -14,52 +14,13 @@ _CONTEXT_DEPENDENT_PATTERNS = (
     re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
     re.compile(r"\b(this|that|it|they|them|those|these)\b", re.IGNORECASE),
     re.compile(
-        r"\b(tell me more|more detail|more details|expand on|go deeper)\b",
+        r"\b(tell me more|more detail|more details|expand on|go deeper|explain)\b",
         re.IGNORECASE,
     ),
 )
+
 _MAX_HISTORY_SNIPPET_CHARS = 500
 logger = logging.getLogger("agroecology.rag")
-
-_INTENT_PATTERNS: dict[str, re.Pattern] = {
-    "specific_document": re.compile(
-        r'\b(no paper|no artigo|no documento|segundo\s+\w|de acordo com\s+\w|"[^"]+"|"[^"]+")\b',
-        re.IGNORECASE,
-    ),
-    "comparison": re.compile(
-        r"\b(compare|comparação|diferenca entre|diferença entre|vs\.?|versus|qual a diferença|qual é a diferença)\b",
-        re.IGNORECASE,
-    ),
-    "methodology": re.compile(
-        r"\b(como foi feito|metodologia|método|métodos|metodo|metodos|amostra|delineamento|experimento|protocolo|técnica)\b",
-        re.IGNORECASE,
-    ),
-    "results": re.compile(
-        r"\b(resultado|resultados|encontrou|observou|concluiu|achado|achados|evidência|evidências)\b",
-        re.IGNORECASE,
-    ),
-    "definition": re.compile(
-        r"\b(o que é|o que são|defina|conceito de|significa|qual a definição|qual é a definição|explique o que|explique o conceito)\b",
-        re.IGNORECASE,
-    ),
-}
-
-_INTENT_PROMPT_EXTRA: dict[str, str] = {
-    "definition": "Provide a concise definition with citations. Prioritize terminological precision.",
-    "methodology": "Separate: experimental design, sample size, variables, and limitations. If methodology details are not in the context, state that clearly.",
-    "results": "Separate: main findings, quantitative measures, context, and uncertainties. Never extrapolate statistical significance beyond what is reported.",
-    "comparison": "If the context supports it, present a textual comparison table. List comparison criteria explicitly.",
-    "broad_synthesis": "Group findings by convergences, divergences, and gaps in the literature. Cite multiple documents when possible.",
-    "specific_document": "Prioritize depth over breadth. Cite page and section when available.",
-}
-
-
-def _classify_intent(question: str) -> str:
-    compact = " ".join(question.strip().split()).lower()
-    for intent, pattern in _INTENT_PATTERNS.items():
-        if pattern.search(compact):
-            return intent
-    return "broad_synthesis"
 
 
 def _normalize_scores(retrieved: list[dict]) -> None:
@@ -137,14 +98,9 @@ class AskQuestion:
                     node["_title"] = doc_title
 
         context = self._build_context(retrieved)
-        intent = _classify_intent(question)
-        intent_instruction = _INTENT_PROMPT_EXTRA.get(intent, "")
-        user_prompt = USER_PROMPT.format(context=context, question=question)
-        if intent_instruction:
-            user_prompt += f"\n\nAnswer style: {intent_instruction}"
         answer = self._llm.complete(
             SYSTEM_PROMPT,
-            user_prompt,
+            USER_PROMPT.format(context=context, question=question),
             history=history,
         )
 

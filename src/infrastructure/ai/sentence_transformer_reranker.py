@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+import torch
 from sentence_transformers import CrossEncoder
 
 from src.domain.ports.reranker_port import RerankerPort
 
 
 class SentenceTransformerReranker(RerankerPort):
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, device: str = "cpu") -> None:
         self._model_name = model_name
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+        self._device = torch.device(device)
         self._model: CrossEncoder | None = None
 
     def _load_model(self) -> CrossEncoder:
         if self._model is None:
-            self._model = CrossEncoder(self._model_name)
+            self._model = CrossEncoder(
+                self._model_name,
+                device=self._device,
+            )
+            if self._model.model is not None:
+                self._model.model.to(self._device)  # type: ignore[arg-type,union-attr]
         return self._model
 
     def rerank(self, query: str, documents: list[dict], top_k: int) -> list[dict]:

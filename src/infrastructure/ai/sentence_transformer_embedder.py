@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 
+import torch
 from sentence_transformers import SentenceTransformer
 
 from src.domain.ports.embedding_port import EmbeddingPort
@@ -22,9 +23,12 @@ def _suppress_stderr():
 
 
 class SentenceTransformerEmbedder(EmbeddingPort):
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, device: str = "cpu") -> None:
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+        self._device = torch.device(device)
         with _suppress_stderr():
-            self._model = SentenceTransformer(model_name)
+            self._model = SentenceTransformer(model_name, device=self._device)
         self._dim = self._model.get_embedding_dimension()
         assert self._dim is not None
 

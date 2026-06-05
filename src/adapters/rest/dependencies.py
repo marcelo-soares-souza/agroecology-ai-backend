@@ -45,12 +45,14 @@ from src.shared.config import (
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL,
     EMBEDDING_BACKEND,
+    EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
     HYBRID_TOP_K,
     LLM_MAX_TOKENS,
     LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
+    RERANK_DEVICE,
     RERANK_MODEL,
     VALKEY_URL,
     read_index_version,
@@ -91,13 +93,16 @@ def get_embedder() -> EmbeddingPort:
                 model=OLLAMA_EMBEDDING_MODEL,
             )
         else:
-            _embedder = SentenceTransformerEmbedder(EMBEDDING_MODEL)
+            _embedder = SentenceTransformerEmbedder(
+                EMBEDDING_MODEL, device=EMBEDDING_DEVICE
+            )
             log_event(
                 logger,
                 logging.INFO,
                 "embedder_initialized",
                 backend="sentence_transformer",
                 model=EMBEDDING_MODEL,
+                device=EMBEDDING_DEVICE,
             )
     return _embedder
 
@@ -172,12 +177,13 @@ async def get_user_repo() -> PostgresUserRepository:
 def get_reranker() -> RerankerPort | None:
     global _reranker
     if _reranker is None and RERANK_MODEL:
-        _reranker = SentenceTransformerReranker(RERANK_MODEL)
+        _reranker = SentenceTransformerReranker(RERANK_MODEL, device=RERANK_DEVICE)
         log_event(
             logger,
             logging.INFO,
             "reranker_initialized",
             model=RERANK_MODEL,
+            device=RERANK_DEVICE,
         )
     return _reranker
 

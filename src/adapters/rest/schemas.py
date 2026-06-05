@@ -20,6 +20,10 @@ class AnswerResponse(BaseModel):
     error: str | None = None
 
 
+class HealthResponse(BaseModel):
+    status: str
+
+
 class IngestionRunSchema(BaseModel):
     id: str
     status: str

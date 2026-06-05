@@ -37,6 +37,7 @@ from src.adapters.rest.schemas import (
     DocumentUpdateBody,
     DocumentUploaded,
     DocumentUploadResponse,
+    HealthResponse,
     IngestResponse,
     IngestStatusResponse,
     IngestionRunSchema,
@@ -242,6 +243,11 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+
+
+@app.get("/api/v1/health", response_model=HealthResponse)
+async def health():
+    return HealthResponse(status="ok")
 
 
 @app.middleware("http")

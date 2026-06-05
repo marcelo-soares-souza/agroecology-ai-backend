@@ -122,6 +122,13 @@ class ExtractMetadata:
             )
 
             cleaned = raw.strip()
+            log_event(
+                logger,
+                logging.DEBUG,
+                "metadata_llm_raw_response",
+                response_len=len(cleaned),
+                response_preview=cleaned[:200],
+            )
             if cleaned.startswith("```"):
                 idx = cleaned.find("\n")
                 if idx != -1:
@@ -156,8 +163,34 @@ class ExtractMetadata:
                 has_year=bool(extracted["year"]),
             )
             return extracted
-        except Exception:
-            log_event(logger, logging.ERROR, "metadata_extraction_failed")
+        except json.JSONDecodeError as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "metadata_json_parse_failed",
+                error=str(exc),
+                raw_preview=cleaned[:300] if "cleaned" in dir() else "",
+            )
+            return {
+                "title": "",
+                "authors": "",
+                "doi": heuristics.get("doi", ""),
+                "year": str(heuristics.get("year", ""))
+                if heuristics.get("year")
+                else "",
+                "journal": "",
+                "abstract": "",
+                "keywords": "",
+                "language": detected_lang,
+            }
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "metadata_extraction_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             return {
                 "title": "",
                 "authors": "",

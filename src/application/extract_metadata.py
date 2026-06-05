@@ -116,7 +116,7 @@ class ExtractMetadata:
             )
             raw = self._llm.complete(
                 system_prompt="Return only valid JSON.",
-                user_prompt=_EXTRACT_PROMPT.format(text=truncated),
+                user_prompt=_EXTRACT_PROMPT.replace("{text}", truncated),
                 temperature=0.0,
                 max_tokens=4096,
             )

@@ -118,8 +118,8 @@ class LLMQueryRewriter(QueryRewritePort):
         try:
             result = self._llm.complete(
                 system_prompt="You are a query rewriter. Return only the rewritten question.",
-                user_prompt=_FALLBACK_PROMPT.format(
-                    question=question, history=history_text
+                user_prompt=_FALLBACK_PROMPT.replace("{question}", question).replace(
+                    "{history}", history_text
                 ),
                 temperature=0.0,
                 max_tokens=200,

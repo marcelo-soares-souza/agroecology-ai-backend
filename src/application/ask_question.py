@@ -100,7 +100,7 @@ class AskQuestion:
         context = self._build_context(retrieved)
         answer = self._llm.complete(
             SYSTEM_PROMPT,
-            USER_PROMPT.format(context=context, question=question),
+            USER_PROMPT.replace("{context}", context).replace("{question}", question),
             history=history,
         )
 

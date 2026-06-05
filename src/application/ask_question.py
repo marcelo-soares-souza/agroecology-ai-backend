@@ -98,10 +98,11 @@ class AskQuestion:
                     node["_title"] = doc_title
 
         context = self._build_context(retrieved)
+        answer_history = history if follow_up else []
         answer = self._llm.complete(
             SYSTEM_PROMPT,
             USER_PROMPT.replace("{context}", context).replace("{question}", question),
-            history=history,
+            history=answer_history,
         )
 
         _normalize_scores(retrieved)

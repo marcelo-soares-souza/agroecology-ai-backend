@@ -68,6 +68,18 @@ class QueueRepository:
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
 
+    def count_by_status(self, job_type: str) -> dict[str, int]:
+        with self._pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """SELECT status, COUNT(*) AS count
+                       FROM job_queue
+                       WHERE job_type = %s
+                       GROUP BY status""",
+                    (job_type,),
+                )
+                return {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
+
     def complete(self, job_id: str) -> None:
         now = self._now()
         with self._pool.connection() as conn:

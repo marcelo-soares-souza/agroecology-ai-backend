@@ -19,6 +19,7 @@ from src.adapters.rest.dependencies import (
     get_ingest,
     get_ingestion_repo,
     get_manage_docs,
+    get_queue,
     get_retriever,
     get_status_service,
     init_services,
@@ -39,6 +40,7 @@ from src.adapters.rest.schemas import (
     IngestResponse,
     IngestStatusResponse,
     IngestionRunSchema,
+    MetadataExtractionStatusResponse,
     MessageResponse,
     StatusResponse,
 )
@@ -649,6 +651,32 @@ async def list_all_documents():
         total_documents=len(docs),
     )
     return [_serialize_doc(d) for d in docs]
+
+
+@app.get(
+    "/api/v1/documents/metadata-status",
+    response_model=MetadataExtractionStatusResponse,
+)
+async def get_metadata_extraction_status(
+    current_user: User = Depends(require_role("admin")),
+):
+    queue = get_queue()
+    counts = queue.count_by_status("document.extract_metadata")
+    pending = counts.get("pending", 0)
+    running = counts.get("running", 0)
+    log_event(
+        logger,
+        logging.INFO,
+        "metadata_status_completed",
+        user_id=current_user.id,
+        pending=pending,
+        running=running,
+    )
+    return MetadataExtractionStatusResponse(
+        pending=pending,
+        running=running,
+        active=pending + running,
+    )
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)

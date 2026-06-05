@@ -86,6 +86,12 @@ class DocumentUploadResponse(BaseModel):
     skipped: list[DocumentSkipped]
 
 
+class MetadataExtractionStatusResponse(BaseModel):
+    pending: int = 0
+    running: int = 0
+    active: int = 0
+
+
 class DocumentUpdateBody(BaseModel):
     title: str | None = None
     authors: str | None = None

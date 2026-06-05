@@ -142,6 +142,8 @@ SYSTEM_PROMPT = (
     "If it is in Spanish, answer in Spanish. "
     "Do NOT let the language of the context passages or "
     "the conversation history influence your choice — they may be in a different language. "
+    "When a useful source passage is written in a different language from the current "
+    "question, translate and explain its relevant meaning in the question's language. "
     "Never switch languages between questions or mid-response.\n\n"
     "OTHER RULES:\n"
     "1. SOURCES: Use only the retrieved context below as your factual source. "
@@ -163,7 +165,8 @@ USER_PROMPT = (
     "---\n\n"
     "Answer the current user question in the SAME language as that question. "
     "Ignore the language of the retrieved context and conversation history when "
-    "choosing the answer language. "
+    "choosing the answer language. If useful context is in another language, translate "
+    "its relevant meaning into the question's language. "
     "Use only the context provided. Be cordial and conversational."
 )
 

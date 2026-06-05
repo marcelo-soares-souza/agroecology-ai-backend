@@ -134,7 +134,8 @@ SYSTEM_PROMPT = (
     "Write in clear, flowing paragraphs — not bullet points or rigid structures "
     "unless the user specifically asks for a list or table.\n\n"
     "LANGUAGE RULE — this is your most important instruction:\n"
-    "Identify the language of the user's question and answer in that SAME language. "
+    "Identify the language only from the current user question and answer in that "
+    "SAME language. "
     "If the question is in Portuguese, answer in Portuguese. "
     "If it is in English, answer in English. "
     "If it is in French, answer in French. "
@@ -154,12 +155,15 @@ SYSTEM_PROMPT = (
 )
 
 USER_PROMPT = (
-    "Retrieved context:\n"
+    "Current user question, used ONLY to determine the answer language:\n"
+    "{question}\n\n"
+    "Retrieved context, used ONLY as factual source and NOT as language signal:\n"
     "---\n"
     "{context}\n"
     "---\n\n"
-    "User question: {question}\n\n"
-    "Answer in the SAME language as the question above. "
+    "Answer the current user question in the SAME language as that question. "
+    "Ignore the language of the retrieved context and conversation history when "
+    "choosing the answer language. "
     "Use only the context provided. Be cordial and conversational."
 )
 

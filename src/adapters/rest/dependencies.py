@@ -254,7 +254,7 @@ async def init_services() -> None:
         embedder=get_embedder(),
         ingestion_repo=_ingestion_repo,
     )
-    _ingest.register_on_complete(lambda: get_retriever().invalidate_bm25_cache())
+    _ingest.register_on_complete(lambda: _on_ingestion_complete())
 
     _get_status = GetStatus(
         vector_store=get_vector_store(),
@@ -298,6 +298,18 @@ def get_extract_metadata() -> ExtractMetadata:
     if _extract_metadata is None:
         _extract_metadata = ExtractMetadata(get_llm())
     return _extract_metadata
+
+
+def _on_ingestion_complete() -> None:
+    get_retriever().invalidate_bm25_cache()
+    new_version = read_index_version()
+    get_cache().set_index_version(new_version)
+    log_event(
+        logger,
+        logging.INFO,
+        "ingestion_callback_cache_updated",
+        index_version=new_version,
+    )
 
 
 def get_queue() -> QueueRepository:

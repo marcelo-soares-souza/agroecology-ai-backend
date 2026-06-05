@@ -147,7 +147,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
 
         pdf = fitz.open(str(filepath))
         doc.total_pages = len(pdf)
-        raw_blocks: list[tuple[int, float, bool, tuple, str]] = []
+        raw_blocks: list[tuple[int, float, float, bool, tuple, str]] = []
         page_header_texts: dict[str, list[str]] = {}
         page_footer_texts: dict[str, list[str]] = {}
 
@@ -155,7 +155,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
             for page_num in range(len(pdf)):
                 page = pdf[page_num]
                 blocks = page.get_text("dict")["blocks"]
-                base_font_size = self._compute_base_font_size(blocks)
+                page_base_font = self._compute_base_font_size(blocks)
 
                 for block in blocks:
                     if block.get("type") != 0:
@@ -178,7 +178,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                     if not block_text or len(block_text) < 2:
                         continue
 
-                    avg_font = sum(fonts) / len(fonts) if fonts else base_font_size
+                    avg_font = sum(fonts) / len(fonts) if fonts else page_base_font
                     is_bold = (
                         bold_count / total_spans > 0.5 if total_spans > 0 else False
                     )
@@ -196,7 +196,9 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                                 block_text
                             )
 
-                    raw_blocks.append((page_num, avg_font, is_bold, bbox, block_text))
+                    raw_blocks.append(
+                        (page_num, avg_font, page_base_font, is_bold, bbox, block_text)
+                    )
 
             # Identify recurring headers/footers to filter out
             recurring = self._find_recurring(page_header_texts, page_footer_texts)
@@ -205,14 +207,19 @@ class PyMuPdfDocumentParser(DocumentParserPort):
             parsed_blocks: list[ParsedBlock] = []
             title_candidates: list[tuple[int, str, float]] = []
 
-            for order, (page_num, font_size, is_bold, bbox, text) in enumerate(
-                raw_blocks
-            ):
+            for order, (
+                page_num,
+                font_size,
+                block_base,
+                is_bold,
+                bbox,
+                text,
+            ) in enumerate(raw_blocks):
                 if self._is_recurring(text, recurring):
                     continue
 
                 block_type = _classify_block(
-                    text, font_size, base_font_size, is_bold, current_section
+                    text, font_size, block_base, is_bold, current_section
                 )
                 section_name = _detect_section(text)
 
@@ -224,7 +231,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                 if (
                     order < 5
                     and block_type in (BlockType.PARAGRAPH, BlockType.TITLE)
-                    and font_size >= base_font_size * 1.2
+                    and font_size >= block_base * 1.2
                 ):
                     title_candidates.append((order, text, font_size))
 

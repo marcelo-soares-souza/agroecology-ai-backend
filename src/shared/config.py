@@ -57,16 +57,14 @@ WORKER_MAX_WORKERS = int(os.getenv("WORKER_MAX_WORKERS", "1"))
 
 QUEUE_MAX_RETRIES_DEFAULT = int(os.getenv("QUEUE_MAX_RETRIES_DEFAULT", "3"))
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.getenv("DATA_DIR", str(PROJECT_ROOT / "data")))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", str(PROJECT_ROOT / "index")))
 
 if not DATA_DIR.is_absolute():
-    DATA_DIR = Path.cwd() / DATA_DIR
-    DATA_DIR = DATA_DIR.resolve()
+    DATA_DIR = (PROJECT_ROOT / DATA_DIR).resolve()
 if not INDEX_DIR.is_absolute():
-    INDEX_DIR = Path.cwd() / INDEX_DIR
-    INDEX_DIR = INDEX_DIR.resolve()
+    INDEX_DIR = (PROJECT_ROOT / INDEX_DIR).resolve()
 
 DATA_DIR_PDFS = DATA_DIR / "pdfs"
 DATA_DIR_MARKDOWN = DATA_DIR / "markdown"
@@ -76,7 +74,7 @@ LANCEDB_DIR = INDEX_DIR / "lancedb"
 
 INDEX_VERSION_FILE = INDEX_DIR / "index_version.txt"
 SCHEMA_VERSION_FILE = INDEX_DIR / "schema_version.txt"
-_CURRENT_SCHEMA_VERSION = "1"
+_CURRENT_SCHEMA_VERSION = "2"
 
 
 def read_index_version() -> str:

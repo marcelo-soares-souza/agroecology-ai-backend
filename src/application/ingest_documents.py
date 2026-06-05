@@ -287,63 +287,68 @@ class IngestDocuments:
                             "page_end": meta.page_end,
                             "section_title": meta.section_title or "",
                             "block_types": ",".join(meta.block_types),
+                            "document_id": doc_id,
+                            "title": parsed.title or "",
+                            "authors": parsed.authors or "",
+                            "year": parsed.year or 0,
+                            "language": parsed.language or "",
+                            "doi": parsed.doi or "",
+                            "journal": parsed.journal or "",
                         }
                     )
 
-                if not rows:
-                    asyncio.run(self._mark_as_ingested(batch_doc_ids))
-                    log_event(
-                        logger,
-                        logging.INFO,
-                        "ingestion_batch_skipped",
-                        batch=batch_num,
-                        total_batches=len(batches),
-                        documents=len(batch),
-                        reason="no_chunks_generated",
-                    )
-                    continue
-
-                self._embed_rows(rows)
-
-                if force and self._vector_store.index_exists():
-                    for doc_id in batch_doc_ids:
-                        self._vector_store.delete_by_prefix(f"{doc_id}_")
-
-                if not index_initialized:
-                    if force or not self._vector_store.index_exists():
-                        self._vector_store.build_index(
-                            rows, self._embedder.get_dimension()
-                        )
-                    else:
-                        self._vector_store.add_rows(rows)
-                    index_initialized = True
-                else:
-                    self._vector_store.add_rows(rows)
-
+            if not rows:
                 asyncio.run(self._mark_as_ingested(batch_doc_ids))
-                total_chunks += len(rows)
-
                 log_event(
                     logger,
                     logging.INFO,
-                    "ingestion_batch_processed",
+                    "ingestion_batch_skipped",
                     batch=batch_num,
                     total_batches=len(batches),
                     documents=len(batch),
-                    chunks=len(rows),
+                    reason="no_chunks_generated",
                 )
+                continue
+
+            self._embed_rows(rows)
+
+            if force and self._vector_store.index_exists():
+                for doc_id in batch_doc_ids:
+                    self._vector_store.delete_by_prefix(f"{doc_id}_")
+
+            if not index_initialized:
+                if force or not self._vector_store.index_exists():
+                    self._vector_store.build_index(rows, self._embedder.get_dimension())
+                else:
+                    self._vector_store.add_rows(rows)
+                index_initialized = True
+            else:
+                self._vector_store.add_rows(rows)
+
+            asyncio.run(self._mark_as_ingested(batch_doc_ids))
+            total_chunks += len(rows)
 
             log_event(
                 logger,
                 logging.INFO,
                 "ingestion_batch_processed",
-                force=force,
-                total_documents=len(all_docs),
-                new_documents=len(docs_to_process),
-                chunks_generated=total_chunks,
+                batch=batch_num,
+                total_batches=len(batches),
+                documents=len(batch),
+                chunks=len(rows),
             )
 
-            return total_chunks
+        log_event(
+            logger,
+            logging.INFO,
+            "ingestion_all_documents_processed",
+            force=force,
+            total_documents=len(all_docs),
+            new_documents=len(docs_to_process),
+            chunks_generated=total_chunks,
+        )
+
+        return total_chunks
 
     def _embed_rows(self, rows: list[dict]) -> None:
         from src.shared.config import EMBEDDING_BATCH_SIZE

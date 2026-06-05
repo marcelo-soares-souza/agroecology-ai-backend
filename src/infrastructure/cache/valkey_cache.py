@@ -94,20 +94,21 @@ class ValkeyCache(CachePort):  # noqa: F811
         self._reranker_model = reranker_model
         self._top_k = top_k
 
-    def _key(self, question: str) -> str:
+    def _key(self, question: str, top_k: int = 0) -> str:
         normalized = unicodedata.normalize("NFKD", question.lower().strip())
         normalized = "".join(c for c in normalized if not unicodedata.combining(c))
         normalized = re.sub(r"[^\w\s]", "", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
-        payload = f"{normalized}|v{self._index_version}|emb={self._embedding_model}|rerank={self._reranker_model}|k={self._top_k}"
+        effective_top_k = top_k if top_k > 0 else self._top_k
+        payload = f"{normalized}|v{self._index_version}|emb={self._embedding_model}|rerank={self._reranker_model}|k={effective_top_k}"
         h = hashlib.md5(payload.encode()).hexdigest()
         return f"{_KEY_PREFIX}:{self._index_version}:{h}"
 
-    def get(self, question: str) -> dict[str, Any] | None:
+    def get(self, question: str, top_k: int = 0) -> dict[str, Any] | None:
         if not self.enabled or self._client is None:
             return None
         try:
-            raw: Any = self._client.get(self._key(question))
+            raw: Any = self._client.get(self._key(question, top_k))
             if raw:
                 self._client.incr("rag:stats:cache_hits")
                 log_event(logger, logging.INFO, "cache_hit")
@@ -117,12 +118,12 @@ class ValkeyCache(CachePort):  # noqa: F811
         log_event(logger, logging.INFO, "cache_miss")
         return None
 
-    def set(self, question: str, result: dict[str, Any]) -> None:
+    def set(self, question: str, result: dict[str, Any], top_k: int = 0) -> None:
         if not self.enabled or self._client is None:
             return
         try:
             self._client.setex(
-                self._key(question),
+                self._key(question, top_k),
                 self._ttl,
                 json.dumps(result, ensure_ascii=False),
             )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 from rank_bm25 import BM25Okapi
 
@@ -47,15 +48,22 @@ class RetrieverService:
         self._bm25_all_rows = []
         logger.info("bm25_cache_invalidated")
 
-    def hybrid_search(self, query: str, top_k: int = HYBRID_TOP_K) -> list[dict]:
+    def hybrid_search(
+        self,
+        query: str,
+        top_k: int = HYBRID_TOP_K,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict]:
         t0 = time.perf_counter()
 
         t1 = time.perf_counter()
-        vec_results = self._vector_search(query, top_k=SIMILARITY_TOP_K)
+        vec_results = self._vector_search(
+            query, top_k=SIMILARITY_TOP_K, filters=filters
+        )
         t_vec = round((time.perf_counter() - t1) * 1000, 2)
 
         t2 = time.perf_counter()
-        bm25_results = self._bm25_search(query, top_k=BM25_TOP_K)
+        bm25_results = self._bm25_search(query, top_k=BM25_TOP_K, filters=filters)
         t_bm25 = round((time.perf_counter() - t2) * 1000, 2)
 
         if not bm25_results:
@@ -129,22 +137,43 @@ class RetrieverService:
 
         return selected
 
-    def _vector_search(self, query: str, top_k: int) -> list[dict]:
-        query_vec = self._embedder.embed_query(query)
-        return self._vector_store.search(query_vec, top_k=top_k)
+    @staticmethod
+    def _match_filters(row: dict, filters: dict[str, Any]) -> bool:
+        for key, value in filters.items():
+            row_val = row.get(key)
+            if row_val is None:
+                return False
+            if isinstance(value, tuple) and len(value) == 2:
+                if not (value[0] <= row_val <= value[1]):
+                    return False
+            elif row_val != value:
+                return False
+        return True
 
-    def _bm25_search(self, query: str, top_k: int) -> list[dict]:
+    def _vector_search(
+        self, query: str, top_k: int, filters: dict[str, Any] | None = None
+    ) -> list[dict]:
+        query_vec = self._embedder.embed_query(query)
+        return self._vector_store.search(query_vec, top_k=top_k, filters=filters)
+
+    def _bm25_search(
+        self, query: str, top_k: int, filters: dict[str, Any] | None = None
+    ) -> list[dict]:
         bm25, all_rows = self._get_bm25()
         if not all_rows:
             return []
         scores = bm25.get_scores(query.lower().split())
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         results = []
-        for idx, score in indexed[:top_k]:
+        for idx, score in indexed:
             row = dict(all_rows[idx])
+            if filters and not self._match_filters(row, filters):
+                continue
             row["_distance"] = float(score)
             row["_search_type"] = "bm25"
             results.append(row)
+            if len(results) >= top_k:
+                break
         return results
 
     @staticmethod

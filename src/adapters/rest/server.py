@@ -305,7 +305,7 @@ def _process_task(
             sources=result["sources"],
         )
         if should_cache:
-            get_cache().set(question, result)
+            get_cache().set(question, result, top_k)
         log_event(
             logger,
             logging.INFO,
@@ -350,7 +350,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
 
     cache = get_cache()
     should_use_cache = not body.history
-    cached = cache.get(body.question) if should_use_cache else None
+    cached = cache.get(body.question, body.top_k) if should_use_cache else None
     if cached:
         task_id = tasks.create(body.question, body.top_k)
         tasks.update(

@@ -129,6 +129,24 @@ class ExtractMetadata:
                 response_len=len(cleaned),
                 response_preview=cleaned[:200],
             )
+            if not cleaned:
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "metadata_llm_empty_response",
+                )
+                return {
+                    "title": "",
+                    "authors": "",
+                    "doi": heuristics.get("doi", ""),
+                    "year": str(heuristics.get("year", ""))
+                    if heuristics.get("year")
+                    else "",
+                    "journal": "",
+                    "abstract": "",
+                    "keywords": "",
+                    "language": detected_lang,
+                }
             if cleaned.startswith("```"):
                 idx = cleaned.find("\n")
                 if idx != -1:

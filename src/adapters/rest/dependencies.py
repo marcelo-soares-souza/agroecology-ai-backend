@@ -42,14 +42,14 @@ from src.infrastructure.jobs.worker import start_job_worker
 from src.shared.config import (
     CACHE_TTL,
     BM25_TOP_K,
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_BASE_URL,
-    DEEPSEEK_MODEL,
     EMBEDDING_BACKEND,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
     HYBRID_TOP_K,
+    LLM_API_KEY,
+    LLM_BASE_URL,
     LLM_MAX_TOKENS,
+    LLM_MODEL,
     LLM_TEMPERATURE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
@@ -125,9 +125,9 @@ def get_llm() -> LLMPort:
     global _llm
     if _llm is None:
         _llm = OpenAILLM(
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-            model=DEEPSEEK_MODEL,
+            api_key=LLM_API_KEY,
+            base_url=LLM_BASE_URL,
+            model=LLM_MODEL,
             temperature=LLM_TEMPERATURE,
             max_tokens=LLM_MAX_TOKENS,
         )
@@ -136,8 +136,8 @@ def get_llm() -> LLMPort:
             logging.INFO,
             "llm_initialized",
             provider="openai_compatible",
-            model=DEEPSEEK_MODEL,
-            base_url=DEEPSEEK_BASE_URL,
+            model=LLM_MODEL,
+            base_url=LLM_BASE_URL,
         )
     return _llm
 

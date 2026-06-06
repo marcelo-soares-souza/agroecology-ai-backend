@@ -10,9 +10,9 @@ logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 load_dotenv()
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:14b")
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "sentence_transformer")

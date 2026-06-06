@@ -7,8 +7,8 @@ A Retrieval-Augmented Generation (RAG) system specialized in agroecological know
 This project allows you to build a question-answering system over your own agroecology documents. You feed it PDFs, Markdown files, or web pages about topics like agroforestry, sustainable soil management, biodiversity, family farming, food sovereignty, and traditional knowledge — and it answers questions using only the information contained in those documents.
 
 It supports two operation modes:
+- **Local** (default): Ollama for both LLM and embeddings — everything runs on your hardware
 - **Cloud**: DeepSeek as the LLM, BAAI/bge-m3 embeddings loaded locally
-- **Local**: Ollama for both LLM and embeddings — everything runs on your hardware
 
 Vector storage uses **LanceDB** (embedded, local, no server needed).
 
@@ -180,9 +180,9 @@ All settings can be overridden via environment variables in `.env`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | — | LLM API key (use `ollama` for local) |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | LLM API endpoint |
-| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | LLM model name |
+| `LLM_API_KEY` | `ollama` | API key for OpenAI-compatible provider |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM API endpoint |
+| `LLM_MODEL` | `qwen3:14b` | LLM model name |
 | `EMBEDDING_BACKEND` | `sentence_transformer` | `sentence_transformer` or `ollama` |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | HuggingFace model (ST backend) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server (Ollama backend) |

@@ -6,7 +6,7 @@ RAG (Retrieval-Augmented Generation) backend for the Agroecology Map AI platform
 
 ```bash
 cd backend
-cp .env.example .env                  # edit .env with your API key
+cp .env.example .env                  # edit .env with your LLM config
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python main.py db:migrate              # create database and run migrations
@@ -14,29 +14,29 @@ python main.py db:migrate              # create database and run migrations
 python main.py serve                  # http://localhost:8000 (Swagger: /docs)
 ```
 
-## LLM Backend (DeepSeek vs Ollama)
+## LLM Backend (Ollama vs DeepSeek)
 
 The LLM client uses the OpenAI-compatible API. Switch by changing `.env`:
 
-### DeepSeek Cloud (default)
+### Ollama Local (default)
 
 ```env
-DEEPSEEK_API_KEY=sk-your-api-key-here
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-DEEPSEEK_MODEL=deepseek-v4-flash
+LLM_API_KEY=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=qwen3:14b
 ```
 
-### Ollama Local
-
-```env
-DEEPSEEK_API_KEY=ollama
-DEEPSEEK_BASE_URL=http://localhost:11434/v1
-DEEPSEEK_MODEL=qwen3:14b
-```
-
-Make sure the Ollama model is pulled: `ollama pull qwen3:14b`
+Make sure the model is pulled first: `ollama pull qwen3:14b`
 
 Any Ollama model works — qwen, llama, mistral, deepseek-r1, phi, etc.
+
+### DeepSeek Cloud
+
+```env
+LLM_API_KEY=sk-your-api-key-here
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-v4-flash
+```
 
 ## Embedding Backend (SentenceTransformer vs Ollama)
 
@@ -70,9 +70,9 @@ Pull the model first: `ollama pull nomic-embed-text`
 You can mix backends — e.g., Ollama for the LLM + SentenceTransformer for embeddings:
 
 ```env
-DEEPSEEK_API_KEY=ollama
-DEEPSEEK_BASE_URL=http://localhost:11434/v1
-DEEPSEEK_MODEL=qwen3:14b
+LLM_API_KEY=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=qwen3:14b
 # EMBEDDING_BACKEND defaults to sentence_transformer
 ```
 
@@ -106,7 +106,7 @@ cd ../infra
 docker compose up -d --build
 ```
 
-Starts PostgreSQL 18, Valkey 9, and the backend. Migrations run automatically on startup.
+Starts PostgreSQL 18, Valkey 9, Ollama, and the backend. Migrations run automatically on startup.
 
 ## Project Structure
 
@@ -140,9 +140,9 @@ See `.env.example` for all variables with comments. Key ones:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPSEEK_API_KEY` | — | API key (or `ollama` for local) |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | LLM API endpoint |
-| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | LLM model name |
+| `LLM_API_KEY` | `ollama` | API key for OpenAI-compatible provider |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM API endpoint |
+| `LLM_MODEL` | `qwen3:14b` | LLM model name |
 | `EMBEDDING_BACKEND` | `sentence_transformer` | `sentence_transformer` or `ollama` |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | HuggingFace model (ST backend) |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Ollama model (Ollama backend) |

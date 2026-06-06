@@ -30,6 +30,9 @@ class SentenceTransformerReranker(RerankerPort):
                 self._model.model.to(self._device)  # type: ignore[arg-type,union-attr]
         return self._model
 
+    def initialize(self) -> None:
+        self._load_model()
+
     def rerank(self, query: str, documents: list[dict], top_k: int) -> list[dict]:
         if not documents:
             return []

@@ -10,11 +10,11 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import FileResponse, JSONResponse
 
 from src.adapters.rest.dependencies import (
     get_cache,
-    get_embedder,
     get_extract_metadata,
     get_ingest,
     get_ingestion_repo,
@@ -24,6 +24,11 @@ from src.adapters.rest.dependencies import (
     get_status_service,
     init_services,
     shutdown_services,
+)
+from src.adapters.rest.openapi_docs import (
+    APP_DESCRIPTION,
+    TAGS_METADATA,
+    apply_openapi_docs,
 )
 from src.adapters.rest.admin_routes import router as admin_router
 from src.adapters.rest.auth_middleware import get_current_user, require_role
@@ -219,7 +224,6 @@ def _serialize_doc(doc) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_embedder()
     await init_services()
     tasks.start_cleanup()
     yield
@@ -229,8 +233,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Agroecology Map AI",
+    description=APP_DESCRIPTION,
     version="1.0.0",
     lifespan=lifespan,
+    openapi_tags=TAGS_METADATA,
 )
 
 app.add_middleware(
@@ -243,6 +249,19 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+
+
+@app.get("/api/v1/openapi.json", include_in_schema=False)
+async def openapi_json():
+    return JSONResponse(app.openapi())
+
+
+@app.get("/api/v1/docs", include_in_schema=False)
+async def swagger_docs():
+    return get_swagger_ui_html(
+        openapi_url="/api/v1/openapi.json",
+        title="Agroecology Map AI - Swagger UI",
+    )
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
@@ -876,3 +895,6 @@ async def delete_one_document(
     )
 
     return _serialize_doc(doc)
+
+
+apply_openapi_docs(app)

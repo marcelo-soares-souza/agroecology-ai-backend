@@ -194,6 +194,20 @@ def get_reranker() -> RerankerPort | None:
     return _reranker
 
 
+def initialize_reranker() -> RerankerPort | None:
+    reranker = get_reranker()
+    if isinstance(reranker, SentenceTransformerReranker):
+        reranker.initialize()
+        log_event(
+            logger,
+            logging.INFO,
+            "reranker_model_loaded",
+            model=RERANK_MODEL,
+            device=RERANK_DEVICE,
+        )
+    return reranker
+
+
 def get_retriever() -> RetrieverService:
     global _retriever
     if _retriever is None:
@@ -263,6 +277,11 @@ async def init_services() -> None:
         valkey_url=VALKEY_URL,
     )
 
+    get_embedder()
+    get_llm()
+    get_cache()
+    initialize_reranker()
+
     if _doc_repo is None:
         _doc_repo = PostgresDocumentRepository()
         await _doc_repo.initialize()
@@ -300,6 +319,10 @@ async def init_services() -> None:
         _queue.open()
         start_job_worker(_queue)
         log_event(logger, logging.INFO, "job_worker_initialized")
+
+    get_retriever()
+    get_ask_question()
+    get_extract_metadata()
 
     log_event(logger, logging.INFO, "services_init_completed")
 

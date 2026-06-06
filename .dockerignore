@@ -1,0 +1,10 @@
+.env
+.env.*
+.git
+.mypy_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+data
+index

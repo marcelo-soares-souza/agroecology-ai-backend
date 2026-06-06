@@ -45,6 +45,15 @@ class StatusResponse(BaseModel):
     pending_docs: int = 0
     indexed_docs: int = 0
     total_docs: int = 0
+    embedding_model: str
+    embedding_device: str
+    similarity_top_k: int
+    bm25_top_k: int
+    hybrid_top_k: int
+    reranker_enabled: bool
+    reranker_model: str | None = None
+    reranker_device: str | None = None
+    rerank_top_k: int
     last_ingestion: IngestionRunSchema | None = None
 
 

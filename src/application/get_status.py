@@ -5,7 +5,18 @@ from src.domain.ports.cache_port import CachePort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
-from src.shared.config import check_schema_version, read_index_version
+from src.shared.config import (
+    BM25_TOP_K,
+    EMBEDDING_DEVICE,
+    EMBEDDING_MODEL,
+    HYBRID_TOP_K,
+    RERANK_DEVICE,
+    RERANK_MODEL,
+    RERANK_TOP_K,
+    SIMILARITY_TOP_K,
+    check_schema_version,
+    read_index_version,
+)
 
 
 class GetStatus:
@@ -61,5 +72,14 @@ class GetStatus:
             "pending_docs": pending_docs,
             "indexed_docs": indexed_docs,
             "total_docs": total_docs,
+            "embedding_model": EMBEDDING_MODEL,
+            "embedding_device": EMBEDDING_DEVICE,
+            "similarity_top_k": SIMILARITY_TOP_K,
+            "bm25_top_k": BM25_TOP_K,
+            "hybrid_top_k": HYBRID_TOP_K,
+            "reranker_enabled": bool(RERANK_MODEL),
+            "reranker_model": RERANK_MODEL or None,
+            "reranker_device": RERANK_DEVICE if RERANK_MODEL else None,
+            "rerank_top_k": RERANK_TOP_K,
             "last_ingestion": last_ingestion,
         }

@@ -7,7 +7,7 @@ from pathlib import Path
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
-from src.shared.config import HYBRID_TOP_K, SYSTEM_PROMPT, USER_PROMPT
+from src.shared.config import RERANK_TOP_K, SYSTEM_PROMPT, USER_PROMPT
 from src.shared.logging_utils import log_event
 
 _CONTEXT_DEPENDENT_PATTERNS = (
@@ -77,7 +77,7 @@ class AskQuestion:
             logging.INFO,
             "rag_question_started",
             question_chars=len(question),
-            top_k=top_k or HYBRID_TOP_K,
+            top_k=top_k or RERANK_TOP_K,
             history_messages=len(history or []),
             follow_up_detected=follow_up,
         )
@@ -86,7 +86,7 @@ class AskQuestion:
             search_query = self._query_rewriter.rewrite(question, history)
         retrieved = self._retriever.hybrid_search(
             search_query,
-            top_k=top_k or HYBRID_TOP_K,
+            top_k=top_k or RERANK_TOP_K,
         )
 
         # Enrich chunks with document metadata from title_map

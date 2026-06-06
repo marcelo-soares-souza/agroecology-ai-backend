@@ -13,7 +13,6 @@ from src.shared.config import (
     BM25_TOP_K,
     HYBRID_TOP_K,
     MMR_LAMBDA,
-    RERANK_TOP_K,
     SIMILARITY_TOP_K,
 )
 
@@ -51,7 +50,7 @@ class RetrieverService:
     def hybrid_search(
         self,
         query: str,
-        top_k: int = HYBRID_TOP_K,
+        top_k: int,
         filters: dict[str, Any] | None = None,
     ) -> list[dict]:
         t0 = time.perf_counter()
@@ -80,20 +79,23 @@ class RetrieverService:
 
         if self._reranker is not None:
             t4 = time.perf_counter()
-            candidates = fused[:top_k]
-            results = self._reranker.rerank(query, candidates, RERANK_TOP_K)
+            candidate_count = max(HYBRID_TOP_K, top_k)
+            candidates = fused[:candidate_count]
+            results = self._reranker.rerank(query, candidates, top_k)
             t_rerank = round((time.perf_counter() - t4) * 1000, 2)
         else:
+            candidate_count = 0
             results = fused[:top_k]
             t_rerank = 0
 
         total_ms = round((time.perf_counter() - t0) * 1000, 2)
         unique_docs = len({r.get("source", "") for r in results})
         logger.info(
-            "retrieval_completed step=hybrid vector_count=%d bm25_count=%d rrf_candidates=%d final_count=%d unique_docs=%d vec_ms=%s bm25_ms=%s rrf_ms=%s rerank_ms=%s total_ms=%s",
+            "retrieval_completed step=hybrid vector_count=%d bm25_count=%d rrf_candidates=%d rerank_candidates=%d final_count=%d unique_docs=%d vec_ms=%s bm25_ms=%s rrf_ms=%s rerank_ms=%s total_ms=%s",
             len(vec_results),
             len(bm25_results),
             len(fused),
+            candidate_count,
             len(results),
             unique_docs,
             t_vec,

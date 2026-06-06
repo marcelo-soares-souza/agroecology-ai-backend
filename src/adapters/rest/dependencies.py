@@ -41,6 +41,7 @@ from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.infrastructure.jobs.worker import start_job_worker
 from src.shared.config import (
     CACHE_TTL,
+    BM25_TOP_K,
     DEEPSEEK_API_KEY,
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL,
@@ -54,7 +55,12 @@ from src.shared.config import (
     OLLAMA_EMBEDDING_MODEL,
     RERANK_DEVICE,
     RERANK_MODEL,
+    RERANK_TOP_K,
+    SIMILARITY_TOP_K,
     VALKEY_URL,
+    WORKER_BATCH_SIZE,
+    WORKER_MAX_WORKERS,
+    WORKER_POLL_INTERVAL,
     read_index_version,
 )
 from src.shared.logging_utils import log_event
@@ -237,6 +243,25 @@ async def init_services() -> None:
         _get_status
 
     log_event(logger, logging.INFO, "services_init_started")
+    log_event(
+        logger,
+        logging.INFO,
+        "rag_config_loaded",
+        embedding_backend=EMBEDDING_BACKEND,
+        embedding_device=EMBEDDING_DEVICE,
+        embedding_model=EMBEDDING_MODEL,
+        similarity_top_k=SIMILARITY_TOP_K,
+        bm25_top_k=BM25_TOP_K,
+        hybrid_top_k=HYBRID_TOP_K,
+        reranker_enabled=bool(RERANK_MODEL),
+        reranker_model=RERANK_MODEL or "disabled",
+        reranker_device=RERANK_DEVICE if RERANK_MODEL else "disabled",
+        rerank_top_k=RERANK_TOP_K,
+        worker_poll_interval=WORKER_POLL_INTERVAL,
+        worker_batch_size=WORKER_BATCH_SIZE,
+        worker_max_workers=WORKER_MAX_WORKERS,
+        valkey_url=VALKEY_URL,
+    )
 
     if _doc_repo is None:
         _doc_repo = PostgresDocumentRepository()

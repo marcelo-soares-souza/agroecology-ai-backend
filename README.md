@@ -23,12 +23,18 @@ The LLM client uses the OpenAI-compatible API. Switch by changing `.env`:
 ```env
 LLM_API_KEY=ollama
 LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=qwen3:14b
+LLM_MODEL=qwen3:4b
 ```
 
-Make sure the model is pulled first: `ollama pull qwen3:14b`
+Make sure the model is pulled first: `ollama pull qwen3:4b`
 
 Any Ollama model works — qwen, llama, mistral, deepseek-r1, phi, etc.
+
+Model size matters for local Ollama. The default `qwen3:4b` is a practical
+choice for a 6 GB VRAM GPU and RAG prompts. Smaller models such as 0.5B/1B run
+faster but often produce weaker answers. 7B/8B models may work on 6 GB VRAM,
+but can be slower or partially offloaded to system RAM. 14B+ models generally
+need more VRAM/RAM and are not recommended for small local GPUs.
 
 ### DeepSeek Cloud
 
@@ -72,7 +78,7 @@ You can mix backends — e.g., Ollama for the LLM + SentenceTransformer for embe
 ```env
 LLM_API_KEY=ollama
 LLM_BASE_URL=http://localhost:11434/v1
-LLM_MODEL=qwen3:14b
+LLM_MODEL=qwen3:4b
 # EMBEDDING_BACKEND defaults to sentence_transformer
 ```
 
@@ -142,19 +148,20 @@ See `.env.example` for all variables with comments. Key ones:
 |----------|---------|-------------|
 | `LLM_API_KEY` | `ollama` | API key for OpenAI-compatible provider |
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM API endpoint |
-| `LLM_MODEL` | `qwen3:14b` | LLM model name |
+| `LLM_MODEL` | `qwen3:4b` | LLM model name. Choose according to local VRAM/RAM |
 | `EMBEDDING_BACKEND` | `sentence_transformer` | `sentence_transformer` or `ollama` |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | HuggingFace model (ST backend) |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Ollama model (Ollama backend) |
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL connection |
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
 | `CHUNK_OVERLAP` | `100` | Overlap between chunks |
-| `SIMILARITY_TOP_K` | `30` | Vector candidates retrieved before fusion |
-| `BM25_TOP_K` | `30` | BM25 candidates retrieved before fusion |
-| `HYBRID_TOP_K` | `30` | Fused candidates sent to the reranker (or returned directly when reranker is disabled) |
+| `SIMILARITY_TOP_K` | `20` | Vector candidates retrieved before fusion |
+| `BM25_TOP_K` | `20` | BM25 candidates retrieved before fusion |
+| `HYBRID_TOP_K` | `10` | Fused candidates sent to the reranker (or returned directly when reranker is disabled) |
 | `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking. Leave empty to disable |
-| `RERANK_TOP_K` | `6` | Final chunks sent to the LLM after cross-encoder reranking |
-| API `top_k` default | `6` | Fallback final chunks when API doesn't specify `top_k` |
+| `RERANK_DEVICE` | `cpu` | Reranker device. Keep CPU on small GPUs to avoid competing with Ollama |
+| `RERANK_TOP_K` | `5` | Final chunks sent to the LLM after cross-encoder reranking |
+| API `top_k` default | `5` | Fallback final chunks when API doesn't specify `top_k` |
 
 ## Retrieval Tuning Rationale
 
@@ -172,23 +179,23 @@ The current retrieval defaults are tuned for a scientific RAG corpus built from 
 - The higher overlap reduces the chance that a key sentence is isolated without the qualifier, limitation, or definition that gives it proper meaning.
 - This is especially useful for results, caveats, and terminology-heavy sections.
 
-### Why `SIMILARITY_TOP_K=30` and `BM25_TOP_K=30`
+### Why `SIMILARITY_TOP_K=20` and `BM25_TOP_K=20`
 
 - Widens the retrieval funnel to capture semantic nuances and terminology-heavy passages alike.
 - Vector search helps recover semantically related passages that cosine distance alone might rank lower.
 - BM25 helps recover terminology-heavy passages, exact species names, concepts, and uncommon technical expressions.
-- `30` per retriever gives the fusion stage rich material without excessive noise — the reranker handles precision downstream.
+- `20` per retriever gives the fusion stage useful recall while keeping CPU reranking practical on local machines.
 
-### Why `HYBRID_TOP_K=30`
+### Why `HYBRID_TOP_K=10`
 
 - The RRF-fused candidate pool fed into the cross-encoder reranker.
-- `30` provides enough candidate diversity for the reranker to distinguish truly relevant passages from borderline ones.
+- `10` keeps the CPU cross-encoder cost bounded. In local testing, 30 candidates can add tens of seconds per question.
 - When the reranker is disabled, this value becomes the final output sent to the LLM.
 
-### Why `RERANK_TOP_K=6`
+### Why `RERANK_TOP_K=5`
 
-- Controls the final context precision: only the top 6 reranked chunks reach the LLM.
-- `6` is a practical balance for scientific question answering:
+- Controls the final context precision: only the top 5 reranked chunks reach the LLM.
+- `5` is a practical balance for scientific question answering:
   - enough room for complementary evidence;
   - low enough to avoid flooding the prompt with marginal chunks;
   - tighter focus improves factual synthesis and reduces hallucination.
@@ -201,6 +208,10 @@ When `RERANK_MODEL` is set, the cross-encoder re-ranks the top `HYBRID_TOP_K` fu
 - **Disabled** (`RERANK_MODEL=""`): falls back to simple RRF fusion, returning top `HYBRID_TOP_K` directly.
 
 Recommended model: `BAAI/bge-reranker-v2-m3` (multilingual, same family as the BGE embedding model).
+
+For small local GPUs, especially 6 GB VRAM, keep `RERANK_DEVICE=cpu` and let
+Ollama use the GPU for the LLM. Moving both the LLM and reranker to GPU can
+cause VRAM contention, fallback to CPU/RAM, or CUDA out-of-memory errors.
 
 ### Practical tradeoff
 

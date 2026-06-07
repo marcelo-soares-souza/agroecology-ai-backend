@@ -4,7 +4,9 @@ from src.domain.ports.pdf_text_extractor_port import PdfTextExtractorPort
 
 
 class PyMuPdfTextExtractor(PdfTextExtractorPort):
-    def extract_first_pages_text(self, content: bytes, max_pages: int = 3) -> str | None:
+    def extract_first_pages_text(
+        self, content: bytes, max_pages: int = 3
+    ) -> str | None:
         import fitz
 
         pdf_doc = None

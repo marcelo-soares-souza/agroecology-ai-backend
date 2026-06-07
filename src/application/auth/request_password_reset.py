@@ -3,36 +3,49 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from src.domain.dto.message_result import MessageResult
+from src.domain.ports.auth_services_port import EmailPort, PasswordHasherPort
 from src.domain.ports.user_repository import UserRepository
-from src.infrastructure.auth.password_hasher import generate_token, hash_token
-from src.infrastructure.email.smtp_service import send_reset_email
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
 
 
 class RequestPasswordReset:
-    def __init__(self, repo: UserRepository) -> None:
+    def __init__(
+        self,
+        repo: UserRepository,
+        password_hasher: PasswordHasherPort,
+        email_service: EmailPort,
+    ) -> None:
         self._repo = repo
+        self._password_hasher = password_hasher
+        self._email_service = email_service
 
-    async def execute(self, email: str) -> dict:
+    async def execute(self, email: str) -> MessageResult:
         user = await self._repo.get_by_email(email)
         if not user:
             raise ValueError("Email not found")
 
-        token = generate_token()
-        token_hash = hash_token(token)
+        token = self._password_hasher.generate_token()
+        token_hash = self._password_hasher.hash_token(token)
         exp = datetime.now(timezone.utc) + timedelta(hours=1)
-        await self._repo.create_confirmation(user.id, token_hash, exp)
+        await self._repo.create_confirmation(
+            user.id, token_hash, exp, purpose="password_reset"
+        )
 
         try:
             import asyncio
 
             asyncio.create_task(
-                send_reset_email(user.email, token, user.locale or "pt-BR")
+                self._email_service.send_reset_email(
+                    user.email, token, user.locale or "pt-BR"
+                )
             )
-        except Exception:
-            pass
+        except Exception as e:
+            log_event(
+                logger, logging.WARNING, "password_reset_email_failed", error=str(e)
+            )
 
         log_event(
             logger,
@@ -41,4 +54,4 @@ class RequestPasswordReset:
             email=mask_email(user.email),
         )
 
-        return {"message": "Password reset email sent"}
+        return MessageResult(message="Password reset email sent")

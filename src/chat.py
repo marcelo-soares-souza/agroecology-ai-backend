@@ -71,10 +71,10 @@ def chat() -> None:
                     history=history,
                 )
                 elapsed = time.time() - start
-                used = result["sources"][:top_k]
+                used = result.sources[:top_k]
 
                 console.print()
-                answer = result["answer"]
+                answer = result.answer
                 console.print(answer)
                 console.print(f"[dim]({elapsed:.2f}s)[/dim]")
 
@@ -84,8 +84,8 @@ def chat() -> None:
                 if used:
                     console.print("\n[dim]Sources:[/dim]")
                     for i, src in enumerate(used, 1):
-                        meta = src.get("metadata", {})
-                        score = src.get("score", 0.0)
+                        meta = src.metadata
+                        score = src.score
                         source_file = meta.get("source", "unknown")
                         stype = meta.get("search_type", "?")
                         console.print(

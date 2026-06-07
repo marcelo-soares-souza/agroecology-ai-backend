@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -190,18 +191,18 @@ def _process_task(
         get_task_manager().update(
             task_id,
             status="done",
-            answer=result["answer"],
-            sources=result["sources"],
+            answer=result.answer,
+            sources=[s.__dict__ for s in result.sources],
         )
         if should_cache:
-            get_cache().set(question, result, top_k)
+            get_cache().set(question, result.to_cache_dict(), top_k)
         log_event(
             logger,
             logging.INFO,
             "ask_task_completed",
             task_id=task_id,
-            retrieved_sources=len(result["sources"]),
-            answer_chars=len(result["answer"]),
+            retrieved_sources=len(result.sources),
+            answer_chars=len(result.answer),
             cached=should_cache,
         )
     except Exception as e:
@@ -312,7 +313,7 @@ async def status(current_user: User = Depends(get_current_user)):
     if use_case is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     data = await use_case.execute(get_task_manager().active_count())
-    return StatusResponse(**data)
+    return StatusResponse(**asdict(data))
 
 
 # ── ingest ────────────────────────────────────────────────────────────────
@@ -418,23 +419,23 @@ async def upload_documents(
 
         uploaded.append(
             DocumentUploaded(
-                id=result["id"],
-                filename=result["filename"],
-                directory=result["directory"],
-                size=result["size"],
+                id=result.id,
+                filename=result.filename,
+                directory=result.directory,
+                size=result.size,
             )
         )
 
-        if result["should_extract_metadata"]:
-            uploaded_pdf_ids.append(result["id"])
+        if result.should_extract_metadata:
+            uploaded_pdf_ids.append(result.id)
 
     if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
         try:
             queue = get_queue()
             for pdf_id in uploaded_pdf_ids:
                 queue.enqueue("document.extract_metadata", {"document_id": pdf_id})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("metadata_enqueue_failed error=%s", e)
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 

@@ -24,13 +24,31 @@ Swagger: `http://localhost:8000/docs`
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | List ingestion run history |
 | `GET` | `/api/v1/ingestion/runs/{id}` | Get ingestion run details |
-| `POST` | `/api/v1/documents` | Upload files (PDF, MD) |
+| `POST` | `/api/v1/documents` | Upload files (PDF, MD, TXT) |
 | `GET` | `/api/v1/documents` | List all documents |
 | `GET` | `/api/v1/documents/{id}` | Get document by ID |
 | `PUT` | `/api/v1/documents/{id}` | Update document metadata |
+| `GET` | `/api/v1/documents/{id}/view` | View PDF inline |
 | `GET` | `/api/v1/documents/{id}/download` | Download original file |
+| `POST` | `/api/v1/documents/{id}/extract-metadata` | Extract title/authors from PDF |
+| `POST` | `/api/v1/documents/extract-all-metadata` | Enqueue metadata extraction for all PDFs |
 | `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
 | `POST` | `/api/v1/ingest?force=true` | Full index rebuild |
+| `GET` | `/api/v1/auth/human-challenge` | Get anti-bot challenge |
+| `POST` | `/api/v1/auth/register` | Register new user |
+| `POST` | `/api/v1/auth/confirm-email` | Confirm email with token |
+| `POST` | `/api/v1/auth/confirm-email/resend` | Resend confirmation email |
+| `POST` | `/api/v1/auth/login` | Login (returns tokens) |
+| `POST` | `/api/v1/auth/refresh` | Refresh access token |
+| `POST` | `/api/v1/auth/logout` | Revoke all refresh tokens |
+| `POST` | `/api/v1/auth/password-reset/request` | Request password reset |
+| `POST` | `/api/v1/auth/password-reset/confirm` | Reset password with token |
+| `GET` | `/api/v1/auth/me` | Get current user |
+| `GET` | `/api/v1/auth/users/by-slug/{slug}` | Lookup user by slug |
+| `GET` | `/api/v1/admin/users` | List users (admin) |
+| `GET` | `/api/v1/admin/users/{id}` | Get user (admin) |
+| `PUT` | `/api/v1/admin/users/{id}` | Update user + role (admin) |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin) |
 
 ---
 

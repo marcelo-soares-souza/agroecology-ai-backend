@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
+from src.domain.dto.document_result import MetadataResult
 from src.domain.ports.llm_port import LLMPort
 from src.shared.logging_utils import log_event
 
@@ -31,7 +32,7 @@ class ExtractMetadata:
     def __init__(self, llm: LLMPort) -> None:
         self._llm = llm
 
-    def execute(self, first_page_text: str) -> dict[str, str]:
+    def execute(self, first_page_text: str) -> MetadataResult:
         text = first_page_text.strip()
         if not text or len(text) < 50:
             log_event(
@@ -41,7 +42,7 @@ class ExtractMetadata:
                 reason="insufficient_text",
                 text_chars=len(text),
             )
-            return {"title": "", "authors": ""}
+            return MetadataResult(title="", authors="")
 
         truncated = text[:6000]
 
@@ -73,7 +74,7 @@ class ExtractMetadata:
                     logging.ERROR,
                     "metadata_llm_empty_response",
                 )
-                return {"title": "", "authors": ""}
+                return MetadataResult(title="", authors="")
             if cleaned.startswith("```"):
                 idx = cleaned.find("\n")
                 if idx != -1:
@@ -81,17 +82,17 @@ class ExtractMetadata:
                 if cleaned.endswith("```"):
                     cleaned = cleaned[:-3]
             result = json.loads(cleaned.strip())
-            extracted = {
-                "title": str(result.get("title", "") or "").strip(),
-                "authors": str(result.get("authors", "") or "").strip(),
-            }
+            extracted = MetadataResult(
+                title=str(result.get("title", "") or "").strip(),
+                authors=str(result.get("authors", "") or "").strip(),
+            )
 
             log_event(
                 logger,
                 logging.INFO,
                 "metadata_extraction_completed",
-                has_title=bool(extracted["title"]),
-                has_authors=bool(extracted["authors"]),
+                has_title=bool(extracted.title),
+                has_authors=bool(extracted.authors),
             )
             return extracted
         except json.JSONDecodeError as exc:
@@ -102,7 +103,7 @@ class ExtractMetadata:
                 error=str(exc),
                 raw_preview=cleaned[:300] if "cleaned" in dir() else "",
             )
-            return {"title": "", "authors": ""}
+            return MetadataResult(title="", authors="")
         except Exception as exc:
             log_event(
                 logger,
@@ -111,4 +112,4 @@ class ExtractMetadata:
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            return {"title": "", "authors": ""}
+            return MetadataResult(title="", authors="")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.domain.dto.user_dto import UserDTO
 from src.domain.ports.user_repository import UserRepository
 
 
@@ -15,7 +16,7 @@ class UpdateUser:
         status: str | None = None,
         locale: str | None = None,
         role_key: str | None = None,
-    ) -> dict | None:
+    ) -> UserDTO | None:
         kwargs = {}
         if full_name is not None:
             kwargs["full_name"] = full_name
@@ -37,20 +38,4 @@ class UpdateUser:
         if not user:
             return None
 
-        return {
-            "id": user.id,
-            "email": user.email,
-            "full_name": user.full_name,
-            "status": user.status,
-            "slug": user.slug,
-            "locale": user.locale,
-            "roles": user.roles or [],
-            "email_confirmed_at": user.email_confirmed_at.isoformat()
-            if user.email_confirmed_at
-            else None,
-            "last_login_at": user.last_login_at.isoformat()
-            if user.last_login_at
-            else None,
-            "created_at": user.created_at.isoformat(),
-            "updated_at": user.updated_at.isoformat(),
-        }
+        return UserDTO.from_user(user)

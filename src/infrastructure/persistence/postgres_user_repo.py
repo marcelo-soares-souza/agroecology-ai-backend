@@ -170,21 +170,27 @@ class PostgresUserRepository(UserRepository):
                 )
 
     async def create_confirmation(
-        self, user_id: str, token_hash: str, expires_at
+        self,
+        user_id: str,
+        token_hash: str,
+        expires_at,
+        purpose: str = "email_confirmation",
     ) -> None:
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "INSERT INTO email_confirmations (id, user_id, token_hash, expires_at) VALUES (%s,%s,%s,%s)",
-                    (uuid7(), user_id, token_hash, expires_at),
+                    "INSERT INTO email_confirmations (id, user_id, token_hash, expires_at, purpose) VALUES (%s,%s,%s,%s,%s)",
+                    (uuid7(), user_id, token_hash, expires_at, purpose),
                 )
 
-    async def get_confirmation(self, token_hash: str) -> dict | None:
+    async def get_confirmation(
+        self, token_hash: str, purpose: str = "email_confirmation"
+    ) -> dict | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM email_confirmations WHERE token_hash = %s AND confirmed_at IS NULL",
-                    (token_hash,),
+                    "SELECT * FROM email_confirmations WHERE token_hash = %s AND confirmed_at IS NULL AND purpose = %s",
+                    (token_hash, purpose),
                 )
                 row = await cur.fetchone()
                 return dict(row) if row else None

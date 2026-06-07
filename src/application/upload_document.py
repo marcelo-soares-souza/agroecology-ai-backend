@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+from src.domain.dto.document_result import UploadDocumentResult
 from src.domain.models.document import DocumentCreate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
@@ -28,7 +29,7 @@ class UploadDocument:
         title: str | None = None,
         authors: str | None = None,
         url: str | None = None,
-    ) -> dict:
+    ) -> UploadDocumentResult:
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         ext = f".{ext}"
 
@@ -65,11 +66,11 @@ class UploadDocument:
         )
         created = await self._repo.insert(doc)
 
-        return {
-            "id": created.id,
-            "filename": created.filename,
-            "directory": created.directory,
-            "size": created.file_size,
-            "file_type": created.file_type,
-            "should_extract_metadata": file_type == "pdf",
-        }
+        return UploadDocumentResult(
+            id=created.id,
+            filename=created.filename,
+            directory=created.directory,
+            size=created.file_size,
+            file_type=created.file_type,
+            should_extract_metadata=file_type == "pdf",
+        )

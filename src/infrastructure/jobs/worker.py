@@ -6,13 +6,16 @@ import logging
 import threading
 from typing import Callable, Protocol
 
+from src.domain.dto.document_result import MetadataExtractionResult
+
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.shared.logging_utils import log_event
 
 logger = logging.getLogger(__name__)
 
+
 class MetadataExtractionUseCase(Protocol):
-    async def execute(self, doc_id: str) -> dict | None:
+    async def execute(self, doc_id: str) -> MetadataExtractionResult | None:
         pass
 
 
@@ -37,6 +40,7 @@ def _handle_extract_metadata(
     log_event(logger, logging.INFO, "metadata_job_started", document_id=doc_id)
 
     try:
+
         async def _run():
             if metadata_use_case is None:
                 log_event(
@@ -55,8 +59,8 @@ def _handle_extract_metadata(
                     logging.INFO,
                     "metadata_job_completed",
                     document_id=doc_id,
-                    has_title=bool(result.get("title")),
-                    has_authors=bool(result.get("authors")),
+                    has_title=bool(result.title),
+                    has_authors=bool(result.authors),
                 )
             else:
                 log_event(

@@ -1,16 +1,67 @@
 # Agroecology Map AI — Backend Documentation
 
-A Retrieval-Augmented Generation (RAG) system specialized in agroecological knowledge, with pluggable LLM and embedding backends.
+A Retrieval-Augmented Generation (RAG) system specialized in agroecological knowledge, built with hexagonal architecture (Clean Architecture).
 
-## What is this?
+## Architecture
 
-This project allows you to build a question-answering system over your own agroecology documents. You feed it PDFs, Markdown files, or web pages about topics like agroforestry, sustainable soil management, biodiversity, family farming, food sovereignty, and traditional knowledge — and it answers questions using only the information contained in those documents.
+```
+adapters/          Protocol translation (HTTP, CLI)
+├── rest/          FastAPI routes, schemas, auth middleware
+├── cli/           CLI adapter (future)
 
-It supports two operation modes:
-- **Local** (default): Ollama for both LLM and embeddings — everything runs on your hardware
-- **Cloud**: DeepSeek as the LLM, BAAI/bge-m3 embeddings loaded locally
+application/       Use cases (orchestrate domain + ports)
+├── auth/          RegisterUser, LoginUser, RefreshToken, etc.
+├── admin/         ListUsers, GetUser, UpdateUser, DeleteUser
+├── ask_question.py
+├── ingest_documents.py
+├── manage_documents.py
+├── upload_document.py
+├── extract_document_metadata.py
+└── extract_metadata.py
 
-Vector storage uses **LanceDB** (embedded, local, no server needed).
+domain/            Pure business logic
+├── dto/           UserDTO, AnswerResult, SourceResult, LoginResult
+├── models/        User, Document, IngestionRun, ParsedDocument
+├── ports/         Abstract interfaces (repositories, vector store, LLM, cache, storage)
+└── services/      RetrieverService, chunker
+
+infrastructure/    Concrete implementations
+├── ai/            OpenAILLM, OllamaEmbedder, SentenceTransformer*, reranker
+├── auth/          JWT handler, password hasher, human challenge
+├── cache/         ValkeyCache
+├── email/         SMTP email sender
+├── jobs/          Job worker (background metadata extraction)
+├── loaders/       LocalDocumentLoader (file scanning + parsing)
+├── parsers/       PyMuPdfParser, MarkdownParser, TextParser
+├── persistence/   PostgresDocumentRepo, PostgresUserRepo, QueueRepository, LanceDB
+├── scraping/      WebScraper
+└── storage/       LocalFileStorage
+
+bootstrap/         Composition root
+├── container.py   Container — dependency injection + lifecycle (init/start/shutdown/reset)
+└── task_manager.py
+```
+
+### Dependency flow
+
+```
+adapter (HTTP) → application (use case) → domain (ports) ← infrastructure (implementation)
+```
+
+- Adapters depend on application and container
+- Application depends on domain ports (interfaces)
+- Infrastructure implements domain ports
+- Domain has zero dependencies on adapters, application, or infrastructure
+
+### Lifecycle
+
+```
+Container.init()     → Creates all services, repos, use cases
+Container.start()    → Opens queue, starts job worker + task cleanup
+Container.shutdown() → Signals stop, closes all resources, resets state
+```
+
+Entry points (`main.py`, `chat.py`, `server.py`) all use `Container.init()` / `shutdown()`.
 
 ## How it works
 
@@ -18,66 +69,45 @@ Vector storage uses **LanceDB** (embedded, local, no server needed).
 Documents (PDF/MD/Web)
         │
         ▼
-   ┌─────────┐
-   │ Ingest  │  Text extraction → Chunking → Embedding → LanceDB
-   └────┬────┘
+   ┌──────────┐
+   │  Loader  │  Text extraction → Parsing → ParsedDocument
+   └────┬─────┘
         │
         ▼
-   ┌─────────┐
-   │ LanceDB │  Vector store (embedded, local)
-   └────┬────┘
+   ┌──────────┐
+   │  Ingest  │  Chunking → Embedding → LanceDB
+   └────┬─────┘
         │
         ▼
-   ┌─────────┐
-   │  Query  │  Question → Embedding → Hybrid search (vector + BM25) → Context + LLM → Answer
-   └─────────┘
+   ┌──────────┐
+   │ LanceDB  │  Vector store (embedded, local)
+   └────┬─────┘
+        │
+        ▼
+   ┌──────────┐
+   │  Query   │  Question → Embedding → Hybrid search (vector + BM25 + reranker) → LLM → Answer
+   └──────────┘
 ```
 
-1. **Ingestion**: Documents are read (PDF via PyMuPDF, Markdown/TXT directly), split into sentence-aware chunks of ~512 tokens with 50-token overlap, embedded, and stored in LanceDB.
+1. **Ingestion**: `LocalDocumentLoader` scans `data/pdfs/`, `data/markdown/`, `data/web/`, parses each file via the appropriate parser (PyMuPDF, Markdown, Text), then `IngestDocuments` chunks the text, embeds via SentenceTransformer or Ollama, and stores in LanceDB.
 
-2. **Querying**: The user's question is embedded, the top-k most similar chunks are retrieved via **hybrid search** (cosine vector similarity + BM25, fused with Reciprocal Rank Fusion), and the context is sent to the LLM to generate an answer. The system answers in the same language as the query.
-
-See [../docs/HOW_AI_FLOW_WORKS.md](../docs/HOW_AI_FLOW_WORKS.md) for the full detailed flow.
+2. **Querying**: The question is embedded, hybrid search (cosine + BM25 fused via RRF) retrieves top candidates, an optional cross-encoder reranks them, and the top-k chunks are sent to the LLM as context.
 
 ## Key features
 
 - **Pluggable LLM**: DeepSeek API or any OpenAI-compatible endpoint (Ollama, vLLM, etc.)
 - **Pluggable embeddings**: SentenceTransformer (local) or Ollama (HTTP API)
 - **Hybrid search**: Vector similarity + BM25 keyword search with RRF fusion
-- **Source citation**: Every answer includes source file references, titles, and retrieval scores
-- **Multilingual**: bge-m3 supports 102 languages; answers match the query language
-- **REST API**: Async polling API with Valkey/Redis response caching
-- **Document management**: Upload, list, edit metadata, download, delete. SHA256-based deduplication prevents duplicate uploads. Auto-extracts title and authors from PDF first pages.
-- **Ingestion history**: Tracks every ingestion run with status, chunk count, and timing
-- **Incremental ingestion**: Only processes new documents by default. `?force=true` rebuilds the entire index.
-
-## Project structure
-
-```
-backend/
-├── main.py                # CLI entry point
-├── server.py              # FastAPI REST server (all endpoints)
-├── src/
-│   ├── config.py          # Configuration and environment variables
-│   ├── embedder.py        # Embedding abstraction (ST + Ollama backends)
-│   ├── chunker.py         # Sentence-aware text chunking
-│   ├── loader.py          # Document loading (PDF/MD/TXT)
-│   ├── ingest.py          # Ingestion pipeline
-│   ├── ingest_state.py    # Ingestion state singleton + DB tracking
-│   ├── database.py        # PostgreSQL async CRUD
-│   ├── migrate.py         # Migration runner
-│   ├── retriever.py       # Hybrid search (vector + BM25 + RRF)
-│   ├── query.py           # Query engine with source citation
-│   ├── chat.py            # Interactive chat with memory + streaming
-│   ├── web_scraper.py     # Web scraping utility
-│   ├── task_manager.py    # Async task state management
-│   └── valkey_cache.py    # Valkey/Redis response cache
-├── migrations/            # SQL migration scripts
-├── data/                  # Uploaded files (gitignored)
-├── index/                 # Persisted LanceDB index (gitignored)
-├── .env.example           # Environment variable template with comments
-└── requirements.txt       # Python dependencies
-```
+- **Cross-encoder reranking**: Optional SentenceTransformer reranker for precision
+- **Source citation**: Every answer includes source file references, titles, scores
+- **Multilingual**: bge-m3 supports 102 languages; answers match query language
+- **REST API**: Async polling with Valkey/Redis response caching
+- **Auth system**: Register, login, refresh tokens, password reset, email confirmation
+- **Admin API**: User management, role assignment
+- **Document management**: Upload, list, edit, download, delete. SHA256-based deduplication. Auto-extracts title/authors from PDF first pages via LLM
+- **Background jobs**: Metadata extraction via job queue (PostgreSQL-backed)
+- **Incremental ingestion**: Only processes new documents by default. `?force=true` rebuilds all
+- **Secure lifecycle**: Every resource (pools, threads, cache) is properly initialized and shut down. Container is restart-safe.
 
 ## Setup
 
@@ -96,15 +126,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` — at minimum set your preferred LLM config. See the [main README](../README.md) for DeepSeek vs Ollama setup.
-
-### 3. (Optional) Start Valkey for response caching
+### 3. (Optional) Start Valkey for caching
 
 ```bash
 docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 ```
-
-If Valkey is not running, the cache is silently disabled.
 
 ### 4. Run database migrations
 
@@ -114,107 +140,99 @@ python main.py db:migrate
 
 ### 5. Add documents
 
-Place your files in the appropriate directories, or use the upload API:
+Place files in `data/pdfs/`, `data/markdown/`, `data/web/`, or use the upload API.
 
-```bash
-# Manual placement
-cp my-paper.pdf data/pdfs/
-cp agroforestry-guide.md data/markdown/
-
-# Or via API
-curl -X POST http://localhost:8000/api/v1/documents \
-  -F "files=@my-paper.pdf" \
-  -F "title=My Paper" \
-  -F "authors=Silva, J."
-```
-
-### 6. Build the index
+### 6. Build index
 
 ```bash
 python main.py ingest
 ```
 
-## Usage
-
-### CLI
+## CLI usage
 
 ```bash
-python main.py ask "What are the benefits of agroforestry?"
-python main.py chat              # interactive mode with memory
-python main.py status            # check index state
+python main.py ingest              # Index documents
+python main.py ingest --force      # Re-index everything
+python main.py ask "question"      # Single question
+python main.py chat                # Interactive chat
+python main.py status              # Index state
+python main.py serve               # Start API (port 8000)
+python main.py scrape <url>        # Scrape web page
+python main.py db:migrate          # Run migrations
+python main.py db:seed             # Seed admin user
 ```
-
-### REST API
-
-```bash
-python main.py serve                    # port 8000, host 0.0.0.0
-python main.py serve --port 8080        # custom port
-python main.py serve --reload           # dev auto-reload
-```
-
-Swagger docs: `http://localhost:8000/docs`
 
 ## Endpoints
 
+Full API reference: [HOW_TO_USE_API.md](HOW_TO_USE_API.md)
+
+### Auth
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/ask` | Submit a question (async) |
-| `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
-| `GET` | `/api/v1/status` | Server health, cache stats, last ingestion |
-| `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
-| `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
-| `GET` | `/api/v1/ingestion/runs` | List ingestion history |
-| `GET` | `/api/v1/ingestion/runs/{id}` | Get ingestion run details |
-| `POST` | `/api/v1/documents` | Upload files (multipart, optional metadata) |
-| `GET` | `/api/v1/documents` | List all documents |
-| `GET` | `/api/v1/documents/{id}` | Get document by ID |
-| `GET` | `/api/v1/documents/{id}/download` | Download original file |
-| `PUT` | `/api/v1/documents/{id}` | Update document metadata |
-| `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
+| `GET` | `/api/v1/auth/human-challenge` | Get anti-bot challenge |
+| `POST` | `/api/v1/auth/register` | Register new user |
+| `POST` | `/api/v1/auth/confirm-email` | Confirm email with token |
+| `POST` | `/api/v1/auth/confirm-email/resend` | Resend confirmation |
+| `POST` | `/api/v1/auth/login` | Login (returns access + refresh tokens) |
+| `POST` | `/api/v1/auth/refresh` | Refresh access token |
+| `POST` | `/api/v1/auth/logout` | Revoke all refresh tokens |
+| `POST` | `/api/v1/auth/password-reset/request` | Request password reset |
+| `POST` | `/api/v1/auth/password-reset/confirm` | Reset password with token |
+| `GET` | `/api/v1/auth/me` | Get current user |
+| `GET` | `/api/v1/auth/users/by-slug/{slug}` | Lookup user by slug |
 
-Full API reference: [HOW_TO_USE_API.md](HOW_TO_USE_API.md)
+### Admin (requires admin role)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/admin/users` | List all users |
+| `GET` | `/api/v1/admin/users/{id}` | Get user by ID |
+| `PUT` | `/api/v1/admin/users/{id}` | Update user + role |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete user |
+
+### Documents
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/documents` | Upload files (multipart) |
+| `GET` | `/api/v1/documents` | List documents |
+| `GET` | `/api/v1/documents/{id}` | Get document |
+| `PUT` | `/api/v1/documents/{id}` | Update metadata |
+| `DELETE` | `/api/v1/documents/{id}` | Delete document + file |
+| `GET` | `/api/v1/documents/{id}/view` | View PDF inline |
+| `GET` | `/api/v1/documents/{id}/download` | Download file |
+| `POST` | `/api/v1/documents/{id}/extract-metadata` | Extract title/authors from PDF |
+| `POST` | `/api/v1/documents/extract-all-metadata` | Enqueue metadata extraction for all PDFs |
+| `GET` | `/api/v1/documents/metadata-status` | Check extraction queue status |
+
+### RAG
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/ask` | Submit question (async) |
+| `GET` | `/api/v1/answer/{task_id}` | Poll for answer |
+| `GET` | `/api/v1/status` | System health + index state |
+| `POST` | `/api/v1/ingest` | Trigger ingestion (async) |
+| `GET` | `/api/v1/ingest/status` | Ingestion progress |
+| `GET` | `/api/v1/ingestion/runs` | Ingestion history |
+| `GET` | `/api/v1/ingestion/runs/{id}` | Run details |
+| `GET` | `/api/v1/health` | Simple health check |
 
 ## Configuration
 
-All settings can be overridden via environment variables in `.env`:
+See `.env.example` for all variables.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_API_KEY` | `ollama` | API key for OpenAI-compatible provider |
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | LLM API endpoint |
-| `LLM_MODEL` | `qwen3:14b` | LLM model name |
-| `EMBEDDING_BACKEND` | `sentence_transformer` | `sentence_transformer` or `ollama` |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | HuggingFace model (ST backend) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server (Ollama backend) |
-| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Ollama embedding model |
-| `CHUNK_SIZE` | `512` | Tokens per chunk |
-| `CHUNK_OVERLAP` | `50` | Overlap between chunks |
-| `SIMILARITY_TOP_K` | `30` | Vector candidates retrieved before fusion |
-| `BM25_TOP_K` | `30` | BM25 candidates for hybrid fusion |
-| `HYBRID_TOP_K` | `30` | Fused candidates sent to reranker (or returned directly when reranker disabled) |
-| `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model for reranking. Leave empty to disable |
-| `RERANK_TOP_K` | `6` | Final chunks sent to the LLM after cross-encoder reranking |
-| `DATA_DIR` | `./data` | Document storage directory |
-| `INDEX_DIR` | `./index` | LanceDB index storage directory |
-| `VALKEY_URL` | `redis://localhost:6379/0` | Cache connection (optional) |
-| `CACHE_TTL` | `3600` | Cache TTL in seconds |
-| `TASK_TTL` | `3600` | Task expiry in seconds |
-| `CLEANUP_INTERVAL` | `300` | Task cleanup interval in seconds |
-| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string |
+## Key design decisions
 
-## Limitations
-
-- **Chunking**: Sentence-boundary splitting can occasionally break mid-concept in dense technical texts.
-- **PDF quality**: Complex PDFs with heavy formatting or scanned pages may not parse well. OCR preprocessing would be needed for scanned documents.
-- **BM25 in-memory**: The BM25 index is rebuilt on each query from all LanceDB rows. For very large collections (100k+ chunks), this adds latency.
-- **Reranker model size**: The default cross-encoder model (`BAAI/bge-reranker-v2-m3`) adds ~2GB memory footprint and ~100-300ms per query. Set `RERANK_MODEL=""` to disable.
-- **Ollama embeddings**: When switching embedding backends, the vector dimension may change, requiring re-ingestion.
-- **Re-ingestion**: Documents must be re-ingested if the embedding model or chunking parameters change.
+- **Hexagonal architecture**: Business logic is in `application/` and `domain/`; infrastructure details stay in `infrastructure/`; HTTP protocol handling in `adapters/rest/`
+- **Async polling**: Long operations (ingestion, question answering) return a `task_id` immediately; clients poll `GET /answer/{task_id}` until status is `done` or `error`
+- **Container-managed lifecycle**: All dependencies are wired in `Container`. `init()`, `start()`, `shutdown()`, `reset()` are explicit and idempotent
+- **Filesystem abstraction**: File read/write goes through `FileStoragePort` (with `LocalFileStorage` implementation), so application never imports `Path` directly
+- **Document loading abstraction**: `DocumentLoaderPort` separates filesystem scanning + parsing from the ingestion use case
+- **Typed DTOs in progress**: Core auth/admin, answer, status, upload and document metadata flows use typed dataclasses (`UserDTO`, `AnswerResult`, `LoginResult`, `StatusResult`, `UploadDocumentResult`, `MetadataExtractionResult`). Cache, vector-store, reranker and retrieval contracts still use dictionaries and are tracked for continued Phase 3 refinement.
+- **Graceful degradation**: Cache is silently disabled if Valkey is unreachable; missing reranker model falls back to vector-only search
 
 ## License
 
 GPLv3 — Free Software
-
-## Author
-
-Marcelo Soares Souza <marcelo@agroecologymap.org>

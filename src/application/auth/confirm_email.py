@@ -2,16 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from src.domain.dto.message_result import MessageResult
+from src.domain.ports.auth_services_port import PasswordHasherPort
 from src.domain.ports.user_repository import UserRepository
-from src.infrastructure.auth.password_hasher import hash_token
 
 
 class ConfirmEmail:
-    def __init__(self, repo: UserRepository) -> None:
+    def __init__(
+        self, repo: UserRepository, password_hasher: PasswordHasherPort
+    ) -> None:
         self._repo = repo
+        self._password_hasher = password_hasher
 
-    async def execute(self, token: str) -> dict:
-        token_hash = hash_token(token)
+    async def execute(self, token: str) -> MessageResult:
+        token_hash = self._password_hasher.hash_token(token)
         stored = await self._repo.get_confirmation(token_hash)
 
         if not stored:
@@ -23,4 +27,4 @@ class ConfirmEmail:
         await self._repo.mark_confirmation_done(stored["id"])
         await self._repo.confirm_email(stored["user_id"])
 
-        return {"message": "Email confirmed successfully"}
+        return MessageResult(message="Email confirmed successfully")

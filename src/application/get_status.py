@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.application.ingest_documents import IngestDocuments
+from src.domain.dto.status_result import IngestionSummary, StatusResult
 from src.domain.ports.cache_port import CachePort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.ingestion_repository import IngestionRepository
@@ -34,21 +35,19 @@ class GetStatus:
         self._ingestion_repo = ingestion_repo
         self._doc_repo = doc_repo
 
-    async def execute(self, active_tasks: int) -> dict:
+    async def execute(self, active_tasks: int) -> StatusResult:
         last_ingestion = None
         runs = await self._ingestion_repo.list_all()
         if runs:
             last = runs[0]
-            last_ingestion = {
-                "id": last.id,
-                "status": last.status,
-                "chunks_indexed": last.chunks_indexed,
-                "error": last.error,
-                "started_at": last.started_at.isoformat(),
-                "finished_at": last.finished_at.isoformat()
-                if last.finished_at
-                else None,
-            }
+            last_ingestion = IngestionSummary(
+                id=last.id,
+                status=last.status,
+                chunks_indexed=last.chunks_indexed,
+                error=last.error,
+                started_at=last.started_at.isoformat(),
+                finished_at=last.finished_at.isoformat() if last.finished_at else None,
+            )
 
         docs = await self._doc_repo.list_all()
         pending_docs = sum(1 for d in docs if not d.ingested)
@@ -58,28 +57,30 @@ class GetStatus:
         schema_ok, expected_schema, actual_schema = check_schema_version()
         index_ready = self._vector_store.index_exists()
 
-        return {
-            "index_ready": index_ready and schema_ok,
-            "schema_mismatch": not schema_ok,
-            "index_version": read_index_version(),
-            "ingest_status": self._ingest.status,
-            "chunks_indexed": self._vector_store.count_chunks()
-            if self._vector_store.index_exists()
-            else 0,
-            "active_tasks": active_tasks,
-            "cache_enabled": self._cache.enabled,
-            "cache_hits": self._cache.hit_count(),
-            "pending_docs": pending_docs,
-            "indexed_docs": indexed_docs,
-            "total_docs": total_docs,
-            "embedding_model": EMBEDDING_MODEL,
-            "embedding_device": EMBEDDING_DEVICE,
-            "similarity_top_k": SIMILARITY_TOP_K,
-            "bm25_top_k": BM25_TOP_K,
-            "hybrid_top_k": HYBRID_TOP_K,
-            "reranker_enabled": bool(RERANK_MODEL),
-            "reranker_model": RERANK_MODEL or None,
-            "reranker_device": RERANK_DEVICE if RERANK_MODEL else None,
-            "rerank_top_k": RERANK_TOP_K,
-            "last_ingestion": last_ingestion,
-        }
+        return StatusResult(
+            index_ready=index_ready and schema_ok,
+            schema_mismatch=not schema_ok,
+            index_version=read_index_version(),
+            ingest_status=self._ingest.status,
+            chunks_indexed=(
+                self._vector_store.count_chunks()
+                if self._vector_store.index_exists()
+                else 0
+            ),
+            active_tasks=active_tasks,
+            cache_enabled=self._cache.enabled,
+            cache_hits=self._cache.hit_count(),
+            pending_docs=pending_docs,
+            indexed_docs=indexed_docs,
+            total_docs=total_docs,
+            embedding_model=EMBEDDING_MODEL,
+            embedding_device=EMBEDDING_DEVICE,
+            similarity_top_k=SIMILARITY_TOP_K,
+            bm25_top_k=BM25_TOP_K,
+            hybrid_top_k=HYBRID_TOP_K,
+            reranker_enabled=bool(RERANK_MODEL),
+            reranker_model=RERANK_MODEL or None,
+            reranker_device=RERANK_DEVICE if RERANK_MODEL else None,
+            rerank_top_k=RERANK_TOP_K,
+            last_ingestion=last_ingestion,
+        )

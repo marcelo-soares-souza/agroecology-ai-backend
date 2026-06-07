@@ -94,7 +94,7 @@ async def register(body: RegisterRequest, request: Request):
         logger,
         logging.INFO,
         "register_completed",
-        user_id=result["id"],
+        user_id=result.id,
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -120,7 +120,7 @@ async def resend_confirmation(email: str, request: Request):
         log_event(logger, logging.WARNING, "confirm_email_resend_failed", reason=str(e))
         raise HTTPException(status_code=400, detail=str(e))
 
-    return MessageResponse(message=result["message"])
+    return MessageResponse(message=result.message)
 
 
 @router.post("/confirm-email", response_model=MessageResponse)
@@ -164,13 +164,13 @@ async def login(body: LoginRequest, request: Request):
         logger,
         logging.INFO,
         "login_completed",
-        user_id=result["user"]["id"],
+        user_id=result.user.id,
         ip=resolve_client_ip(
             request.headers, request.client.host if request.client else None
         ),
     )
     return TokenResponse(
-        access_token=result["access_token"], refresh_token=result["refresh_token"]
+        access_token=result.access_token, refresh_token=result.refresh_token
     )
 
 
@@ -191,7 +191,7 @@ async def refresh(refresh_token: str, request: Request):
         raise HTTPException(status_code=401, detail=str(e))
 
     return TokenResponse(
-        access_token=result["access_token"], refresh_token=result["refresh_token"]
+        access_token=result.access_token, refresh_token=result.refresh_token
     )
 
 

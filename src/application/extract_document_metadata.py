@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.application.extract_metadata import ExtractMetadata
+from src.domain.dto.document_result import MetadataExtractionResult
 from src.domain.models.document import DocumentUpdate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
@@ -22,7 +23,7 @@ class ExtractDocumentMetadata:
         self._pdf_text_extractor = pdf_text_extractor
         self._metadata_extractor = metadata_extractor
 
-    async def execute(self, doc_id: str) -> dict | None:
+    async def execute(self, doc_id: str) -> MetadataExtractionResult | None:
         doc = await self._repo.get(doc_id)
         if not doc:
             return None
@@ -40,8 +41,8 @@ class ExtractDocumentMetadata:
             return None
 
         result = self._metadata_extractor.execute(first_page_text)
-        ext_title = result.get("title", "").strip()
-        ext_authors = result.get("authors", "").strip()
+        ext_title = result.title.strip()
+        ext_authors = result.authors.strip()
 
         if not ext_title and not ext_authors:
             return None
@@ -56,10 +57,10 @@ class ExtractDocumentMetadata:
         if not updated:
             return None
 
-        return {
-            "id": updated.id,
-            "title": updated.title,
-            "authors": updated.authors,
-            "filename": updated.filename,
-            "file_type": updated.file_type,
-        }
+        return MetadataExtractionResult(
+            id=updated.id,
+            title=updated.title,
+            authors=updated.authors,
+            filename=updated.filename,
+            file_type=updated.file_type,
+        )

@@ -41,11 +41,17 @@ class UserRepository(ABC):
 
     @abstractmethod
     async def create_confirmation(
-        self, user_id: str, token_hash: str, expires_at
+        self,
+        user_id: str,
+        token_hash: str,
+        expires_at,
+        purpose: str = "email_confirmation",
     ) -> None: ...
 
     @abstractmethod
-    async def get_confirmation(self, token_hash: str) -> dict | None: ...
+    async def get_confirmation(
+        self, token_hash: str, purpose: str = "email_confirmation"
+    ) -> dict | None: ...
 
     @abstractmethod
     async def mark_confirmation_done(self, confirmation_id: str) -> None: ...

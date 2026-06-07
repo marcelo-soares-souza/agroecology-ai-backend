@@ -35,6 +35,12 @@ from src.infrastructure.ai.sentence_transformer_embedder import (
 from src.infrastructure.ai.sentence_transformer_reranker import (
     SentenceTransformerReranker,
 )
+from src.infrastructure.auth.auth_services import (
+    BCryptPasswordHasher,
+    JwtHumanCheck,
+    JwtTokenService,
+    SmtpEmailService,
+)
 from src.infrastructure.cache.valkey_cache import ValkeyCache
 from src.infrastructure.jobs.worker import start_job_worker
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
@@ -408,15 +414,47 @@ class Container:
         )
 
         # Auth use cases
-        self.register_user = RegisterUser(repo=self.user_repo)
-        self.login_user = LoginUser(repo=self.user_repo)
-        self.refresh_token = RefreshToken(repo=self.user_repo)
+        password_hasher = BCryptPasswordHasher()
+        token_service = JwtTokenService()
+        human_check = JwtHumanCheck()
+        email_service = SmtpEmailService()
+
+        self.register_user = RegisterUser(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            human_check=human_check,
+            email_service=email_service,
+        )
+        self.login_user = LoginUser(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            token_service=token_service,
+        )
+        self.refresh_token = RefreshToken(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            token_service=token_service,
+        )
         self.logout_user = LogoutUser(repo=self.user_repo)
-        self.confirm_email = ConfirmEmail(repo=self.user_repo)
+        self.confirm_email = ConfirmEmail(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+        )
         self.get_user_by_slug = GetUserBySlug(repo=self.user_repo)
-        self.resend_confirmation_email = ResendConfirmationEmail(repo=self.user_repo)
-        self.request_password_reset = RequestPasswordReset(repo=self.user_repo)
-        self.confirm_password_reset = ConfirmPasswordReset(repo=self.user_repo)
+        self.resend_confirmation_email = ResendConfirmationEmail(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            email_service=email_service,
+        )
+        self.request_password_reset = RequestPasswordReset(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            email_service=email_service,
+        )
+        self.confirm_password_reset = ConfirmPasswordReset(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+        )
 
         # Admin use cases
         self.list_users = ListUsers(repo=self.user_repo)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 
+from src.domain.dto.answer_result import AnswerResult, SourceResult
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
@@ -69,7 +70,7 @@ class AskQuestion:
         top_k: int | None = None,
         title_map: dict[str, str | None] | None = None,
         history: list[dict] | None = None,
-    ) -> dict:
+    ) -> AnswerResult:
         follow_up = bool(history) and self._is_context_dependent_question(question)
         log_event(
             logger,
@@ -121,19 +122,18 @@ class AskQuestion:
                 title = title_map.get(meta["source"])
                 if title:
                     meta["title"] = title
-            # Structural metadata from parsed chunks
             for field in ("page_start", "page_end", "section_title", "block_types"):
                 val = node.get(field, "")
                 if val:
                     meta[field] = val
             sources.append(
-                {
-                    "text": node["text"][:300],
-                    "score": node.get("_score", 0.0),
-                    "score_type": node.get("_score_type", "unknown"),
-                    "rank": rank,
-                    "metadata": meta,
-                }
+                SourceResult(
+                    text=node["text"][:300],
+                    score=node.get("_score", 0.0),
+                    score_type=node.get("_score_type", "unknown"),
+                    rank=rank,
+                    metadata=meta,
+                )
             )
 
         log_event(
@@ -145,7 +145,7 @@ class AskQuestion:
             answer_chars=len(answer),
             search_query_rewritten=search_query != question,
         )
-        return {"answer": answer, "sources": sources}
+        return AnswerResult(answer=answer, sources=sources)
 
     @staticmethod
     def _build_context(retrieved: list[dict]) -> str:

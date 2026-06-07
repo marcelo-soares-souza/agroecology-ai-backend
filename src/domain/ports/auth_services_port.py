@@ -25,6 +25,9 @@ class TokenServicePort(ABC):
 
 class HumanCheckPort(ABC):
     @abstractmethod
+    def create_challenge(self, locale: str = "pt-BR") -> dict[str, str]: ...
+
+    @abstractmethod
     def verify_challenge(self, challenge_id: str, answer: str) -> bool: ...
 
 

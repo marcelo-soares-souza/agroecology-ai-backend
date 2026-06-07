@@ -4,6 +4,7 @@ import logging
 import re
 
 from src.domain.dto.answer_result import AnswerResult, SourceResult
+from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
@@ -23,34 +24,34 @@ _MAX_HISTORY_SNIPPET_CHARS = 500
 logger = logging.getLogger("agroecology.rag")
 
 
-def _normalize_scores(retrieved: list[dict]) -> None:
-    by_type: dict[str, list[dict]] = {}
-    for r in retrieved:
-        st = r.get("_search_type", "unknown")
-        by_type.setdefault(st, []).append(r)
+def _normalize_scores(retrieved: list[RetrievedChunk]) -> None:
+    by_type: dict[str, list[RetrievedChunk]] = {}
+    for chunk in retrieved:
+        st = chunk.search_type
+        by_type.setdefault(st, []).append(chunk)
 
     for st, items in by_type.items():
         if st == "vector":
-            for r in items:
-                dist = float(r.get("_distance", 0))
+            for chunk in items:
+                dist = float(chunk.distance or 0.0)
                 similarity = 1.0 - max(0.0, min(2.0, dist))
-                r["_score"] = round(similarity, 4)
-                r["_score_type"] = "cosine_similarity"
+                chunk.score = round(similarity, 4)
+                chunk.score_type = "cosine_similarity"
         elif st == "bm25":
-            raw_scores = [float(r.get("_distance", 0)) for r in items]
+            raw_scores = [float(chunk.distance or 0.0) for chunk in items]
             min_s, max_s = min(raw_scores), max(raw_scores)
-            for r in items:
-                raw = float(r.get("_distance", 0))
+            for chunk in items:
+                raw = float(chunk.distance or 0.0)
                 if max_s > min_s:
-                    r["_score"] = round((raw - min_s) / (max_s - min_s), 4)
+                    chunk.score = round((raw - min_s) / (max_s - min_s), 4)
                 else:
-                    r["_score"] = 1.0
-                r["_score_type"] = "bm25_normalized"
+                    chunk.score = 1.0
+                chunk.score_type = "bm25_normalized"
         elif st == "rerank":
-            for r in items:
-                raw = float(r.get("_rerank_score", r.get("_distance", 0)))
-                r["_score"] = round(raw, 4)
-                r["_score_type"] = "reranker_logit"
+            for chunk in items:
+                raw = float(chunk.rerank_score or chunk.distance or 0.0)
+                chunk.score = round(raw, 4)
+                chunk.score_type = "reranker_logit"
 
 
 class AskQuestion:
@@ -91,11 +92,10 @@ class AskQuestion:
 
         # Enrich chunks with document metadata from title_map
         if title_map:
-            for node in retrieved:
-                source = node.get("source", "")
-                doc_title = title_map.get(source)
+            for chunk in retrieved:
+                doc_title = title_map.get(chunk.source)
                 if doc_title:
-                    node["_title"] = doc_title
+                    chunk.title = doc_title
 
         context = self._build_context(retrieved)
         answer_history = history if follow_up else []
@@ -108,29 +108,30 @@ class AskQuestion:
         _normalize_scores(retrieved)
 
         sources = []
-        for rank, node in enumerate(retrieved, 1):
+        for rank, chunk in enumerate(retrieved, 1):
+            source = chunk.source or "unknown"
             meta = {
-                "source": node.get("source", "unknown"),
-                "chunk_index": node.get("chunk_index", 0),
-                "search_type": node.get("_search_type", "unknown"),
+                "source": source,
+                "chunk_index": chunk.chunk_index,
+                "search_type": chunk.search_type,
             }
-            source_name = str(node.get("source", "")).rsplit("/", 1)[-1]
+            source_name = chunk.source.rsplit("/", 1)[-1]
             doc_id = source_name.rsplit(".", 1)[0]
             if doc_id:
                 meta["document_id"] = doc_id
             if title_map:
-                title = title_map.get(meta["source"])
+                title = title_map.get(source)
                 if title:
                     meta["title"] = title
             for field in ("page_start", "page_end", "section_title", "block_types"):
-                val = node.get(field, "")
+                val = getattr(chunk, field)
                 if val:
                     meta[field] = val
             sources.append(
                 SourceResult(
-                    text=node["text"][:300],
-                    score=node.get("_score", 0.0),
-                    score_type=node.get("_score_type", "unknown"),
+                    text=chunk.text[:300],
+                    score=chunk.score,
+                    score_type=chunk.score_type,
                     rank=rank,
                     metadata=meta,
                 )
@@ -148,19 +149,19 @@ class AskQuestion:
         return AnswerResult(answer=answer, sources=sources)
 
     @staticmethod
-    def _build_context(retrieved: list[dict]) -> str:
+    def _build_context(retrieved: list[RetrievedChunk]) -> str:
         parts = []
-        for i, r in enumerate(retrieved, 1):
-            source = r.get("source", "unknown")
-            text = r["text"].strip()
+        for i, chunk in enumerate(retrieved, 1):
+            source = chunk.source or "unknown"
+            text = chunk.text.strip()
 
             lines = [f"[{i}]"]
-            title = r.get("title", "") or r.get("_title", "")
-            authors = r.get("authors", "") or r.get("_authors", "")
-            year = r.get("year", "") or r.get("_year", "")
-            section = r.get("section_title", "") or r.get("_section_title", "")
-            page_start = r.get("page_start", 0) or r.get("_page_start", 0)
-            page_end = r.get("page_end", 0) or r.get("_page_end", 0)
+            title = chunk.title
+            authors = chunk.authors
+            year = chunk.year
+            section = chunk.section_title
+            page_start = chunk.page_start or 0
+            page_end = chunk.page_end or 0
 
             if title:
                 lines.append(f"Title: {title}")

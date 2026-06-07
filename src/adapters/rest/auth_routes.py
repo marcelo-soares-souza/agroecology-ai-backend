@@ -8,6 +8,7 @@ from src.adapters.rest.auth_middleware import get_current_user
 from src.adapters.rest.dependencies import (
     get_confirm_email,
     get_confirm_password_reset,
+    get_human_challenge as get_human_challenge_use_case,
     get_login_user,
     get_logout_user,
     get_refresh_token,
@@ -16,6 +17,7 @@ from src.adapters.rest.dependencies import (
     get_resend_confirmation_email,
     get_user_by_slug as get_user_by_slug_use_case,
 )
+from src.adapters.rest.serializers import serialize_user
 from src.adapters.rest.schemas import (
     ChallengeResponse,
     ConfirmEmailRequest,
@@ -26,33 +28,14 @@ from src.adapters.rest.schemas import (
     UserResponse,
 )
 from src.domain.models.user import User
-from src.infrastructure.auth.human_check import create_challenge
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger("agroecology.auth")
 
 
-def _serialize_user(user: User) -> dict:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "status": user.status,
-        "slug": user.slug,
-        "locale": user.locale,
-        "roles": user.roles or [],
-        "email_confirmed_at": user.email_confirmed_at.isoformat()
-        if user.email_confirmed_at
-        else None,
-        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
-        "created_at": user.created_at.isoformat(),
-        "updated_at": user.updated_at.isoformat(),
-    }
-
-
 @router.get("/human-challenge", response_model=ChallengeResponse)
-async def get_human_challenge(request: Request, locale: str = "pt-BR"):
+async def human_challenge(request: Request, locale: str = "pt-BR"):
     log_event(
         logger,
         logging.INFO,
@@ -62,7 +45,7 @@ async def get_human_challenge(request: Request, locale: str = "pt-BR"):
         ),
         locale=locale,
     )
-    return create_challenge(locale)
+    return get_human_challenge_use_case().execute(locale)
 
 
 @router.post("/register", response_model=MessageResponse)
@@ -243,7 +226,7 @@ async def confirm_password_reset(token: str, new_password: str, request: Request
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
-    return _serialize_user(user)
+    return serialize_user(user)
 
 
 @router.get("/users/by-slug/{slug}", response_model=UserResponse)
@@ -251,4 +234,4 @@ async def get_user_by_slug(slug: str):
     user = await get_user_by_slug_use_case().execute(slug)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return serialize_user(user)

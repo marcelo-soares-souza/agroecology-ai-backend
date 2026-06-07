@@ -36,12 +36,8 @@ class ResendConfirmationEmail:
         await self._repo.create_confirmation(user.id, token_hash, exp)
 
         try:
-            import asyncio
-
-            asyncio.create_task(
-                self._email_service.send_confirmation_email(
-                    user.email, token, user.locale or "pt-BR"
-                )
+            await self._email_service.send_confirmation_email(
+                user.email, token, user.locale or "pt-BR"
             )
         except Exception as e:
             log_event(logger, logging.WARNING, "resend_email_failed", error=str(e))

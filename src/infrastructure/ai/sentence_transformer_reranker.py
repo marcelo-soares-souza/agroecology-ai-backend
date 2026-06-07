@@ -5,6 +5,7 @@ import logging
 import torch
 from sentence_transformers import CrossEncoder
 
+from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.reranker_port import RerankerPort
 
 logger = logging.getLogger(__name__)
@@ -33,20 +34,25 @@ class SentenceTransformerReranker(RerankerPort):
     def initialize(self) -> None:
         self._load_model()
 
-    def rerank(self, query: str, documents: list[dict], top_k: int) -> list[dict]:
+    def rerank(
+        self,
+        query: str,
+        documents: list[RetrievedChunk],
+        top_k: int,
+    ) -> list[RetrievedChunk]:
         if not documents:
             return []
 
         model = self._load_model()
-        pairs = [(query, str(doc["text"])) for doc in documents]
+        pairs = [(query, doc.text) for doc in documents]
         scores = model.predict(pairs)  # type: ignore[arg-type]
 
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        results = []
+        results: list[RetrievedChunk] = []
         for idx, score in indexed[:top_k]:
-            doc = dict(documents[idx])
-            doc["_distance"] = float(score)
-            doc["_search_type"] = "rerank"
-            doc["_rerank_score"] = float(score)
+            doc = documents[idx]
+            doc.distance = float(score)
+            doc.search_type = "rerank"
+            doc.rerank_score = float(score)
             results.append(doc)
         return results

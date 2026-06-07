@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from src.domain.ports.job_queue_port import JobQueuePort
 from src.shared.config import DATABASE_URL, QUEUE_MAX_RETRIES_DEFAULT
 from src.shared.uuid7 import uuid7
 
 
-class QueueRepository:
+class QueueRepository(JobQueuePort):
     def __init__(self) -> None:
         self._pool = ConnectionPool(DATABASE_URL, min_size=0, max_size=3, open=False)
 

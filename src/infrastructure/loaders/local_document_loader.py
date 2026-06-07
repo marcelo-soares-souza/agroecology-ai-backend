@@ -24,7 +24,7 @@ class LocalDocumentLoader(DocumentLoaderPort):
             try:
                 rel = str(fp.relative_to(DATA_DIR))
                 doc_id = fp.stem
-                parsed = self._pdf_parser.parse(fp, doc_id, rel)
+                parsed = self._pdf_parser.parse(fp.read_bytes(), doc_id, rel)
                 sources.append(
                     DocumentSource(
                         source_path=rel,
@@ -40,7 +40,7 @@ class LocalDocumentLoader(DocumentLoaderPort):
             try:
                 rel = str(fp.relative_to(DATA_DIR))
                 doc_id = fp.stem
-                parsed = self._md_parser.parse(fp, doc_id, rel)
+                parsed = self._md_parser.parse(fp.read_bytes(), doc_id, rel)
                 sources.append(
                     DocumentSource(
                         source_path=rel,
@@ -56,7 +56,7 @@ class LocalDocumentLoader(DocumentLoaderPort):
             try:
                 rel = str(fp.relative_to(DATA_DIR))
                 doc_id = fp.stem
-                parsed = self._txt_parser.parse(fp, doc_id, rel)
+                parsed = self._txt_parser.parse(fp.read_bytes(), doc_id, rel)
                 sources.append(
                     DocumentSource(
                         source_path=rel,

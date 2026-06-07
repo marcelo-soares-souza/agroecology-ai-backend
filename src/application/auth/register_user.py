@@ -63,17 +63,11 @@ class RegisterUser:
         await self._repo.create_confirmation(user.id, token_hash, exp)
 
         try:
-            import asyncio
-
-            asyncio.create_task(
-                self._email_service.send_confirmation_email(
-                    user.email, token, user.locale or "pt-BR"
-                )
+            await self._email_service.send_confirmation_email(
+                user.email, token, user.locale or "pt-BR"
             )
-            asyncio.create_task(
-                self._email_service.send_admin_new_user_notification(
-                    user.email, user.full_name, user.locale or "pt-BR"
-                )
+            await self._email_service.send_admin_new_user_notification(
+                user.email, user.full_name, user.locale or "pt-BR"
             )
         except Exception as e:
             log_event(

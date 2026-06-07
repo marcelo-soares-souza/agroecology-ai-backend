@@ -1,15 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import Any
+
+from src.domain.dto.answer_result import AnswerResult
 
 
 class CachePort(ABC):
     enabled: bool
 
     @abstractmethod
-    def get(self, question: str, top_k: int = 0) -> dict[str, Any] | None: ...
+    def get(self, question: str, top_k: int = 0) -> AnswerResult | None: ...
 
     @abstractmethod
-    def set(self, question: str, result: dict[str, Any], top_k: int = 0) -> None: ...
+    def set(self, question: str, result: AnswerResult, top_k: int = 0) -> None: ...
 
     @abstractmethod
     def hit_count(self) -> int: ...

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.domain.dto.retrieval_result import IndexedChunk, RetrievedChunk
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.shared.config import LANCEDB_DIR
 
@@ -26,16 +27,17 @@ class LanceDBVectorStore(VectorStorePort):
         query_vector: list[float],
         top_k: int,
         filters: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[RetrievedChunk]:
         table = self._get_table()
         query = table.search(query_vector).metric("cosine").limit(top_k)
         if filters:
             where_clause = self._build_where(filters)
             if where_clause:
                 query = query.where(where_clause)
-        results = query.to_list()
-        for r in results:
-            r["_search_type"] = "vector"
+        results = []
+        for row in query.to_list():
+            row["_search_type"] = "vector"
+            results.append(RetrievedChunk.from_dict(row))
         return results
 
     @staticmethod
@@ -56,16 +58,20 @@ class LanceDBVectorStore(VectorStorePort):
             return False
         return "chunks" in self._db.table_names()
 
-    def build_index(self, rows: list[dict[str, Any]], dimension: int) -> None:
-        self._db.create_table("chunks", data=rows, mode="overwrite")
+    def build_index(self, rows: list[IndexedChunk], dimension: int) -> None:
+        self._db.create_table(
+            "chunks",
+            data=[row.to_dict() for row in rows],
+            mode="overwrite",
+        )
 
-    def get_all_rows(self) -> list[dict[str, Any]]:
+    def get_all_rows(self) -> list[RetrievedChunk]:
         table = self._get_table()
-        return table.to_arrow().to_pylist()
+        return [RetrievedChunk.from_dict(row) for row in table.to_arrow().to_pylist()]
 
-    def add_rows(self, rows: list[dict[str, Any]]) -> None:
+    def add_rows(self, rows: list[IndexedChunk]) -> None:
         table = self._get_table()
-        table.add(rows)
+        table.add([row.to_dict() for row in rows])
 
     def delete_by_prefix(self, id_prefix: str) -> None:
         table = self._get_table()

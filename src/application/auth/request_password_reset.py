@@ -35,12 +35,8 @@ class RequestPasswordReset:
         )
 
         try:
-            import asyncio
-
-            asyncio.create_task(
-                self._email_service.send_reset_email(
-                    user.email, token, user.locale or "pt-BR"
-                )
+            await self._email_service.send_reset_email(
+                user.email, token, user.locale or "pt-BR"
             )
         except Exception as e:
             log_event(

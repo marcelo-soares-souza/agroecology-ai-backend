@@ -7,6 +7,7 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING, Any
 
+from src.domain.dto.answer_result import AnswerResult
 from src.domain.ports.cache_port import CachePort
 from src.shared.logging_utils import log_event
 
@@ -104,7 +105,7 @@ class ValkeyCache(CachePort):  # noqa: F811
         h = hashlib.md5(payload.encode()).hexdigest()
         return f"{_KEY_PREFIX}:{self._index_version}:{h}"
 
-    def get(self, question: str, top_k: int = 0) -> dict[str, Any] | None:
+    def get(self, question: str, top_k: int = 0) -> AnswerResult | None:
         if not self.enabled or self._client is None:
             return None
         try:
@@ -112,20 +113,20 @@ class ValkeyCache(CachePort):  # noqa: F811
             if raw:
                 self._client.incr("rag:stats:cache_hits")
                 log_event(logger, logging.INFO, "cache_hit")
-                return dict(json.loads(str(raw)))
+                return AnswerResult.from_cache_dict(json.loads(str(raw)))
         except Exception:
             pass
         log_event(logger, logging.INFO, "cache_miss")
         return None
 
-    def set(self, question: str, result: dict[str, Any], top_k: int = 0) -> None:
+    def set(self, question: str, result: AnswerResult, top_k: int = 0) -> None:
         if not self.enabled or self._client is None:
             return
         try:
             self._client.setex(
                 self._key(question, top_k),
                 self._ttl,
-                json.dumps(result, ensure_ascii=False),
+                json.dumps(result.to_cache_dict(), ensure_ascii=False),
             )
             log_event(logger, logging.INFO, "cache_set", ttl=self._ttl)
         except Exception:

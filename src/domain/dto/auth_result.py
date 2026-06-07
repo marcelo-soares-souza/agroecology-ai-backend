@@ -10,3 +10,9 @@ class LoginResult:
     access_token: str
     refresh_token: str
     user: UserDTO
+
+
+@dataclass(frozen=True)
+class ChallengeResult:
+    challenge_id: str
+    question: str

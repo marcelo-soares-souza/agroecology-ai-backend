@@ -6,6 +6,7 @@ from typing import Any
 
 from rank_bm25 import BM25Okapi
 
+from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
@@ -31,12 +32,12 @@ class RetrieverService:
         self._reranker = reranker
         self._bm25: BM25Okapi | None = None
         self._bm25_texts: list[str] = []
-        self._bm25_all_rows: list[dict] = []
+        self._bm25_all_rows: list[RetrievedChunk] = []
 
-    def _get_bm25(self) -> tuple[BM25Okapi, list[dict]]:
+    def _get_bm25(self) -> tuple[BM25Okapi, list[RetrievedChunk]]:
         if self._bm25 is None or not self._bm25_all_rows:
             self._bm25_all_rows = self._vector_store.get_all_rows()
-            self._bm25_texts = [str(r["text"]) for r in self._bm25_all_rows]
+            self._bm25_texts = [row.text for row in self._bm25_all_rows]
             self._bm25 = BM25Okapi([t.lower().split() for t in self._bm25_texts])
             logger.info("bm25_cache_built chunks=%d", len(self._bm25_texts))
         return self._bm25, self._bm25_all_rows
@@ -52,7 +53,7 @@ class RetrieverService:
         query: str,
         top_k: int,
         filters: dict[str, Any] | None = None,
-    ) -> list[dict]:
+    ) -> list[RetrievedChunk]:
         t0 = time.perf_counter()
 
         t1 = time.perf_counter()
@@ -89,7 +90,7 @@ class RetrieverService:
             t_rerank = 0
 
         total_ms = round((time.perf_counter() - t0) * 1000, 2)
-        unique_docs = len({r.get("source", "") for r in results})
+        unique_docs = len({r.source for r in results})
         logger.info(
             "retrieval_completed step=hybrid vector_count=%d bm25_count=%d rrf_candidates=%d rerank_candidates=%d final_count=%d unique_docs=%d vec_ms=%s bm25_ms=%s rrf_ms=%s rerank_ms=%s total_ms=%s",
             len(vec_results),
@@ -108,11 +109,15 @@ class RetrieverService:
         results = self._mmr_diversify(results, MMR_LAMBDA)
         return results
 
-    def _mmr_diversify(self, results: list[dict], lam: float) -> list[dict]:
+    def _mmr_diversify(
+        self,
+        results: list[RetrievedChunk],
+        lam: float,
+    ) -> list[RetrievedChunk]:
         if not results or len(results) <= 1:
             return results
 
-        selected: list[dict] = [results[0]]
+        selected: list[RetrievedChunk] = [results[0]]
         remaining = results[1:]
 
         while remaining and len(selected) < len(results):
@@ -120,12 +125,10 @@ class RetrieverService:
             best_score = float("-inf")
 
             for i, candidate in enumerate(remaining):
-                relevance = float(
-                    candidate.get("_rerank_score", candidate.get("_distance", 0))
-                )
+                relevance = float(candidate.rerank_score or candidate.distance or 0.0)
                 max_sim = 0.0
                 for s in selected:
-                    same_doc = candidate.get("source", "") == s.get("source", "")
+                    same_doc = candidate.source == s.source
                     sim = 1.0 if same_doc else 0.0
                     if sim > max_sim:
                         max_sim = sim
@@ -140,9 +143,9 @@ class RetrieverService:
         return selected
 
     @staticmethod
-    def _match_filters(row: dict, filters: dict[str, Any]) -> bool:
+    def _match_filters(row: RetrievedChunk, filters: dict[str, Any]) -> bool:
         for key, value in filters.items():
-            row_val = row.get(key)
+            row_val = getattr(row, key, None)
             if row_val is None:
                 return False
             if isinstance(value, tuple) and len(value) == 2:
@@ -154,25 +157,26 @@ class RetrieverService:
 
     def _vector_search(
         self, query: str, top_k: int, filters: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> list[RetrievedChunk]:
         query_vec = self._embedder.embed_query(query)
         return self._vector_store.search(query_vec, top_k=top_k, filters=filters)
 
     def _bm25_search(
         self, query: str, top_k: int, filters: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> list[RetrievedChunk]:
         bm25, all_rows = self._get_bm25()
         if not all_rows:
             return []
         scores = bm25.get_scores(query.lower().split())
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        results = []
+        results: list[RetrievedChunk] = []
         for idx, score in indexed:
-            row = dict(all_rows[idx])
+            row = all_rows[idx]
             if filters and not self._match_filters(row, filters):
                 continue
-            row["_distance"] = float(score)
-            row["_search_type"] = "bm25"
+            row = RetrievedChunk.from_dict(row.to_dict())
+            row.distance = float(score)
+            row.search_type = "bm25"
             results.append(row)
             if len(results) >= top_k:
                 break
@@ -180,24 +184,26 @@ class RetrieverService:
 
     @staticmethod
     def _rrf_fusion(
-        vec: list[dict],
-        bm25: list[dict],
+        vec: list[RetrievedChunk],
+        bm25: list[RetrievedChunk],
         k: int = 60,
-    ) -> list[dict]:
+    ) -> list[RetrievedChunk]:
         scores: dict[str, float] = {}
-        rows: dict[str, dict] = {}
+        rows: dict[str, RetrievedChunk] = {}
 
         for rank, r in enumerate(vec):
-            doc_id = r["id"]
+            doc_id = r.id
             scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank + 1)
             rows[doc_id] = r
         for rank, r in enumerate(bm25):
-            doc_id = r["id"]
+            doc_id = r.id
             scores[doc_id] = scores.get(doc_id, 0) + 1 / (k + rank + 1)
             rows[doc_id] = r
 
         sorted_ids = sorted(scores, key=lambda k: scores[k], reverse=True)
-        return [
-            {**dict(rows[doc_id]), "_rrf_score": scores[doc_id]}
-            for doc_id in sorted_ids
-        ]
+        results: list[RetrievedChunk] = []
+        for doc_id in sorted_ids:
+            row = RetrievedChunk.from_dict(rows[doc_id].to_dict())
+            row.rrf_score = scores[doc_id]
+            results.append(row)
+        return results

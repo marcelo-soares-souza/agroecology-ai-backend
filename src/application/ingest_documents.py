@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 
+from src.domain.dto.retrieval_result import IndexedChunk
 from src.domain.ports.document_loader_port import DocumentLoaderPort
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
@@ -144,7 +145,7 @@ class IngestDocuments:
         for batch_num, batch in enumerate(batches, 1):
             batch_doc_ids = {d.doc_id for d in batch}
 
-            rows: list[dict] = []
+            rows: list[IndexedChunk] = []
             for doc in batch:
                 parsed = doc.parsed
                 if parsed is None:
@@ -161,24 +162,24 @@ class IngestDocuments:
                     if not text.strip():
                         continue
                     rows.append(
-                        {
-                            "id": f"{doc.doc_id}_{i}",
-                            "text": text,
-                            "embedding_text": embedding_text,
-                            "source": doc.source_path,
-                            "chunk_index": i,
-                            "page_start": meta.page_start,
-                            "page_end": meta.page_end,
-                            "section_title": meta.section_title or "",
-                            "block_types": ",".join(meta.block_types),
-                            "document_id": doc.doc_id,
-                            "title": parsed.title or "",
-                            "authors": parsed.authors or "",
-                            "year": parsed.year or 0,
-                            "language": parsed.language or "",
-                            "doi": parsed.doi or "",
-                            "journal": parsed.journal or "",
-                        }
+                        IndexedChunk(
+                            id=f"{doc.doc_id}_{i}",
+                            text=text,
+                            embedding_text=embedding_text,
+                            source=doc.source_path,
+                            chunk_index=i,
+                            page_start=meta.page_start,
+                            page_end=meta.page_end,
+                            section_title=meta.section_title or "",
+                            block_types=",".join(meta.block_types),
+                            document_id=doc.doc_id,
+                            title=parsed.title or "",
+                            authors=parsed.authors or "",
+                            year=parsed.year or 0,
+                            language=parsed.language or "",
+                            doi=parsed.doi or "",
+                            journal=parsed.journal or "",
+                        )
                     )
 
             if not rows:
@@ -234,22 +235,22 @@ class IngestDocuments:
 
         return total_chunks
 
-    async def _embed_rows(self, rows: list[dict]) -> None:
+    async def _embed_rows(self, rows: list[IndexedChunk]) -> None:
         from src.shared.config import EMBEDDING_BATCH_SIZE
 
-        texts_to_embed = [r.get("embedding_text", r.get("text", "")) for r in rows]
+        texts_to_embed = [row.embedding_text or row.text for row in rows]
 
         if EMBEDDING_BATCH_SIZE > 0:
             for i in range(0, len(rows), EMBEDDING_BATCH_SIZE):
                 sub = rows[i : i + EMBEDDING_BATCH_SIZE]
                 sub_texts = texts_to_embed[i : i + EMBEDDING_BATCH_SIZE]
                 vectors = self._embedder.embed_texts(sub_texts)
-                for r, v in zip(sub, vectors):
-                    r["vector"] = v
+                for row, vector in zip(sub, vectors):
+                    row.vector = vector
         else:
             vectors = self._embedder.embed_texts(texts_to_embed)
-            for r, v in zip(rows, vectors):
-                r["vector"] = v
+            for row, vector in zip(rows, vectors):
+                row.vector = vector
 
     def remove_chunks(self, doc_id: str) -> None:
         if self._vector_store.index_exists():

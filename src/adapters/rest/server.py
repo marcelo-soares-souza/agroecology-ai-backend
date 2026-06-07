@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -12,15 +11,18 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 
 from src.adapters.rest.dependencies import (
-    get_ask_question,
-    get_cache,
+    get_ask_task_service,
+    get_delete_document,
     get_document_file,
+    get_enqueue_document_metadata,
+    get_enqueue_pending_metadata,
     get_extract_document_metadata,
     get_ingest,
+    get_ingestion_task_service,
     get_ingestion_repo,
     get_manage_docs,
-    get_queue,
     get_retriever,
+    get_metadata_job_status,
     get_status_service,
     get_task_manager,
     get_upload_document,
@@ -35,6 +37,10 @@ from src.adapters.rest.openapi_docs import (
 from src.adapters.rest.admin_routes import router as admin_router
 from src.adapters.rest.auth_middleware import get_current_user, require_role
 from src.adapters.rest.auth_routes import router as auth_router
+from src.adapters.rest.serializers import (
+    serialize_document,
+    serialize_ingestion_run,
+)
 from src.adapters.rest.schemas import (
     AskRequest,
     AskResponse,
@@ -68,22 +74,6 @@ from src.shared.logging_utils import (
 configure_logging()
 
 logger = logging.getLogger("agroecology.http")
-
-
-def _serialize_doc(doc) -> dict:
-    return {
-        "id": doc.id,
-        "filename": doc.filename,
-        "title": doc.title,
-        "authors": doc.authors,
-        "url": doc.url,
-        "file_type": doc.file_type,
-        "file_size": doc.file_size,
-        "directory": doc.directory,
-        "ingested": doc.ingested,
-        "created_at": doc.created_at.isoformat(),
-        "updated_at": doc.updated_at.isoformat(),
-    }
 
 
 @asynccontextmanager
@@ -174,48 +164,6 @@ async def log_http_requests(request: Request, call_next):
         raise
 
 
-# ── ask / answer ──────────────────────────────────────────────────────────
-
-
-def _process_task(
-    task_id: str,
-    question: str,
-    top_k: int,
-    title_map: dict[str, str | None],
-    history: list[dict],
-    should_cache: bool,
-) -> None:
-    try:
-        use_case = get_ask_question()
-        result = use_case.execute(question, top_k, title_map, history=history)
-        get_task_manager().update(
-            task_id,
-            status="done",
-            answer=result.answer,
-            sources=[s.__dict__ for s in result.sources],
-        )
-        if should_cache:
-            get_cache().set(question, result.to_cache_dict(), top_k)
-        log_event(
-            logger,
-            logging.INFO,
-            "ask_task_completed",
-            task_id=task_id,
-            retrieved_sources=len(result.sources),
-            answer_chars=len(result.answer),
-            cached=should_cache,
-        )
-    except Exception as e:
-        get_task_manager().update(task_id, status="error", error=str(e))
-        log_event(
-            logger,
-            logging.ERROR,
-            "ask_task_failed",
-            task_id=task_id,
-            error=e,
-        )
-
-
 @app.post("/api/v1/ask", response_model=AskResponse)
 async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     schema_ok, expected, actual = check_schema_version()
@@ -238,53 +186,12 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
             detail="Index not found. Run: python main.py ingest",
         )
 
-    cache = get_cache()
-    should_use_cache = not body.history
-    cached = cache.get(body.question, body.top_k) if should_use_cache else None
-    if cached:
-        task_id = get_task_manager().create(body.question, body.top_k)
-        get_task_manager().update(
-            task_id,
-            status="done",
-            answer=cached["answer"],
-            sources=cached.get("sources", []),
-        )
-        log_event(
-            logger,
-            logging.INFO,
-            "ask_completed_from_cache",
-            task_id=task_id,
-            top_k=body.top_k,
-            history_messages=len(body.history),
-        )
-        return AskResponse(task_id=task_id, status="done")
-
-    task_id = get_task_manager().create(body.question, body.top_k)
-    log_event(
-        logger,
-        logging.INFO,
-        "ask_task_created",
-        task_id=task_id,
+    result = await get_ask_task_service().submit(
+        question=body.question,
         top_k=body.top_k,
-        history_messages=len(body.history),
+        history=body.history,
     )
-
-    manage_docs = get_manage_docs()
-    title_map = await manage_docs.get_title_map() if manage_docs else {}
-
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(
-        None,
-        _process_task,
-        task_id,
-        body.question,
-        body.top_k,
-        title_map,
-        body.history,
-        should_use_cache,
-    )
-
-    return AskResponse(task_id=task_id, status="processing")
+    return AskResponse(task_id=result.task_id, status=result.status)
 
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
@@ -323,20 +230,8 @@ async def status(current_user: User = Depends(get_current_user)):
 async def ingest_start(
     force: bool = False, current_user: User = Depends(require_role("admin"))
 ):
-    ingest = get_ingest()
-    if ingest.status == "processing":
-        log_event(logger, logging.WARNING, "ingest_start_rejected", force=force)
-        return IngestResponse(status="already_running")
-
-    async def _run():
-        try:
-            await ingest.execute(force=force)
-        except Exception as e:
-            log_event(logger, logging.ERROR, "ingest_background_failed", error=str(e))
-
-    asyncio.create_task(_run())
-    log_event(logger, logging.INFO, "ingest_start_accepted", force=force)
-    return IngestResponse(status="processing")
+    status = get_ingestion_task_service().start(force=force)
+    return IngestResponse(status=status)
 
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
@@ -349,17 +244,7 @@ async def ingest_status(current_user: User = Depends(get_current_user)):
 async def list_runs(current_user: User = Depends(get_current_user)):
     repo = await get_ingestion_repo()
     runs = await repo.list_all()
-    return [
-        IngestionRunSchema(
-            id=r.id,
-            status=r.status,
-            chunks_indexed=r.chunks_indexed,
-            error=r.error,
-            started_at=r.started_at.isoformat(),
-            finished_at=r.finished_at.isoformat() if r.finished_at else None,
-        )
-        for r in runs
-    ]
+    return [IngestionRunSchema(**serialize_ingestion_run(r)) for r in runs]
 
 
 @app.get(
@@ -371,14 +256,7 @@ async def get_run(run_id: str, current_user: User = Depends(get_current_user)):
     run = await repo.get(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
-    return IngestionRunSchema(
-        id=run.id,
-        status=run.status,
-        chunks_indexed=run.chunks_indexed,
-        error=run.error,
-        started_at=run.started_at.isoformat(),
-        finished_at=run.finished_at.isoformat() if run.finished_at else None,
-    )
+    return IngestionRunSchema(**serialize_ingestion_run(run))
 
 
 # ── documents CRUD ────────────────────────────────────────────────────────
@@ -431,9 +309,8 @@ async def upload_documents(
 
     if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
         try:
-            queue = get_queue()
             for pdf_id in uploaded_pdf_ids:
-                queue.enqueue("document.extract_metadata", {"document_id": pdf_id})
+                get_enqueue_document_metadata().execute(pdf_id)
         except Exception as e:
             logger.warning("metadata_enqueue_failed error=%s", e)
 
@@ -452,7 +329,7 @@ async def list_all_documents(current_user: User = Depends(require_role("admin"))
         "documents_list_completed",
         total_documents=len(docs),
     )
-    return [_serialize_doc(d) for d in docs]
+    return [serialize_document(d) for d in docs]
 
 
 @app.get(
@@ -462,27 +339,27 @@ async def list_all_documents(current_user: User = Depends(require_role("admin"))
 async def get_metadata_extraction_status(
     current_user: User = Depends(require_role("admin")),
 ):
-    queue = get_queue()
-    counts = queue.count_by_status("document.extract_metadata")
-    pending = counts.get("pending", 0)
-    running = counts.get("running", 0)
+    result = get_metadata_job_status().execute()
     log_event(
         logger,
         logging.INFO,
         "metadata_status_completed",
         user_id=current_user.id,
-        pending=pending,
-        running=running,
+        pending=result.pending,
+        running=result.running,
     )
     return MetadataExtractionStatusResponse(
-        pending=pending,
-        running=running,
-        active=pending + running,
+        pending=result.pending,
+        running=result.running,
+        active=result.active,
     )
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def get_one_document(doc_id: str):
+async def get_one_document(
+    doc_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -494,8 +371,9 @@ async def get_one_document(doc_id: str):
         logging.INFO,
         "document_get_completed",
         document_id=doc_id,
+        user_id=current_user.id,
     )
-    return _serialize_doc(doc)
+    return serialize_document(doc)
 
 
 @app.put("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
@@ -519,7 +397,7 @@ async def update_one_document(
         document_id=doc_id,
         user_id=current_user.id,
     )
-    return _serialize_doc(doc)
+    return serialize_document(doc)
 
 
 @app.post("/api/v1/documents/{doc_id}/extract-metadata", response_model=DocumentRecord)
@@ -535,13 +413,19 @@ async def extract_document_metadata(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     if result:
-        return _serialize_doc(await manage.get(doc_id))
+        updated_doc = await manage.get(doc_id)
+        if not updated_doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return serialize_document(updated_doc)
 
-    return _serialize_doc(doc)
+    return serialize_document(doc)
 
 
 @app.get("/api/v1/documents/{doc_id}/view")
-async def view_document(doc_id: str):
+async def view_document(
+    doc_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
     doc_file = await get_document_file().execute(doc_id)
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -558,7 +442,10 @@ async def view_document(doc_id: str):
 
 
 @app.get("/api/v1/documents/{doc_id}/download")
-async def download_document(doc_id: str):
+async def download_document(
+    doc_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
     doc_file = await get_document_file().execute(doc_id)
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -576,25 +463,9 @@ async def download_document(doc_id: str):
 
 @app.post("/api/v1/documents/extract-all-metadata", response_model=MessageResponse)
 async def extract_all_metadata(current_user: User = Depends(require_role("admin"))):
-    from src.adapters.rest.dependencies import get_doc_repo, get_queue
-
-    repo = await get_doc_repo()
-    docs = await repo.list_all()
-    count = 0
-    queue = get_queue()
-    for doc in docs:
-        if doc.file_type != "pdf":
-            continue
-        if doc.title and doc.title.strip() and doc.authors and doc.authors.strip():
-            continue
-        queue.enqueue(
-            "document.extract_metadata",
-            {"document_id": doc.id},
-        )
-        count += 1
-
+    result = await get_enqueue_pending_metadata().execute()
     return MessageResponse(
-        message=f"{count} document(s) enqueued for metadata extraction"
+        message=f"{result.enqueued} document(s) enqueued for metadata extraction"
     )
 
 
@@ -602,15 +473,9 @@ async def extract_all_metadata(current_user: User = Depends(require_role("admin"
 async def delete_one_document(
     doc_id: str, current_user: User = Depends(require_role("admin"))
 ):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.delete(doc_id)
+    doc = await get_delete_document().execute(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    ingest = get_ingest()
-    ingest.remove_chunks(doc_id)
     log_event(
         logger,
         logging.INFO,
@@ -619,7 +484,7 @@ async def delete_one_document(
         user_id=current_user.id,
     )
 
-    return _serialize_doc(doc)
+    return serialize_document(doc)
 
 
 apply_openapi_docs(app)

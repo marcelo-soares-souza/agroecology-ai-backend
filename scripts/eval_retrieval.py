@@ -138,8 +138,8 @@ def main() -> None:
         sources = set()
 
         for rank, r in enumerate(results, 1):
-            text = r.get("text", "")
-            source = r.get("source", "")
+            text = r.text
+            source = r.source
             sources.add(source)
 
             if _loosely_relevant(text, keywords):

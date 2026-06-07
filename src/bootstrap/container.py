@@ -10,6 +10,7 @@ from src.application.admin.list_users import ListUsers
 from src.application.admin.update_user import UpdateUser
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
@@ -20,11 +21,17 @@ from src.application.auth.resend_confirmation import ResendConfirmationEmail
 from src.application.ask_question import AskQuestion
 from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
+from src.application.get_metadata_job_status import GetMetadataJobStatus
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
+from src.application.delete_document import DeleteDocument
+from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
+from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.upload_document import UploadDocument
+from src.bootstrap.ask_task_service import AskTaskService
+from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.services.retriever import RetrieverService
 from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
@@ -106,8 +113,15 @@ class Container:
         self.extract_document_metadata: ExtractDocumentMetadata | None = None
         self.upload_document: UploadDocument | None = None
         self.get_document_file: GetDocumentFile | None = None
+        self.delete_document: DeleteDocument | None = None
+        self.enqueue_document_metadata: EnqueueDocumentMetadata | None = None
+        self.enqueue_pending_metadata: EnqueuePendingMetadata | None = None
+        self.get_metadata_job_status: GetMetadataJobStatus | None = None
+        self.ask_task_service: AskTaskService | None = None
+        self.ingestion_task_service: IngestionTaskService | None = None
 
         # Auth use cases
+        self.get_human_challenge: GetHumanChallenge | None = None
         self.register_user: RegisterUser | None = None
         self.login_user: LoginUser | None = None
         self.refresh_token: RefreshToken | None = None
@@ -185,6 +199,28 @@ class Container:
 
         self.task_manager = TaskManager()
         self.task_manager.start_cleanup()
+        assert self.queue is not None
+        assert self.task_manager is not None
+        assert self.ask_question is not None
+        assert self.cache is not None
+        assert self.manage_docs is not None
+        assert self.ingest is not None
+        assert self.doc_repo is not None
+        self.enqueue_document_metadata = EnqueueDocumentMetadata(queue=self.queue)
+        self.enqueue_pending_metadata = EnqueuePendingMetadata(
+            repo=self.doc_repo,
+            queue=self.queue,
+        )
+        self.get_metadata_job_status = GetMetadataJobStatus(queue=self.queue)
+        self.ask_task_service = AskTaskService(
+            ask_question=self.ask_question,
+            task_manager=self.task_manager,
+            cache=self.cache,
+            manage_documents=self.manage_docs,
+        )
+        self.ingestion_task_service = IngestionTaskService(
+            ingest_documents=self.ingest,
+        )
         self._started = True
         log_event(logger, logging.INFO, "container_start_completed")
 
@@ -262,6 +298,13 @@ class Container:
             "extract_document_metadata",
             "upload_document",
             "get_document_file",
+            "delete_document",
+            "enqueue_document_metadata",
+            "enqueue_pending_metadata",
+            "get_metadata_job_status",
+            "ask_task_service",
+            "ingestion_task_service",
+            "get_human_challenge",
             "register_user",
             "login_user",
             "refresh_token",
@@ -412,6 +455,10 @@ class Container:
         self.get_document_file = GetDocumentFile(
             repo=self.doc_repo, storage=self.file_storage
         )
+        self.delete_document = DeleteDocument(
+            manage_documents=self.manage_docs,
+            vector_store=self.vector_store,
+        )
 
         # Auth use cases
         password_hasher = BCryptPasswordHasher()
@@ -419,6 +466,7 @@ class Container:
         human_check = JwtHumanCheck()
         email_service = SmtpEmailService()
 
+        self.get_human_challenge = GetHumanChallenge(human_check=human_check)
         self.register_user = RegisterUser(
             repo=self.user_repo,
             password_hasher=password_hasher,
@@ -455,7 +503,6 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
         )
-
         # Admin use cases
         self.list_users = ListUsers(repo=self.user_repo)
         self.get_user = AdminGetUser(repo=self.user_repo)

@@ -33,6 +33,9 @@ class JwtTokenService(TokenServicePort):
 
 
 class JwtHumanCheck(HumanCheckPort):
+    def create_challenge(self, locale: str = "pt-BR") -> dict[str, str]:
+        return human_check.create_challenge(locale)
+
     def verify_challenge(self, challenge_id: str, answer: str) -> bool:
         return human_check.verify_challenge(challenge_id, answer)
 

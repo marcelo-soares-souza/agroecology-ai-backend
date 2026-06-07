@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
@@ -14,8 +13,8 @@ _SECTION_DELIM = re.compile(r"\n(?=#{1,6}\s)")
 
 
 class MarkdownDocumentParser(DocumentParserPort):
-    def parse(self, filepath: Path, document_id: str, source: str) -> ParsedDocument:
-        text = filepath.read_text(encoding="utf-8")
+    def parse(self, content: bytes, document_id: str, source: str) -> ParsedDocument:
+        text = content.decode("utf-8")
         doc = ParsedDocument(
             document_id=document_id,
             source=source,

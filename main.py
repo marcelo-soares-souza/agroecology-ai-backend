@@ -60,22 +60,22 @@ def cmd_ask(args):
 
     console.print(
         Panel(
-            result["answer"],
+            result.answer,
             title="[bold green]Answer[/bold green]",
             border_style="green",
         )
     )
 
-    if result["sources"]:
+    if result.sources:
         console.print("\n[bold]Sources:[/bold]")
-        for i, src in enumerate(result["sources"], 1):
-            meta = src.get("metadata", {})
+        for i, src in enumerate(result.sources, 1):
+            meta = src.metadata
             source_file = meta.get("source", "unknown")
             stype = meta.get("search_type", "?")
             console.print(
-                f"  {i}. [dim]Score: {src['score']:.3f} ({stype}) | {source_file}[/dim]"
+                f"  {i}. [dim]Score: {src.score:.3f} ({stype}) | {source_file}[/dim]"
             )
-            preview = src["text"][:200].replace("\n", " ")
+            preview = src.text[:200].replace("\n", " ")
             console.print(f"     [dim]{preview}...[/dim]")
 
 

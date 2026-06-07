@@ -26,3 +26,15 @@ class MetadataExtractionResult:
     authors: str | None
     filename: str
     file_type: str
+
+
+@dataclass(frozen=True)
+class MetadataExtractionQueueStatus:
+    pending: int
+    running: int
+    active: int
+
+
+@dataclass(frozen=True)
+class PendingMetadataEnqueueResult:
+    enqueued: int

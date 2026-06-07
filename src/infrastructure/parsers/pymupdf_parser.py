@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
@@ -136,7 +135,7 @@ def _extract_meta(text: str) -> dict:
 
 
 class PyMuPdfDocumentParser(DocumentParserPort):
-    def parse(self, filepath: Path, document_id: str, source: str) -> ParsedDocument:
+    def parse(self, content: bytes, document_id: str, source: str) -> ParsedDocument:
         import fitz
 
         doc = ParsedDocument(
@@ -145,7 +144,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
             file_type="pdf",
         )
 
-        pdf = fitz.open(str(filepath))
+        pdf = fitz.open(stream=content, filetype="pdf")
         doc.total_pages = len(pdf)
         raw_blocks: list[tuple[int, float, float, bool, tuple, str]] = []
         page_header_texts: dict[str, list[str]] = {}

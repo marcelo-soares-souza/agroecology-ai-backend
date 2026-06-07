@@ -8,6 +8,7 @@ from src.application.admin.list_users import ListUsers as AdminListUsers
 from src.application.admin.update_user import UpdateUser as AdminUpdateUser
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
@@ -18,25 +19,28 @@ from src.application.auth.resend_confirmation import ResendConfirmationEmail
 from src.application.ask_question import AskQuestion
 from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
+from src.application.get_metadata_job_status import GetMetadataJobStatus
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
+from src.application.delete_document import DeleteDocument
+from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
+from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.upload_document import UploadDocument
+from src.bootstrap.ask_task_service import AskTaskService
+from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.bootstrap.container import container
 from src.bootstrap.task_manager import TaskManager
 from src.domain.ports.cache_port import CachePort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
+from src.domain.ports.user_repository import UserRepository
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.domain.services.retriever import RetrieverService
-from src.infrastructure.persistence.postgres_user_repo import (
-    PostgresUserRepository,
-)
-from src.infrastructure.persistence.queue_repository import QueueRepository
 
 logger = logging.getLogger("agroecology.bootstrap")
 
@@ -71,7 +75,7 @@ async def get_ingestion_repo() -> IngestionRepository:
     return container.ingestion_repo
 
 
-async def get_user_repo() -> PostgresUserRepository:
+async def get_user_repo() -> UserRepository:
     assert container.user_repo is not None, "user_repo not initialized"
     return container.user_repo
 
@@ -107,14 +111,21 @@ def get_extract_metadata() -> ExtractMetadata | None:
     return container.extract_metadata
 
 
-def get_queue() -> QueueRepository:
-    assert container.queue is not None, "queue not initialized"
-    return container.queue
-
-
 def get_task_manager() -> TaskManager:
     assert container.task_manager is not None, "task_manager not initialized"
     return container.task_manager
+
+
+def get_ask_task_service() -> AskTaskService:
+    assert container.ask_task_service is not None, "ask_task_service not initialized"
+    return container.ask_task_service
+
+
+def get_ingestion_task_service() -> IngestionTaskService:
+    assert container.ingestion_task_service is not None, (
+        "ingestion_task_service not initialized"
+    )
+    return container.ingestion_task_service
 
 
 # ── Auth use case getters ────────────────────────────────────────────────
@@ -123,6 +134,11 @@ def get_task_manager() -> TaskManager:
 def get_register_user() -> RegisterUser:
     assert container.register_user is not None
     return container.register_user
+
+
+def get_human_challenge() -> GetHumanChallenge:
+    assert container.get_human_challenge is not None
+    return container.get_human_challenge
 
 
 def get_login_user() -> LoginUser:
@@ -204,6 +220,26 @@ def get_extract_document_metadata() -> ExtractDocumentMetadata:
 def get_document_file() -> GetDocumentFile:
     assert container.get_document_file is not None
     return container.get_document_file
+
+
+def get_delete_document() -> DeleteDocument:
+    assert container.delete_document is not None
+    return container.delete_document
+
+
+def get_enqueue_document_metadata() -> EnqueueDocumentMetadata:
+    assert container.enqueue_document_metadata is not None
+    return container.enqueue_document_metadata
+
+
+def get_enqueue_pending_metadata() -> EnqueuePendingMetadata:
+    assert container.enqueue_pending_metadata is not None
+    return container.enqueue_pending_metadata
+
+
+def get_metadata_job_status() -> GetMetadataJobStatus:
+    assert container.get_metadata_job_status is not None
+    return container.get_metadata_job_status
 
 
 async def init_services() -> None:

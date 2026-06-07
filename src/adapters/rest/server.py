@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
@@ -14,6 +12,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 
 from src.adapters.rest.dependencies import (
+    get_ask_question,
     get_cache,
     get_extract_metadata,
     get_ingest,
@@ -22,6 +21,7 @@ from src.adapters.rest.dependencies import (
     get_queue,
     get_retriever,
     get_status_service,
+    get_task_manager,
     init_services,
     shutdown_services,
 )
@@ -50,15 +50,14 @@ from src.adapters.rest.schemas import (
     MessageResponse,
     StatusResponse,
 )
+from src.bootstrap.container import container
 from src.domain.models.user import User
 from src.shared.config import (
     AUTO_EXTRACT_METADATA,
-    CLEANUP_INTERVAL,
     DATA_DIR,
     DATA_DIR_MARKDOWN,
     DATA_DIR_PDFS,
     DATA_DIR_WEB,
-    TASK_TTL,
     check_schema_version,
 )
 from src.shared.logging_utils import (
@@ -67,97 +66,11 @@ from src.shared.logging_utils import (
     log_event,
     resolve_client_ip,
 )
-from src.shared.uuid7 import uuid7
 
 configure_logging()
 
 logger = logging.getLogger("agroecology.http")
 
-
-# ── Task Manager ──────────────────────────────────────────────────────────
-
-
-@dataclass
-class Task:
-    task_id: str
-    question: str
-    top_k: int
-    status: str = "processing"
-    answer: str | None = None
-    sources: list[dict] | None = None
-    error: str | None = None
-    created_at: float = field(default_factory=time.time)
-    completed_at: float | None = None
-
-
-class TaskManager:
-    def __init__(self) -> None:
-        self._tasks: dict[str, Task] = {}
-        self._lock = threading.Lock()
-        self._cleanup_daemon: threading.Thread | None = None
-
-    def start_cleanup(self) -> None:
-        def loop():
-            while True:
-                time.sleep(CLEANUP_INTERVAL)
-                self._cleanup()
-
-        self._cleanup_daemon = threading.Thread(target=loop, daemon=True)
-        self._cleanup_daemon.start()
-
-    def shutdown(self) -> None:
-        pass
-
-    def create(self, question: str, top_k: int) -> str:
-        task_id = uuid7()
-        task = Task(task_id=task_id, question=question, top_k=top_k)
-        with self._lock:
-            self._tasks[task_id] = task
-        return task_id
-
-    def get(self, task_id: str) -> Task | None:
-        with self._lock:
-            return self._tasks.get(task_id)
-
-    def update(
-        self,
-        task_id: str,
-        *,
-        status: str,
-        answer: str | None = None,
-        sources: list[dict] | None = None,
-        error: str | None = None,
-    ) -> None:
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if task:
-                task.status = status
-                if answer is not None:
-                    task.answer = answer
-                if sources is not None:
-                    task.sources = sources
-                if error is not None:
-                    task.error = error
-                if status in ("done", "error"):
-                    task.completed_at = time.time()
-
-    def active_count(self) -> int:
-        with self._lock:
-            return sum(1 for t in self._tasks.values() if t.status == "processing")
-
-    def _cleanup(self) -> None:
-        now = time.time()
-        with self._lock:
-            expired = [
-                tid for tid, t in self._tasks.items() if now - t.created_at > TASK_TTL
-            ]
-            for tid in expired:
-                del self._tasks[tid]
-
-
-# ── FastAPI app ───────────────────────────────────────────────────────────
-
-tasks = TaskManager()
 
 _ALLOWED_EXT = {
     ".pdf": DATA_DIR_PDFS,
@@ -177,32 +90,36 @@ async def _auto_extract_metadata(
     if not AUTO_EXTRACT_METADATA:
         return None
 
-    import asyncio as asyncio_mod
     import fitz
 
     def _extract() -> tuple[str, str] | None:
-        pdf = fitz.open(stream=content, filetype="pdf")
+        pdf_doc = None
         first_page = None
         try:
-            pages = min(3, len(pdf))
+            pdf_doc = fitz.open(stream=content, filetype="pdf")
+            pages = min(3, len(pdf_doc))
             texts = []
             for i in range(pages):
-                t = pdf[i].get_text()
+                t = pdf_doc[i].get_text()
                 if t:
                     texts.append(t)
             first_page = "\n".join(texts)
         except Exception:
             pass
-        pdf.close()
+        finally:
+            if pdf_doc is not None:
+                pdf_doc.close()
 
         if not first_page or not first_page.strip():
             return None
 
         extractor = get_extract_metadata()
+        if extractor is None:
+            return None
         result = extractor.execute(first_page)
         return (result.get("title", "").strip(), result.get("authors", "").strip())
 
-    loop = asyncio_mod.get_event_loop()
+    loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _extract)
 
 
@@ -224,11 +141,12 @@ def _serialize_doc(doc) -> dict:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_services()
-    tasks.start_cleanup()
-    yield
-    tasks.shutdown()
-    await shutdown_services()
+    try:
+        await init_services()
+        container.start()
+        yield
+    finally:
+        await shutdown_services()
 
 
 app = FastAPI(
@@ -321,11 +239,9 @@ def _process_task(
     should_cache: bool,
 ) -> None:
     try:
-        from src.adapters.rest.dependencies import get_ask_question
-
         use_case = get_ask_question()
         result = use_case.execute(question, top_k, title_map, history=history)
-        tasks.update(
+        get_task_manager().update(
             task_id,
             status="done",
             answer=result["answer"],
@@ -343,7 +259,7 @@ def _process_task(
             cached=should_cache,
         )
     except Exception as e:
-        tasks.update(task_id, status="error", error=str(e))
+        get_task_manager().update(task_id, status="error", error=str(e))
         log_event(
             logger,
             logging.ERROR,
@@ -379,8 +295,8 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     should_use_cache = not body.history
     cached = cache.get(body.question, body.top_k) if should_use_cache else None
     if cached:
-        task_id = tasks.create(body.question, body.top_k)
-        tasks.update(
+        task_id = get_task_manager().create(body.question, body.top_k)
+        get_task_manager().update(
             task_id,
             status="done",
             answer=cached["answer"],
@@ -396,7 +312,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
         )
         return AskResponse(task_id=task_id, status="done")
 
-    task_id = tasks.create(body.question, body.top_k)
+    task_id = get_task_manager().create(body.question, body.top_k)
     log_event(
         logger,
         logging.INFO,
@@ -426,7 +342,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
 async def answer(task_id: str, current_user: User = Depends(get_current_user)):
-    task = tasks.get(task_id)
+    task = get_task_manager().get(task_id)
     if task is None:
         raise HTTPException(
             status_code=404,
@@ -449,7 +365,7 @@ async def status(current_user: User = Depends(get_current_user)):
     use_case = get_status_service()
     if use_case is None:
         raise HTTPException(status_code=503, detail="Not initialized")
-    data = await use_case.execute(tasks.active_count())
+    data = await use_case.execute(get_task_manager().active_count())
     return StatusResponse(**data)
 
 
@@ -644,9 +560,7 @@ async def upload_documents(
 
     if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
         try:
-            from src.adapters.rest.dependencies import get_queue as _get_queue
-
-            queue = _get_queue()
+            queue = get_queue()
             for pdf_id in uploaded_pdf_ids:
                 queue.enqueue("document.extract_metadata", {"document_id": pdf_id})
                 log_event(
@@ -660,11 +574,9 @@ async def upload_documents(
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 
-    return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
-
 
 @app.get("/api/v1/documents", response_model=list[DocumentRecord])
-async def list_all_documents():
+async def list_all_documents(current_user: User = Depends(require_role("admin"))):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -770,8 +682,6 @@ async def extract_document_metadata(
         )
 
     filepath = manage.get_file_path(doc)
-    from pathlib import Path
-
     p = Path(filepath)
     if not p.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
@@ -844,29 +754,22 @@ async def download_document(doc_id: str):
 
 @app.post("/api/v1/documents/extract-all-metadata", response_model=MessageResponse)
 async def extract_all_metadata(current_user: User = Depends(require_role("admin"))):
-    from src.infrastructure.persistence.postgres_document_repo import (
-        PostgresDocumentRepository,
-    )
-    from src.adapters.rest.dependencies import get_queue
+    from src.adapters.rest.dependencies import get_doc_repo, get_queue
 
-    db = PostgresDocumentRepository()
-    await db.initialize()
-    try:
-        docs = await db.list_all()
-        count = 0
-        queue = get_queue()
-        for doc in docs:
-            if doc.file_type != "pdf":
-                continue
-            if doc.title and doc.title.strip() and doc.authors and doc.authors.strip():
-                continue
-            queue.enqueue(
-                "document.extract_metadata",
-                {"document_id": doc.id},
-            )
-            count += 1
-    finally:
-        await db.close()
+    repo = await get_doc_repo()
+    docs = await repo.list_all()
+    count = 0
+    queue = get_queue()
+    for doc in docs:
+        if doc.file_type != "pdf":
+            continue
+        if doc.title and doc.title.strip() and doc.authors and doc.authors.strip():
+            continue
+        queue.enqueue(
+            "document.extract_metadata",
+            {"document_id": doc.id},
+        )
+        count += 1
 
     return MessageResponse(
         message=f"{count} document(s) enqueued for metadata extraction"

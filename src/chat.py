@@ -4,36 +4,35 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from .adapters.rest.dependencies import (
+from src.adapters.rest.dependencies import (
     get_ask_question,
     get_manage_docs,
     get_vector_store,
     init_services,
     shutdown_services,
 )
-from .shared.config import HYBRID_TOP_K
+from src.shared.config import HYBRID_TOP_K
 
 console = Console()
 
 
-def chat():
-    if not get_vector_store().index_exists():
-        console.print("[red]Index not found. Run: python main.py ingest[/red]")
-        return
-
-    console.print(
-        Panel(
-            "[bold]Agroecology RAG Chat[/bold]\n"
-            "Type your question or 'exit' to quit.\n"
-            "Use '/top N' to adjust the number of retrieved chunks.",
-            border_style="blue",
-        )
-    )
-
+def chat() -> None:
     import asyncio
 
     asyncio.run(init_services())
     try:
+        if not get_vector_store().index_exists():
+            console.print("[red]Index not found. Run: python main.py ingest[/red]")
+            return
+
+        console.print(
+            Panel(
+                "[bold]Agroecology RAG Chat[/bold]\n"
+                "Type your question or 'exit' to quit.\n"
+                "Use '/top N' to adjust the number of retrieved chunks.",
+                border_style="blue",
+            )
+        )
         top_k = HYBRID_TOP_K
         history: list[dict] = []
         use_case = get_ask_question()

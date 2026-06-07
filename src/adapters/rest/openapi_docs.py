@@ -376,4 +376,4 @@ def apply_openapi_docs(app: FastAPI) -> None:
             route.summary = str(docs["summary"])
             route.description = str(docs["description"]).strip()
             if "tags" in docs:
-                route.tags = list(docs["tags"])  # type: ignore[arg-type]
+                route.tags = list(docs["tags"])  # type: ignore[call-overload]

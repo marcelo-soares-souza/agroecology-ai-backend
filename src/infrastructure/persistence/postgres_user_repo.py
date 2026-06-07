@@ -232,7 +232,7 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM refresh_tokens WHERE token_hash = %s AND revoked_at IS NULL",
+                    "SELECT * FROM refresh_tokens WHERE token_hash = %s",
                     (token_hash,),
                 )
                 row = await cur.fetchone()

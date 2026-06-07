@@ -35,12 +35,10 @@ async def get_current_user(
         log_event(logger, logging.WARNING, "auth_missing_subject", ip=client_ip)
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    from src.adapters.rest.dependencies import _user_repo
+    from src.adapters.rest.dependencies import get_user_repo
 
-    if _user_repo is None:
-        log_event(logger, logging.ERROR, "auth_service_not_initialized", ip=client_ip)
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    user = await _user_repo.get_by_id(user_id)
+    repo = await get_user_repo()
+    user = await repo.get_by_id(user_id)
     if not user:
         log_event(
             logger,

@@ -92,11 +92,11 @@ class PostgresIngestionRepository(IngestionRepository):
     async def get_ingested_ids(self, doc_ids: set[str]) -> set[str]:
         if not doc_ids:
             return set()
-        placeholders = ",".join([f"'{d}'" for d in doc_ids])
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    f"SELECT id FROM documents WHERE id IN ({placeholders}) AND ingested = TRUE"
+                    "SELECT id FROM documents WHERE id = ANY(%s) AND ingested = TRUE",
+                    (list(doc_ids),),
                 )
                 rows = await cur.fetchall()
                 return {r[0] for r in rows}
@@ -104,11 +104,11 @@ class PostgresIngestionRepository(IngestionRepository):
     async def mark_as_ingested(self, doc_ids: set[str]) -> None:
         if not doc_ids:
             return
-        placeholders = ",".join([f"'{d}'" for d in doc_ids])
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    f"UPDATE documents SET ingested = TRUE WHERE id IN ({placeholders})"
+                    "UPDATE documents SET ingested = TRUE WHERE id = ANY(%s)",
+                    (list(doc_ids),),
                 )
 
     async def mark_all_not_ingested(self) -> None:

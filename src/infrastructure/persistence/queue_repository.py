@@ -12,7 +12,7 @@ from src.shared.uuid7 import uuid7
 
 class QueueRepository:
     def __init__(self) -> None:
-        self._pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=3)
+        self._pool = ConnectionPool(DATABASE_URL, min_size=0, max_size=3, open=False)
 
     def open(self) -> None:
         self._pool.open()

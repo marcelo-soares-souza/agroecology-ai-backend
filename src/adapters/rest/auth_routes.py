@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.adapters.rest.auth_middleware import get_current_user
+from src.adapters.rest.dependencies import (
+    get_confirm_email,
+    get_confirm_password_reset,
+    get_login_user,
+    get_logout_user,
+    get_refresh_token,
+    get_register_user,
+    get_request_password_reset,
+    get_resend_confirmation_email,
+    get_user_by_slug as get_user_by_slug_use_case,
+)
 from src.adapters.rest.schemas import (
     ChallengeResponse,
     ConfirmEmailRequest,
@@ -16,18 +26,7 @@ from src.adapters.rest.schemas import (
     UserResponse,
 )
 from src.domain.models.user import User
-from src.infrastructure.auth.human_check import create_challenge, verify_challenge
-from src.infrastructure.auth.jwt_handler import (
-    create_access_token,
-    create_refresh_token,
-)
-from src.infrastructure.auth.password_hasher import (
-    generate_token,
-    hash_password,
-    hash_token,
-    verify_password,
-)
-from src.shared.config import REFRESH_TOKEN_TTL_DAYS
+from src.infrastructure.auth.human_check import create_challenge
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -68,10 +67,6 @@ async def get_human_challenge(request: Request, locale: str = "pt-BR"):
 
 @router.post("/register", response_model=MessageResponse)
 async def register(body: RegisterRequest, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-
     log_event(
         logger,
         logging.INFO,
@@ -82,364 +77,127 @@ async def register(body: RegisterRequest, request: Request):
         email=mask_email(body.email),
         locale=body.locale,
     )
-    if not verify_challenge(body.challenge_id, body.challenge_answer):
-        log_event(
-            logger,
-            logging.WARNING,
-            "register_failed",
-            reason="invalid_challenge",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            email=mask_email(body.email),
-        )
-        raise HTTPException(status_code=400, detail="Invalid challenge answer")
-
-    existing = await repo.get_by_email(body.email)
-    if existing:
-        log_event(
-            logger,
-            logging.WARNING,
-            "register_failed",
-            reason="email_already_registered",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            email=mask_email(body.email),
-        )
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    import re
-    import unicodedata
-
-    slug_base = unicodedata.normalize("NFD", body.full_name.lower())
-    slug_base = "".join(c for c in slug_base if not unicodedata.combining(c))
-    slug_base = re.sub(r"[^a-z0-9]+", "-", slug_base).strip("-")
-    slug = slug_base or body.email.split("@")[0]
-
-    existing = await repo.get_by_slug(slug)
-    counter = 1
-    while existing:
-        counter += 1
-        slug = f"{slug_base}-{counter}"
-        existing = await repo.get_by_slug(slug)
-
-    password_hash = hash_password(body.password)
-    user = await repo.create(
-        email=body.email,
-        full_name=body.full_name,
-        password_hash=password_hash,
-        slug=slug,
-        locale=body.locale,
-        role_key="user",
-    )
-
-    token = generate_token()
-    token_hash = hash_token(token)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-    await repo.create_confirmation(user.id, token_hash, expires_at)
-
-    import asyncio as _asyncio
-
-    _asyncio.create_task(
-        _send_emails_async(
+    try:
+        result = await get_register_user().execute(
             email=body.email,
             full_name=body.full_name,
-            token=token,
+            password=body.password,
             locale=body.locale,
+            challenge_id=body.challenge_id,
+            challenge_answer=body.challenge_answer,
         )
-    )
+    except ValueError as e:
+        log_event(logger, logging.WARNING, "register_failed", reason=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
     log_event(
         logger,
         logging.INFO,
         "register_completed",
-        user_id=user.id,
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        user_id=result["id"],
         email=mask_email(body.email),
         locale=body.locale,
     )
-
     return MessageResponse(
         message="Registration successful. Check your email to confirm your account."
     )
 
 
-async def _send_emails_async(
-    email: str, full_name: str, token: str, locale: str
-) -> None:
-    from src.infrastructure.email.smtp_service import (
-        send_admin_new_user_notification,
-        send_confirmation_email,
-    )
-
-    await send_confirmation_email(email, token, locale)
-    await send_admin_new_user_notification(email, full_name, locale)
-
-
 @router.post("/confirm-email/resend", response_model=MessageResponse)
 async def resend_confirmation(email: str, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    user = await repo.get_by_email(email)
-    if not user:
-        log_event(
-            logger,
-            logging.WARNING,
-            "confirm_email_resend_failed",
-            reason="email_not_found",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            email=mask_email(email),
-        )
-        raise HTTPException(status_code=400, detail="Email not found")
-    if user.email_confirmed_at:
-        log_event(
-            logger,
-            logging.WARNING,
-            "confirm_email_resend_failed",
-            reason="already_confirmed",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            email=mask_email(email),
-            user_id=user.id,
-        )
-        raise HTTPException(status_code=400, detail="Email already confirmed")
-
-    token = generate_token()
-    token_hash = hash_token(token)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-    await repo.create_confirmation(user.id, token_hash, expires_at)
-
-    import asyncio as _asyncio2
-    from src.infrastructure.email.smtp_service import send_confirmation_email
-
-    _asyncio2.create_task(send_confirmation_email(user.email, token, user.locale))
-
     log_event(
         logger,
         logging.INFO,
-        "confirm_email_resent",
-        user_id=user.id,
+        "confirm_email_resend_requested",
         ip=resolve_client_ip(
             request.headers, request.client.host if request.client else None
         ),
-        email=mask_email(user.email),
+        email=mask_email(email),
     )
+    try:
+        result = await get_resend_confirmation_email().execute(email=email)
+    except ValueError as e:
+        log_event(logger, logging.WARNING, "confirm_email_resend_failed", reason=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return MessageResponse(message="Confirmation email resent. Check your inbox.")
+    return MessageResponse(message=result["message"])
 
 
 @router.post("/confirm-email", response_model=MessageResponse)
 async def confirm_email(body: ConfirmEmailRequest, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    token_hash = hash_token(body.token)
-    confirmation = await repo.get_confirmation(token_hash)
-
-    if not confirmation:
+    try:
+        await get_confirm_email().execute(token=body.token)
+    except ValueError as e:
         log_event(
             logger,
             logging.WARNING,
             "confirm_email_failed",
-            reason="invalid_or_expired_token",
+            reason=str(e),
             ip=resolve_client_ip(
                 request.headers, request.client.host if request.client else None
             ),
         )
-        raise HTTPException(
-            status_code=400, detail="Invalid or expired confirmation token"
-        )
-    if confirmation["expires_at"] < datetime.now(timezone.utc):
-        log_event(
-            logger,
-            logging.WARNING,
-            "confirm_email_failed",
-            reason="token_expired",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=confirmation["user_id"],
-        )
-        raise HTTPException(status_code=400, detail="Confirmation token expired")
-
-    await repo.confirm_email(confirmation["user_id"])
-    await repo.mark_confirmation_done(confirmation["id"])
-    log_event(
-        logger,
-        logging.INFO,
-        "confirm_email_completed",
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
-        user_id=confirmation["user_id"],
-    )
+        raise HTTPException(status_code=400, detail=str(e))
 
     return MessageResponse(message="Email confirmed successfully. You can now login.")
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    user = await repo.get_by_email(body.email)
-
-    if not user or not verify_password(body.password, user.password_hash):
+    try:
+        result = await get_login_user().execute(
+            email=body.email, password=body.password
+        )
+    except ValueError as e:
         log_event(
             logger,
             logging.WARNING,
             "login_failed",
-            reason="invalid_credentials",
+            reason=str(e),
             ip=resolve_client_ip(
                 request.headers, request.client.host if request.client else None
             ),
-            email=mask_email(body.email),
         )
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    if user.email_confirmed_at is None:
-        log_event(
-            logger,
-            logging.WARNING,
-            "login_failed",
-            reason="email_not_confirmed",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=user.id,
-            email=mask_email(body.email),
-        )
-        raise HTTPException(status_code=401, detail="Email not confirmed")
-    if user.status != "active":
-        log_event(
-            logger,
-            logging.WARNING,
-            "login_failed",
-            reason="account_not_active",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=user.id,
-            email=mask_email(body.email),
-        )
-        raise HTTPException(status_code=401, detail="Account is not active")
+        raise HTTPException(status_code=401, detail=str(e))
 
-    await repo.update_last_login(user.id)
-
-    roles = user.roles or []
-    access_token = create_access_token(user.id, roles)
-    raw_refresh = create_refresh_token(user.id)
-    refresh_hash = hash_token(raw_refresh)
-    exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
-    await repo.store_refresh_token(user.id, refresh_hash, exp)
     log_event(
         logger,
         logging.INFO,
         "login_completed",
-        user_id=user.id,
+        user_id=result["user"]["id"],
         ip=resolve_client_ip(
             request.headers, request.client.host if request.client else None
         ),
-        email=mask_email(user.email),
-        roles=",".join(roles),
     )
-
-    return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
+    return TokenResponse(
+        access_token=result["access_token"], refresh_token=result["refresh_token"]
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(refresh_token: str, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    token_hash = hash_token(refresh_token)
-    stored = await repo.get_refresh_token(token_hash)
-
-    if not stored:
+    try:
+        result = await get_refresh_token().execute(refresh_token=refresh_token)
+    except ValueError as e:
         log_event(
             logger,
             logging.WARNING,
             "refresh_failed",
-            reason="invalid_token",
+            reason=str(e),
             ip=resolve_client_ip(
                 request.headers, request.client.host if request.client else None
             ),
         )
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-    if stored["expires_at"] < datetime.now(timezone.utc):
-        log_event(
-            logger,
-            logging.WARNING,
-            "refresh_failed",
-            reason="token_expired",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=stored["user_id"],
-        )
-        raise HTTPException(status_code=401, detail="Refresh token expired")
-    if stored.get("revoked_at"):
-        await repo.revoke_all_refresh_tokens(stored["user_id"])
-        log_event(
-            logger,
-            logging.WARNING,
-            "refresh_failed",
-            reason="token_reuse_detected",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=stored["user_id"],
-        )
-        raise HTTPException(status_code=401, detail="Token reuse detected")
+        raise HTTPException(status_code=401, detail=str(e))
 
-    await repo.revoke_refresh_token(token_hash)
-
-    user = await repo.get_by_id(stored["user_id"])
-    if not user or user.status != "active":
-        log_event(
-            logger,
-            logging.WARNING,
-            "refresh_failed",
-            reason="account_not_active",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            user_id=stored["user_id"],
-        )
-        raise HTTPException(status_code=401, detail="Account not active")
-
-    roles = user.roles or []
-    access_token = create_access_token(user.id, roles)
-    raw_refresh = create_refresh_token(user.id)
-    new_hash = hash_token(raw_refresh)
-    exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
-    await repo.store_refresh_token(user.id, new_hash, exp)
-    log_event(
-        logger,
-        logging.INFO,
-        "refresh_completed",
-        user_id=user.id,
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
-        email=mask_email(user.email),
+    return TokenResponse(
+        access_token=result["access_token"], refresh_token=result["refresh_token"]
     )
-
-    return TokenResponse(access_token=access_token, refresh_token=raw_refresh)
 
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(request: Request, user: User = Depends(get_current_user)):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    await repo.revoke_all_refresh_tokens(user.id)
+    await get_logout_user().execute(user_id=user.id)
     log_event(
         logger,
         logging.INFO,
@@ -454,96 +212,31 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
 
 @router.post("/password-reset/request", response_model=MessageResponse)
 async def request_password_reset(email: str, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    user = await repo.get_by_email(email)
-    if not user:
-        log_event(
-            logger,
-            logging.INFO,
-            "password_reset_requested",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-            email=mask_email(email),
-            user_exists=False,
-        )
-        return MessageResponse(
-            message="If the email exists, a reset link has been sent."
-        )
-
-    token = generate_token()
-    token_hash = hash_token(token)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    await repo.create_confirmation(user.id, token_hash, expires_at)
-
-    from src.infrastructure.email.smtp_service import send_reset_email
-    import asyncio as _asyncio3
-
-    _asyncio3.create_task(send_reset_email(user.email, token, user.locale))
-
-    log_event(
-        logger,
-        logging.INFO,
-        "password_reset_requested",
-        user_id=user.id,
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
-        email=mask_email(user.email),
-        user_exists=True,
-    )
+    try:
+        await get_request_password_reset().execute(email=email)
+    except ValueError:
+        pass
 
     return MessageResponse(message="If the email exists, a reset link has been sent.")
 
 
 @router.post("/password-reset/confirm", response_model=MessageResponse)
 async def confirm_password_reset(token: str, new_password: str, request: Request):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    if len(new_password) < 8:
+    try:
+        await get_confirm_password_reset().execute(
+            token=token, new_password=new_password
+        )
+    except ValueError as e:
         log_event(
             logger,
             logging.WARNING,
             "password_reset_confirm_failed",
-            reason="password_too_short",
+            reason=str(e),
             ip=resolve_client_ip(
                 request.headers, request.client.host if request.client else None
             ),
         )
-        raise HTTPException(
-            status_code=400, detail="Password must be at least 8 characters"
-        )
-
-    repo = await get_user_repo()
-    token_hash = hash_token(token)
-    confirmation = await repo.get_confirmation(token_hash)
-
-    if not confirmation or confirmation["expires_at"] < datetime.now(timezone.utc):
-        log_event(
-            logger,
-            logging.WARNING,
-            "password_reset_confirm_failed",
-            reason="invalid_or_expired_token",
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
-        )
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-
-    password_hash = hash_password(new_password)
-    await repo.update(confirmation["user_id"], password_hash=password_hash)
-    await repo.mark_confirmation_done(confirmation["id"])
-    log_event(
-        logger,
-        logging.INFO,
-        "password_reset_confirmed",
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
-        user_id=confirmation["user_id"],
-    )
+        raise HTTPException(status_code=400, detail=str(e))
 
     return MessageResponse(message="Password reset successfully")
 
@@ -555,12 +248,7 @@ async def me(user: User = Depends(get_current_user)):
 
 @router.get("/users/by-slug/{slug}", response_model=UserResponse)
 async def get_user_by_slug(slug: str):
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    user = await repo.get_by_slug(slug)
-    if not user:
-        user = await repo.get_by_id(slug)
+    user = await get_user_by_slug_use_case().execute(slug)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return _serialize_user(user)
+    return user

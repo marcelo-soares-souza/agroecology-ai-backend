@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import logging
 
+from src.application.admin.delete_user import DeleteUser as AdminDeleteUser
+from src.application.admin.get_user import GetUser as AdminGetUser
+from src.application.admin.list_users import ListUsers as AdminListUsers
+from src.application.admin.update_user import UpdateUser as AdminUpdateUser
+from src.application.auth.confirm_email import ConfirmEmail
+from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_user_by_slug import GetUserBySlug
+from src.application.auth.login_user import LoginUser
+from src.application.auth.logout_user import LogoutUser
+from src.application.auth.refresh_token import RefreshToken
+from src.application.auth.register_user import RegisterUser
+from src.application.auth.request_password_reset import RequestPasswordReset
+from src.application.auth.resend_confirmation import ResendConfirmationEmail
 from src.application.ask_question import AskQuestion
+from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
+from src.application.get_document_file import GetDocumentFile
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
+from src.application.upload_document import UploadDocument
 from src.bootstrap.container import container
 from src.bootstrap.task_manager import TaskManager
 from src.domain.ports.cache_port import CachePort
@@ -99,6 +115,95 @@ def get_queue() -> QueueRepository:
 def get_task_manager() -> TaskManager:
     assert container.task_manager is not None, "task_manager not initialized"
     return container.task_manager
+
+
+# ── Auth use case getters ────────────────────────────────────────────────
+
+
+def get_register_user() -> RegisterUser:
+    assert container.register_user is not None
+    return container.register_user
+
+
+def get_login_user() -> LoginUser:
+    assert container.login_user is not None
+    return container.login_user
+
+
+def get_refresh_token() -> RefreshToken:
+    assert container.refresh_token is not None
+    return container.refresh_token
+
+
+def get_logout_user() -> LogoutUser:
+    assert container.logout_user is not None
+    return container.logout_user
+
+
+def get_confirm_email() -> ConfirmEmail:
+    assert container.confirm_email is not None
+    return container.confirm_email
+
+
+def get_user_by_slug() -> GetUserBySlug:
+    assert container.get_user_by_slug is not None
+    return container.get_user_by_slug
+
+
+def get_resend_confirmation_email() -> ResendConfirmationEmail:
+    assert container.resend_confirmation_email is not None
+    return container.resend_confirmation_email
+
+
+def get_request_password_reset() -> RequestPasswordReset:
+    assert container.request_password_reset is not None
+    return container.request_password_reset
+
+
+def get_confirm_password_reset() -> ConfirmPasswordReset:
+    assert container.confirm_password_reset is not None
+    return container.confirm_password_reset
+
+
+# ── Admin use case getters ───────────────────────────────────────────────
+
+
+def get_list_users() -> AdminListUsers:
+    assert container.list_users is not None
+    return container.list_users
+
+
+def get_admin_get_user() -> AdminGetUser:
+    assert container.get_user is not None
+    return container.get_user
+
+
+def get_update_user() -> AdminUpdateUser:
+    assert container.update_user is not None
+    return container.update_user
+
+
+def get_delete_user() -> AdminDeleteUser:
+    assert container.delete_user is not None
+    return container.delete_user
+
+
+# ── Document use case getters ────────────────────────────────────────────
+
+
+def get_upload_document() -> UploadDocument:
+    assert container.upload_document is not None
+    return container.upload_document
+
+
+def get_extract_document_metadata() -> ExtractDocumentMetadata:
+    assert container.extract_document_metadata is not None
+    return container.extract_document_metadata
+
+
+def get_document_file() -> GetDocumentFile:
+    assert container.get_document_file is not None
+    return container.get_document_file
 
 
 async def init_services() -> None:

@@ -63,3 +63,6 @@ class UserRepository(ABC):
 
     @abstractmethod
     async def get_refresh_token(self, token_hash: str) -> dict | None: ...
+
+    @abstractmethod
+    async def assign_role(self, user_id: str, role_key: str) -> None: ...

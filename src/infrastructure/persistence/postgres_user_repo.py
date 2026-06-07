@@ -238,6 +238,22 @@ class PostgresUserRepository(UserRepository):
                 row = await cur.fetchone()
                 return dict(row) if row else None
 
+    async def assign_role(self, user_id: str, role_key: str) -> None:
+        role_id = (
+            "00000000-0000-0000-0000-000000000001"
+            if role_key == "admin"
+            else "00000000-0000-0000-0000-000000000002"
+        )
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM user_roles WHERE user_id = %s", (user_id,)
+                )
+                await cur.execute(
+                    "INSERT INTO user_roles (id, user_id, role_id) VALUES (%s,%s,%s)",
+                    (uuid7(), user_id, role_id),
+                )
+
     async def _enrich_user(self, row: dict) -> User:
         user = self._to_user(row)
         async with self._pool.connection() as conn:

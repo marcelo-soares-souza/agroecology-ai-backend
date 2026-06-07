@@ -30,7 +30,7 @@ def cmd_ingest(args):
     console.print("[bold]Ingesting documents...[/bold]")
     try:
         asyncio.run(init_services())
-        count = get_ingest().execute(force=args.force)
+        count = asyncio.run(get_ingest().execute(force=args.force))
         console.print(f"[green]OK[/green] {count} chunks indexed successfully!")
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -86,7 +86,7 @@ def cmd_chat(args):
 
 
 def cmd_scrape(args):
-    from src.web_scraper import scrape_urls
+    from src.infrastructure.scraping.web_scraper import scrape_urls
 
     urls = args.urls
     console.print(f"[bold]Scraping {len(urls)} URLs...[/bold]")

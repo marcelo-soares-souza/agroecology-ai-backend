@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from src.adapters.rest.dependencies import (
     get_ask_question,
     get_cache,
-    get_extract_metadata,
+    get_document_file,
+    get_extract_document_metadata,
     get_ingest,
     get_ingestion_repo,
     get_manage_docs,
@@ -22,6 +22,7 @@ from src.adapters.rest.dependencies import (
     get_retriever,
     get_status_service,
     get_task_manager,
+    get_upload_document,
     init_services,
     shutdown_services,
 )
@@ -54,10 +55,6 @@ from src.bootstrap.container import container
 from src.domain.models.user import User
 from src.shared.config import (
     AUTO_EXTRACT_METADATA,
-    DATA_DIR,
-    DATA_DIR_MARKDOWN,
-    DATA_DIR_PDFS,
-    DATA_DIR_WEB,
     check_schema_version,
 )
 from src.shared.logging_utils import (
@@ -70,57 +67,6 @@ from src.shared.logging_utils import (
 configure_logging()
 
 logger = logging.getLogger("agroecology.http")
-
-
-_ALLOWED_EXT = {
-    ".pdf": DATA_DIR_PDFS,
-    ".md": DATA_DIR_MARKDOWN,
-    ".txt": DATA_DIR_WEB,
-}
-_MAX_FILE_SIZE = 50 * 1024 * 1024
-
-
-def _file_type(ext: str) -> str:
-    return {".pdf": "pdf", ".md": "md", ".txt": "txt"}.get(ext, "unknown")
-
-
-async def _auto_extract_metadata(
-    content: bytes,
-) -> tuple[str, str] | None:
-    if not AUTO_EXTRACT_METADATA:
-        return None
-
-    import fitz
-
-    def _extract() -> tuple[str, str] | None:
-        pdf_doc = None
-        first_page = None
-        try:
-            pdf_doc = fitz.open(stream=content, filetype="pdf")
-            pages = min(3, len(pdf_doc))
-            texts = []
-            for i in range(pages):
-                t = pdf_doc[i].get_text()
-                if t:
-                    texts.append(t)
-            first_page = "\n".join(texts)
-        except Exception:
-            pass
-        finally:
-            if pdf_doc is not None:
-                pdf_doc.close()
-
-        if not first_page or not first_page.strip():
-            return None
-
-        extractor = get_extract_metadata()
-        if extractor is None:
-            return None
-        result = extractor.execute(first_page)
-        return (result.get("title", "").strip(), result.get("authors", "").strip())
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _extract)
 
 
 def _serialize_doc(doc) -> dict:
@@ -377,10 +323,17 @@ async def ingest_start(
     force: bool = False, current_user: User = Depends(require_role("admin"))
 ):
     ingest = get_ingest()
-    started = ingest.start(force=force)
-    if not started:
+    if ingest.status == "processing":
         log_event(logger, logging.WARNING, "ingest_start_rejected", force=force)
         return IngestResponse(status="already_running")
+
+    async def _run():
+        try:
+            await ingest.execute(force=force)
+        except Exception as e:
+            log_event(logger, logging.ERROR, "ingest_background_failed", error=str(e))
+
+    asyncio.create_task(_run())
     log_event(logger, logging.INFO, "ingest_start_accepted", force=force)
     return IngestResponse(status="processing")
 
@@ -438,10 +391,6 @@ async def upload_documents(
     url: str | None = Form(None),
     current_user: User = Depends(require_role("admin")),
 ):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-
     uploaded: list[DocumentUploaded] = []
     skipped: list[DocumentSkipped] = []
     uploaded_pdf_ids: list[str] = []
@@ -453,122 +402,37 @@ async def upload_documents(
             )
             continue
 
-        ext = Path(f.filename).suffix.lower()
-        target_dir = _ALLOWED_EXT.get(ext)
-
-        if target_dir is None:
-            log_event(
-                logger,
-                logging.WARNING,
-                "document_upload_skipped",
-                filename=f.filename,
-                reason="unsupported_format",
-            )
-            skipped.append(
-                DocumentSkipped(
-                    filename=f.filename,
-                    reason=f"unsupported format ({ext})",
-                )
-            )
-            continue
-
         content = await f.read()
-        size = len(content)
 
-        import hashlib
-
-        sha256_hash = hashlib.sha256(content).hexdigest()
-
-        if size == 0:
-            log_event(
-                logger,
-                logging.WARNING,
-                "document_upload_skipped",
+        try:
+            result = await get_upload_document().execute(
                 filename=f.filename,
-                reason="empty_file",
+                content=content,
+                title=title,
+                authors=authors,
+                url=url,
             )
-            skipped.append(DocumentSkipped(filename=f.filename, reason="empty file"))
+        except ValueError as e:
+            skipped.append(DocumentSkipped(filename=f.filename, reason=str(e)))
             continue
-
-        if size > _MAX_FILE_SIZE:
-            log_event(
-                logger,
-                logging.WARNING,
-                "document_upload_skipped",
-                filename=f.filename,
-                reason="file_too_large",
-                file_size=size,
-            )
-            skipped.append(
-                DocumentSkipped(
-                    filename=f.filename,
-                    reason=f"file exceeds 50 MB ({size / 1024 / 1024:.1f} MB)",
-                )
-            )
-            continue
-
-        if await manage.sha256_exists(sha256_hash):
-            log_event(
-                logger,
-                logging.WARNING,
-                "document_upload_skipped",
-                filename=f.filename,
-                reason="duplicate_content",
-            )
-            skipped.append(
-                DocumentSkipped(
-                    filename=f.filename,
-                    reason="file already uploaded (identical content)",
-                )
-            )
-            continue
-
-        ft = _file_type(ext)
-        directory = str(target_dir.relative_to(DATA_DIR))
-
-        doc = await manage.upload(
-            filename=f.filename,
-            content=content,
-            file_type=ft,
-            directory=directory,
-            title=title,
-            authors=authors,
-            url=url,
-        )
-        log_event(
-            logger,
-            logging.INFO,
-            "document_uploaded",
-            document_id=doc.id,
-            filename=doc.filename,
-            file_type=doc.file_type,
-            file_size=doc.file_size,
-            directory=doc.directory,
-        )
 
         uploaded.append(
             DocumentUploaded(
-                id=doc.id,
-                filename=doc.filename,
-                directory=doc.directory,
-                size=doc.file_size,
+                id=result["id"],
+                filename=result["filename"],
+                directory=result["directory"],
+                size=result["size"],
             )
         )
 
-        if ft == "pdf":
-            uploaded_pdf_ids.append(doc.id)
+        if result["should_extract_metadata"]:
+            uploaded_pdf_ids.append(result["id"])
 
     if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
         try:
             queue = get_queue()
             for pdf_id in uploaded_pdf_ids:
                 queue.enqueue("document.extract_metadata", {"document_id": pdf_id})
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "metadata_extraction_enqueued",
-                    document_id=pdf_id,
-                )
         except Exception:
             pass
 
@@ -662,92 +526,49 @@ async def extract_document_metadata(
     doc_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
+    result = await get_extract_document_metadata().execute(doc_id)
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     doc = await manage.get(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    log_event(
-        logger,
-        logging.INFO,
-        "document_download_requested",
-        document_id=doc_id,
-        user_id=current_user.id,
-    )
-    if doc.file_type != "pdf":
-        raise HTTPException(
-            status_code=400,
-            detail="Metadata extraction is only available for PDF files",
-        )
-
-    filepath = manage.get_file_path(doc)
-    p = Path(filepath)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
-
-    content = p.read_bytes()
-    extracted = await _auto_extract_metadata(content)
-
-    if extracted:
-        ext_title, ext_authors = extracted
-        updated = await manage.update_metadata(
-            doc_id,
-            title=doc.title or ext_title or None,
-            authors=doc.authors or ext_authors or None,
-        )
-        if updated:
-            return _serialize_doc(updated)
+    if result:
+        return _serialize_doc(await manage.get(doc_id))
 
     return _serialize_doc(doc)
 
 
 @app.get("/api/v1/documents/{doc_id}/view")
 async def view_document(doc_id: str):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.get(doc_id)
-    if not doc:
+    doc_file = await get_document_file().execute(doc_id)
+    if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    filepath = manage.get_file_path(doc)
-    p = Path(filepath)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
 
     from urllib.parse import quote
 
     return FileResponse(
-        path=str(p),
-        media_type="application/pdf",
+        path=doc_file.path,
+        media_type=doc_file.media_type,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc_file.filename)}"
         },
     )
 
 
 @app.get("/api/v1/documents/{doc_id}/download")
 async def download_document(doc_id: str):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.get(doc_id)
-    if not doc:
+    doc_file = await get_document_file().execute(doc_id)
+    if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    filepath = manage.get_file_path(doc)
-    p = Path(filepath)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk")
 
     from urllib.parse import quote
 
     return FileResponse(
-        path=str(p),
-        media_type="application/pdf",
+        path=doc_file.path,
+        media_type=doc_file.media_type,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.filename)}"
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc_file.filename)}"
         },
     )
 

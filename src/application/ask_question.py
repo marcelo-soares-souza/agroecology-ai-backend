@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
@@ -114,7 +113,8 @@ class AskQuestion:
                 "chunk_index": node.get("chunk_index", 0),
                 "search_type": node.get("_search_type", "unknown"),
             }
-            doc_id = Path(node.get("source", "")).stem
+            source_name = str(node.get("source", "")).rsplit("/", 1)[-1]
+            doc_id = source_name.rsplit(".", 1)[0]
             if doc_id:
                 meta["document_id"] = doc_id
             if title_map:

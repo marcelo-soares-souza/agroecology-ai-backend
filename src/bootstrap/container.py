@@ -4,11 +4,27 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
+from src.application.admin.delete_user import DeleteUser
+from src.application.admin.get_user import GetUser as AdminGetUser
+from src.application.admin.list_users import ListUsers
+from src.application.admin.update_user import UpdateUser
+from src.application.auth.confirm_email import ConfirmEmail
+from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_user_by_slug import GetUserBySlug
+from src.application.auth.login_user import LoginUser
+from src.application.auth.logout_user import LogoutUser
+from src.application.auth.refresh_token import RefreshToken
+from src.application.auth.register_user import RegisterUser
+from src.application.auth.request_password_reset import RequestPasswordReset
+from src.application.auth.resend_confirmation import ResendConfirmationEmail
 from src.application.ask_question import AskQuestion
+from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
+from src.application.get_document_file import GetDocumentFile
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
+from src.application.upload_document import UploadDocument
 from src.domain.services.retriever import RetrieverService
 from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
@@ -20,7 +36,8 @@ from src.infrastructure.ai.sentence_transformer_reranker import (
     SentenceTransformerReranker,
 )
 from src.infrastructure.cache.valkey_cache import ValkeyCache
-from src.infrastructure.jobs.worker import JobWorkerHandle, start_job_worker
+from src.infrastructure.jobs.worker import start_job_worker
+from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
 from src.infrastructure.persistence.lancedb_vector_store import LanceDBVectorStore
 from src.infrastructure.persistence.postgres_document_repo import (
     PostgresDocumentRepository,
@@ -32,6 +49,8 @@ from src.infrastructure.persistence.postgres_user_repo import (
     PostgresUserRepository,
 )
 from src.infrastructure.persistence.queue_repository import QueueRepository
+from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
+from src.infrastructure.storage.local_file_storage import LocalFileStorage
 from src.shared.config import (
     CACHE_TTL,
     EMBEDDING_BACKEND,
@@ -41,7 +60,6 @@ from src.shared.config import (
     OLLAMA_EMBEDDING_MODEL,
     RERANK_DEVICE,
     RERANK_MODEL,
-    WORKER_SHUTDOWN_TIMEOUT_SECONDS,
     read_index_version,
     VALKEY_URL,
 )
@@ -70,6 +88,7 @@ class Container:
         self.user_repo: PostgresUserRepository | None = None
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
+        self.file_storage: LocalFileStorage | None = None
 
         # Use cases / services
         self.ingest: IngestDocuments | None = None
@@ -78,10 +97,30 @@ class Container:
         self.manage_docs: ManageDocuments | None = None
         self.get_status: GetStatus | None = None
         self.extract_metadata: ExtractMetadata | None = None
+        self.extract_document_metadata: ExtractDocumentMetadata | None = None
+        self.upload_document: UploadDocument | None = None
+        self.get_document_file: GetDocumentFile | None = None
+
+        # Auth use cases
+        self.register_user: RegisterUser | None = None
+        self.login_user: LoginUser | None = None
+        self.refresh_token: RefreshToken | None = None
+        self.logout_user: LogoutUser | None = None
+        self.confirm_email: ConfirmEmail | None = None
+        self.get_user_by_slug: GetUserBySlug | None = None
+        self.resend_confirmation_email: ResendConfirmationEmail | None = None
+        self.request_password_reset: RequestPasswordReset | None = None
+        self.confirm_password_reset: ConfirmPasswordReset | None = None
+
+        # Admin use cases
+        self.list_users: ListUsers | None = None
+        self.get_user: AdminGetUser | None = None
+        self.update_user: UpdateUser | None = None
+        self.delete_user: DeleteUser | None = None
 
         # Lifecycle control
         self._job_worker_stop: threading.Event | None = None
-        self._job_worker: JobWorkerHandle | None = None
+        self._job_worker_thread: threading.Thread | None = None
         self._initialized = False
         self._started = False
 
@@ -110,6 +149,9 @@ class Container:
             self.vector_store = LanceDBVectorStore()
             log_event(logger, logging.INFO, "vector_store_initialized", type="lancedb")
 
+            self.file_storage = LocalFileStorage()
+            log_event(logger, logging.INFO, "file_storage_initialized")
+
             self._create_use_cases()
             self._initialized = True
             log_event(logger, logging.INFO, "container_init_completed")
@@ -128,10 +170,10 @@ class Container:
         log_event(logger, logging.INFO, "queue_initialized")
 
         self._job_worker_stop = threading.Event()
-        self._job_worker = start_job_worker(
+        self._job_worker_thread = start_job_worker(
             self.queue,
             self._job_worker_stop,
-            metadata_extractor=self.extract_metadata,
+            metadata_use_case=self.extract_document_metadata,
         )
         log_event(logger, logging.INFO, "job_worker_started")
 
@@ -143,39 +185,22 @@ class Container:
     async def shutdown(self) -> None:
         log_event(logger, logging.INFO, "container_shutdown_started")
         try:
-            # Stop job worker (signal then wait, before closing queue)
-            if self._job_worker is not None:
-                stopped = self._job_worker.stop(WORKER_SHUTDOWN_TIMEOUT_SECONDS)
-                if not stopped:
-                    active_job_ids = self._job_worker.active_job_ids()
-                    logger.warning(
-                        "job_worker_shutdown_timeout timeout_seconds=%s active_jobs=%s",
-                        WORKER_SHUTDOWN_TIMEOUT_SECONDS,
-                        ",".join(active_job_ids) or "-",
-                    )
-                    if self.queue is not None:
-                        for job_id in active_job_ids:
-                            try:
-                                self.queue.fail(
-                                    job_id,
-                                    "Worker shutdown timed out before job completed",
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    "job_shutdown_fail_mark_failed id=%s error=%s",
-                                    job_id,
-                                    e,
-                                )
+            if self._job_worker_stop is not None:
+                self._job_worker_stop.set()
+                if self._job_worker_thread is not None:
+                    self._job_worker_thread.join(timeout=30)
+                    if self._job_worker_thread.is_alive():
+                        logger.warning(
+                            "job_worker_thread_still_alive after 30s timeout"
+                        )
                 self._job_worker_stop = None
-                self._job_worker = None
+                self._job_worker_thread = None
                 log_event(logger, logging.INFO, "job_worker_stopped")
 
-            # Stop task manager cleanup
             if self.task_manager is not None:
                 self.task_manager.shutdown()
                 log_event(logger, logging.INFO, "task_manager_stopped")
 
-            # Close queue (after worker fully stopped)
             if self.queue is not None:
                 try:
                     self.queue.close()
@@ -184,7 +209,6 @@ class Container:
                 self.queue = None
                 log_event(logger, logging.INFO, "queue_closed")
 
-            # Close repos — each isolated so one failure doesn't block the rest
             if self.doc_repo is not None:
                 try:
                     await self.doc_repo.close()
@@ -201,7 +225,6 @@ class Container:
                 except Exception as e:
                     logger.warning("user_repo_close_failed error=%s", e)
 
-            # Close cache
             if self.cache is not None:
                 try:
                     self.cache.close()
@@ -212,26 +235,48 @@ class Container:
             log_event(logger, logging.INFO, "container_shutdown_completed")
 
     def reset(self) -> None:
-        self.embedder = None
-        self.vector_store = None
-        self.llm = None
-        self.cache = None
-        self.reranker = None
-        self.doc_repo = None
-        self.ingestion_repo = None
-        self.user_repo = None
-        self.queue = None
-        self.task_manager = None
-        self.ingest = None
-        self.retriever = None
-        self.ask_question = None
-        self.manage_docs = None
-        self.get_status = None
-        self.extract_metadata = None
-        self._job_worker_stop = None
-        self._job_worker = None
+        for attr in (
+            "embedder",
+            "vector_store",
+            "llm",
+            "cache",
+            "reranker",
+            "doc_repo",
+            "ingestion_repo",
+            "user_repo",
+            "queue",
+            "task_manager",
+            "file_storage",
+            "ingest",
+            "retriever",
+            "ask_question",
+            "manage_docs",
+            "get_status",
+            "extract_metadata",
+            "extract_document_metadata",
+            "upload_document",
+            "get_document_file",
+            "register_user",
+            "login_user",
+            "refresh_token",
+            "logout_user",
+            "confirm_email",
+            "get_user_by_slug",
+            "resend_confirmation_email",
+            "request_password_reset",
+            "confirm_password_reset",
+            "list_users",
+            "get_user",
+            "update_user",
+            "delete_user",
+            "_job_worker_stop",
+            "_job_worker_thread",
+        ):
+            setattr(self, attr, None)
         self._initialized = False
         self._started = False
+
+    # ── Internal creators ──────────────────────────────────────────────
 
     def _create_embedder(self) -> None:
         if EMBEDDING_BACKEND == "ollama":
@@ -245,8 +290,7 @@ class Container:
             )
         else:
             self.embedder = SentenceTransformerEmbedder(
-                EMBEDDING_MODEL,
-                device=EMBEDDING_DEVICE,
+                EMBEDDING_MODEL, device=EMBEDDING_DEVICE
             )
             log_event(
                 logger,
@@ -314,19 +358,25 @@ class Container:
         assert self.ingestion_repo is not None
         assert self.doc_repo is not None
         assert self.cache is not None
+        assert self.file_storage is not None
+        assert self.user_repo is not None
 
+        # Core RAG services
         self.retriever = RetrieverService(
             vector_store=self.vector_store,
             embedder=self.embedder,
             reranker=self.reranker,
         )
+        self.manage_docs = ManageDocuments(
+            repo=self.doc_repo, storage=self.file_storage
+        )
 
-        self.manage_docs = ManageDocuments(self.doc_repo)
-
+        loader = LocalDocumentLoader()
         self.ingest = IngestDocuments(
             vector_store=self.vector_store,
             embedder=self.embedder,
             ingestion_repo=self.ingestion_repo,
+            loader=loader,
         )
         self.ingest.register_on_complete(self._on_ingestion_complete)
 
@@ -341,10 +391,38 @@ class Container:
 
         rewriter = LLMQueryRewriter(llm=self.llm)
         self.ask_question = AskQuestion(
-            retriever=self.retriever,
-            llm=self.llm,
-            query_rewriter=rewriter,
+            retriever=self.retriever, llm=self.llm, query_rewriter=rewriter
         )
+
+        self.upload_document = UploadDocument(
+            repo=self.doc_repo, storage=self.file_storage
+        )
+        self.extract_document_metadata = ExtractDocumentMetadata(
+            repo=self.doc_repo,
+            storage=self.file_storage,
+            pdf_text_extractor=PyMuPdfTextExtractor(),
+            metadata_extractor=self.extract_metadata,
+        )
+        self.get_document_file = GetDocumentFile(
+            repo=self.doc_repo, storage=self.file_storage
+        )
+
+        # Auth use cases
+        self.register_user = RegisterUser(repo=self.user_repo)
+        self.login_user = LoginUser(repo=self.user_repo)
+        self.refresh_token = RefreshToken(repo=self.user_repo)
+        self.logout_user = LogoutUser(repo=self.user_repo)
+        self.confirm_email = ConfirmEmail(repo=self.user_repo)
+        self.get_user_by_slug = GetUserBySlug(repo=self.user_repo)
+        self.resend_confirmation_email = ResendConfirmationEmail(repo=self.user_repo)
+        self.request_password_reset = RequestPasswordReset(repo=self.user_repo)
+        self.confirm_password_reset = ConfirmPasswordReset(repo=self.user_repo)
+
+        # Admin use cases
+        self.list_users = ListUsers(repo=self.user_repo)
+        self.get_user = AdminGetUser(repo=self.user_repo)
+        self.update_user = UpdateUser(repo=self.user_repo)
+        self.delete_user = DeleteUser(repo=self.user_repo)
 
     def _on_ingestion_complete(self) -> None:
         if self.retriever is not None:

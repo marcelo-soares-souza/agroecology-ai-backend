@@ -4,15 +4,16 @@ import hashlib
 
 from src.domain.models.document import Document, DocumentCreate
 from src.domain.ports.document_repository import DocumentRepository
-from src.shared.config import DATA_DIR
+from src.domain.ports.file_storage_port import FileStoragePort
 from src.shared.uuid7 import uuid7
 
 _FILE_EXTENSIONS = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
 
 
 class ManageDocuments:
-    def __init__(self, repo: DocumentRepository) -> None:
+    def __init__(self, repo: DocumentRepository, storage: FileStoragePort) -> None:
         self._repo = repo
+        self._storage = storage
 
     async def upload(
         self,
@@ -27,10 +28,7 @@ class ManageDocuments:
         sha256_hash = hashlib.sha256(content).hexdigest()
         doc_id = uuid7()
         ext = _FILE_EXTENSIONS.get(file_type, "")
-        stored_name = f"{doc_id}{ext}"
-        dest = DATA_DIR / directory / stored_name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(content)
+        await self._storage.save(directory, doc_id, ext, content)
 
         doc = DocumentCreate(
             id=doc_id,
@@ -68,10 +66,7 @@ class ManageDocuments:
         doc = await self._repo.delete(doc_id)
         if doc:
             ext = _FILE_EXTENSIONS.get(doc.file_type, "")
-            stored_name = f"{doc.id}{ext}"
-            filepath = DATA_DIR / doc.directory / stored_name
-            if filepath.exists():
-                filepath.unlink()
+            await self._storage.delete(doc.directory, doc.id, ext)
         return doc
 
     async def filename_exists(self, filename: str) -> bool:
@@ -82,8 +77,3 @@ class ManageDocuments:
 
     async def get_title_map(self) -> dict[str, str | None]:
         return await self._repo.get_title_map()
-
-    def get_file_path(self, doc: Document) -> str:
-        ext = _FILE_EXTENSIONS.get(doc.file_type, "")
-        stored_name = f"{doc.id}{ext}"
-        return str(DATA_DIR / doc.directory / stored_name)

@@ -23,6 +23,7 @@ from src.adapters.rest.dependencies import (
     get_manage_docs,
     get_retriever,
     get_metadata_job_status,
+    get_suggestion_repo,
     get_status_service,
     get_task_manager,
     get_upload_document,
@@ -43,6 +44,7 @@ from src.adapters.rest.suggestion_routes import (
 )
 from src.adapters.rest.serializers import (
     serialize_document,
+    serialize_document_suggestion,
     serialize_ingestion_run,
 )
 from src.adapters.rest.schemas import (
@@ -110,6 +112,15 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(suggestion_user_router)
 app.include_router(suggestion_admin_router)
+
+
+@app.get("/api/v1/suggestions/public")
+async def public_suggestions(user_id: str):
+    repo = await get_suggestion_repo()
+    suggestions = await repo.list_all(
+        status="approved", user_id=user_id, limit=100
+    )
+    return [serialize_document_suggestion(s) for s in suggestions]
 
 
 @app.get("/api/v1/openapi.json", include_in_schema=False)
@@ -324,7 +335,7 @@ async def upload_documents(
 
 
 @app.get("/api/v1/documents", response_model=list[DocumentRecord])
-async def list_all_documents(current_user: User = Depends(require_role("admin"))):
+async def list_all_documents():
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -362,10 +373,7 @@ async def get_metadata_extraction_status(
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
-async def get_one_document(
-    doc_id: str,
-    current_user: User = Depends(require_role("admin")),
-):
+async def get_one_document(doc_id: str):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -377,7 +385,6 @@ async def get_one_document(
         logging.INFO,
         "document_get_completed",
         document_id=doc_id,
-        user_id=current_user.id,
     )
     return serialize_document(doc)
 
@@ -428,10 +435,7 @@ async def extract_document_metadata(
 
 
 @app.get("/api/v1/documents/{doc_id}/view")
-async def view_document(
-    doc_id: str,
-    current_user: User = Depends(require_role("admin")),
-):
+async def view_document(doc_id: str):
     doc_file = await get_document_file().execute(doc_id)
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")

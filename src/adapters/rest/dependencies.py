@@ -70,6 +70,9 @@ from src.bootstrap.container import container
 from src.bootstrap.task_manager import TaskManager
 from src.domain.ports.cache_port import CachePort
 from src.domain.ports.document_repository import DocumentRepository
+from src.domain.ports.document_suggestion_repository import (
+    DocumentSuggestionRepository,
+)
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.user_repository import UserRepository
@@ -114,6 +117,11 @@ async def get_ingestion_repo() -> IngestionRepository:
 async def get_user_repo() -> UserRepository:
     assert container.user_repo is not None, "user_repo not initialized"
     return container.user_repo
+
+
+async def get_suggestion_repo() -> DocumentSuggestionRepository:
+    assert container.suggestion_repo is not None, "suggestion_repo not initialized"
+    return container.suggestion_repo
 
 
 def get_reranker() -> RerankerPort | None:

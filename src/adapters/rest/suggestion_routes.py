@@ -23,7 +23,6 @@ from src.adapters.rest.dependencies import (
     get_list_my_document_suggestions,
     get_replace_suggestion_file,
     get_suggestion_file,
-    get_suggestion_repo,
     get_update_document_suggestion,
 )
 from src.adapters.rest.schemas import (

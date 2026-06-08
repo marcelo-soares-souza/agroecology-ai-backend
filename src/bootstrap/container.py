@@ -61,6 +61,9 @@ from src.infrastructure.persistence.postgres_ingestion_repo import (
 from src.infrastructure.persistence.postgres_user_repo import (
     PostgresUserRepository,
 )
+from src.infrastructure.persistence.postgres_document_suggestion_repo import (
+    PostgresDocumentSuggestionRepository,
+)
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
@@ -99,6 +102,7 @@ class Container:
         self.doc_repo: PostgresDocumentRepository | None = None
         self.ingestion_repo: PostgresIngestionRepository | None = None
         self.user_repo: PostgresUserRepository | None = None
+        self.suggestion_repo: PostgresDocumentSuggestionRepository | None = None
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
         self.file_storage: LocalFileStorage | None = None
@@ -165,6 +169,10 @@ class Container:
             self.user_repo = PostgresUserRepository()
             await self.user_repo.initialize()
             log_event(logger, logging.INFO, "user_repo_initialized")
+
+            self.suggestion_repo = PostgresDocumentSuggestionRepository()
+            await self.suggestion_repo.initialize()
+            log_event(logger, logging.INFO, "suggestion_repo_initialized")
 
             self.vector_store = LanceDBVectorStore()
             log_event(logger, logging.INFO, "vector_store_initialized", type="lancedb")
@@ -267,6 +275,12 @@ class Container:
                 except Exception as e:
                     logger.warning("user_repo_close_failed error=%s", e)
 
+            if self.suggestion_repo is not None:
+                try:
+                    await self.suggestion_repo.close()
+                except Exception as e:
+                    logger.warning("suggestion_repo_close_failed error=%s", e)
+
             if self.cache is not None:
                 try:
                     self.cache.close()
@@ -286,6 +300,7 @@ class Container:
             "doc_repo",
             "ingestion_repo",
             "user_repo",
+            "suggestion_repo",
             "queue",
             "task_manager",
             "file_storage",

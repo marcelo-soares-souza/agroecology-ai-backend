@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 
 from src.adapters.rest.auth_middleware import get_current_user
 from src.adapters.rest.dependencies import (
@@ -30,6 +30,7 @@ from src.adapters.rest.schemas import (
     UserUpdateRequest,
 )
 from src.domain.models.user import User
+from src.shared.config import AVATAR_DIR
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -266,6 +267,58 @@ async def update_my_profile(
         return serialize_user(user)
 
     updated = await repo.update(current_user.id, **updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return serialize_user(updated)
+
+
+MAX_AVATAR_SIZE = 5 * 1024 * 1024
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+@router.post("/me/profile/avatar", response_model=UserResponse)
+async def upload_my_avatar(
+    file: UploadFile,
+    current_user: User = Depends(get_current_user),
+):
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400, detail="Unsupported image type. Use JPEG, PNG, or WebP."
+        )
+
+    content = await file.read()
+
+    if len(content) > MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="Image must not exceed 5MB.")
+
+    try:
+        from PIL import Image
+        import io
+
+        pil_img: Image.Image = Image.open(io.BytesIO(content))
+        pil_img = pil_img.convert("RGB")
+        pil_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+
+        width, height = pil_img.size
+        size = min(width, height)
+        left = (width - size) // 2
+        top = (height - size) // 2
+        pil_img = pil_img.crop((left, top, left + size, top + size))
+        pil_img = pil_img.resize((400, 400), Image.Resampling.LANCZOS)
+
+        output = io.BytesIO()
+        pil_img.save(output, format="WEBP", quality=80)
+        processed = output.getvalue()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
+
+    user_dir = AVATAR_DIR / current_user.id
+    user_dir.mkdir(parents=True, exist_ok=True)
+    avatar_path = user_dir / "avatar.webp"
+    avatar_path.write_bytes(processed)
+
+    repo = await get_user_repo()
+    updated = await repo.update(current_user.id, avatar_path=str(avatar_path))
     if not updated:
         raise HTTPException(status_code=404, detail="User not found")
     return serialize_user(updated)

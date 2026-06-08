@@ -20,3 +20,4 @@ class User:
     roles: list[str] | None = None  # populated on login/me
     about: str | None = None
     link: str | None = None
+    avatar_path: str | None = None

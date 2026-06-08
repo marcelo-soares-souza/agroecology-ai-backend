@@ -5,6 +5,8 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -481,6 +483,25 @@ async def delete_one_document(
     )
 
     return serialize_document(doc)
+
+
+@app.get("/api/v1/users/{slug}/profile/avatar/file")
+async def get_avatar_file(slug: str):
+    from src.adapters.rest.dependencies import get_user_by_slug as get_user_by_slug_uc
+
+    user = await get_user_by_slug_uc().execute(slug)
+    if not user or not user.avatar_path:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    avatar_file = Path(user.avatar_path)
+    if not avatar_file.exists():
+        raise HTTPException(status_code=404, detail="Avatar file not found")
+
+    return FileResponse(
+        path=str(avatar_file),
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 apply_openapi_docs(app)

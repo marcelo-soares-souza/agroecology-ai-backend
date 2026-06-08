@@ -134,6 +134,7 @@ class PostgresUserRepository(UserRepository):
                 "last_login_at",
                 "about",
                 "link",
+                "avatar_path",
             ):
                 sets.append(f"{key} = %s")
                 params.append(value)
@@ -304,4 +305,5 @@ class PostgresUserRepository(UserRepository):
             last_login_at=row.get("last_login_at"),
             about=row.get("about"),
             link=row.get("link"),
+            avatar_path=row.get("avatar_path"),
         )

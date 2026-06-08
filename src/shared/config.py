@@ -74,6 +74,7 @@ if not INDEX_DIR.is_absolute():
 DATA_DIR_PDFS = DATA_DIR / "pdfs"
 DATA_DIR_MARKDOWN = DATA_DIR / "markdown"
 DATA_DIR_WEB = DATA_DIR / "web"
+AVATAR_DIR = DATA_DIR / "profile-avatars"
 
 LANCEDB_DIR = INDEX_DIR / "lancedb"
 
@@ -173,5 +174,12 @@ USER_PROMPT = (
     "Use only the context provided. Be cordial and conversational."
 )
 
-for d in [DATA_DIR, DATA_DIR_PDFS, DATA_DIR_MARKDOWN, DATA_DIR_WEB, INDEX_DIR]:
+for d in [
+    DATA_DIR,
+    DATA_DIR_PDFS,
+    DATA_DIR_MARKDOWN,
+    DATA_DIR_WEB,
+    AVATAR_DIR,
+    INDEX_DIR,
+]:
     d.mkdir(parents=True, exist_ok=True)

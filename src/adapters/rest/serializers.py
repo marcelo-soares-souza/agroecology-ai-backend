@@ -40,6 +40,7 @@ def serialize_user(user: User | UserDTO) -> dict:
         "updated_at": user.updated_at,
         "about": user.about,
         "link": user.link,
+        "avatar_url": user.avatar_url,
     }
 
 

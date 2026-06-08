@@ -154,6 +154,7 @@ class UserResponse(BaseModel):
     updated_at: str
     about: str | None = None
     link: str | None = None
+    avatar_url: str | None = None
 
 
 class UserUpdateRequest(BaseModel):

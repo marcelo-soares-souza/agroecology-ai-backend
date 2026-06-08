@@ -585,10 +585,13 @@ class Container:
         )
         # Suggestion use cases
         assert self.suggestion_repo is not None
+
         self.create_document_suggestion = CreateDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
             doc_repo=self.doc_repo,
             storage=self.file_storage,
+            email_service=email_service,
+            user_repo=self.user_repo,
         )
         self.list_my_document_suggestions = ListMyDocumentSuggestions(
             suggestion_repo=self.suggestion_repo,
@@ -616,6 +619,8 @@ class Container:
         )
         self.admin_reject_document_suggestion = AdminRejectDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
+            email_service=email_service,
+            user_repo=self.user_repo,
         )
         self.admin_delete_document_suggestion = AdminDeleteDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
@@ -625,6 +630,8 @@ class Container:
             suggestion_repo=self.suggestion_repo,
             doc_repo=self.doc_repo,
             storage=self.file_storage,
+            email_service=email_service,
+            user_repo=self.user_repo,
         )
 
         # Admin use cases

@@ -46,3 +46,18 @@ class EmailPort(ABC):
     async def send_admin_new_user_notification(
         self, user_email: str, user_name: str, locale: str = "pt-BR"
     ) -> bool: ...
+
+    @abstractmethod
+    async def send_suggestion_submitted_notification(
+        self, admin_email: str, submitter_name: str, submitter_email: str, title: str
+    ) -> bool: ...
+
+    @abstractmethod
+    async def send_suggestion_approved_notification(
+        self, user_email: str, title: str, locale: str = "pt-BR"
+    ) -> bool: ...
+
+    @abstractmethod
+    async def send_suggestion_rejected_notification(
+        self, user_email: str, title: str, admin_comment: str, locale: str = "pt-BR"
+    ) -> bool: ...

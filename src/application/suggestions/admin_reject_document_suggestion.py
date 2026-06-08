@@ -1,16 +1,28 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from src.domain.models.document_suggestion import DocumentSuggestion
+from src.domain.ports.auth_services_port import EmailPort
 from src.domain.ports.document_suggestion_repository import (
     DocumentSuggestionRepository,
 )
+from src.domain.ports.user_repository import UserRepository
+
+logger = logging.getLogger("agroecology.suggestions")
 
 
 class AdminRejectDocumentSuggestion:
-    def __init__(self, suggestion_repo: DocumentSuggestionRepository) -> None:
+    def __init__(
+        self,
+        suggestion_repo: DocumentSuggestionRepository,
+        email_service: EmailPort,
+        user_repo: UserRepository,
+    ) -> None:
         self._suggestion_repo = suggestion_repo
+        self._email_service = email_service
+        self._user_repo = user_repo
 
     async def execute(
         self,
@@ -40,4 +52,27 @@ class AdminRejectDocumentSuggestion:
         if updated is None:
             raise ValueError("Suggestion not found")
 
+        await self._notify_submitter(updated, admin_comment.strip())
+
         return updated
+
+    async def _notify_submitter(
+        self, suggestion: DocumentSuggestion, admin_comment: str
+    ) -> None:
+        try:
+            user = await self._user_repo.get_by_id(suggestion.user_id)
+            if user is None:
+                return
+
+            await self._email_service.send_suggestion_rejected_notification(
+                user_email=user.email,
+                title=suggestion.title or "",
+                admin_comment=admin_comment,
+                locale=user.locale,
+            )
+        except Exception as e:
+            logger.warning(
+                "rejection_email_failed user_id=%s error=%s",
+                suggestion.user_id,
+                e,
+            )

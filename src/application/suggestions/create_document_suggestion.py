@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 
 from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionCreate,
 )
+from src.domain.ports.auth_services_port import EmailPort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.document_suggestion_repository import (
     DocumentSuggestionRepository,
 )
 from src.domain.ports.file_storage_port import FileStoragePort
+from src.domain.ports.user_repository import UserRepository
 from src.shared.uuid7 import uuid7
+
+logger = logging.getLogger("agroecology.suggestions")
 
 _MAX_FILE_SIZE = 50 * 1024 * 1024
 _PENDING_DIR = "suggestions"
@@ -24,10 +29,14 @@ class CreateDocumentSuggestion:
         suggestion_repo: DocumentSuggestionRepository,
         doc_repo: DocumentRepository,
         storage: FileStoragePort,
+        email_service: EmailPort,
+        user_repo: UserRepository,
     ) -> None:
         self._suggestion_repo = suggestion_repo
         self._doc_repo = doc_repo
         self._storage = storage
+        self._email_service = email_service
+        self._user_repo = user_repo
 
     async def execute(
         self,
@@ -110,4 +119,34 @@ class CreateDocumentSuggestion:
             sha256=sha256_hash,
         )
 
-        return await self._suggestion_repo.insert(suggestion)
+        created = await self._suggestion_repo.insert(suggestion)
+
+        await self._notify_admins(created)
+
+        return created
+
+    async def _notify_admins(self, suggestion: DocumentSuggestion) -> None:
+        try:
+            submitter = await self._user_repo.get_by_id(suggestion.user_id)
+            if submitter is None:
+                return
+
+            all_users = await self._user_repo.list_all()
+            admins = [u for u in all_users if u.roles and "admin" in u.roles]
+
+            for admin in admins:
+                try:
+                    await self._email_service.send_suggestion_submitted_notification(
+                        admin_email=admin.email,
+                        submitter_name=submitter.full_name,
+                        submitter_email=submitter.email,
+                        title=suggestion.title or "",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "admin_notification_failed admin=%s error=%s",
+                        admin.email,
+                        e,
+                    )
+        except Exception as e:
+            logger.warning("admin_notification_error error=%s", e)

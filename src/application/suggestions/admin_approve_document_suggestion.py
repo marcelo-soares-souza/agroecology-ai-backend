@@ -5,11 +5,13 @@ from datetime import datetime, timezone
 
 from src.domain.dto.suggestion_result import ApprovalResult
 from src.domain.models.document import DocumentCreate
+from src.domain.ports.auth_services_port import EmailPort
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.document_suggestion_repository import (
     DocumentSuggestionRepository,
 )
 from src.domain.ports.file_storage_port import FileStoragePort
+from src.domain.ports.user_repository import UserRepository
 from src.shared.uuid7 import uuid7
 
 logger = logging.getLogger("agroecology.suggestions")
@@ -24,10 +26,14 @@ class AdminApproveDocumentSuggestion:
         suggestion_repo: DocumentSuggestionRepository,
         doc_repo: DocumentRepository,
         storage: FileStoragePort,
+        email_service: EmailPort,
+        user_repo: UserRepository,
     ) -> None:
         self._suggestion_repo = suggestion_repo
         self._doc_repo = doc_repo
         self._storage = storage
+        self._email_service = email_service
+        self._user_repo = user_repo
 
     async def execute(
         self,
@@ -100,4 +106,24 @@ class AdminApproveDocumentSuggestion:
                 )
             raise
 
+        await self._notify_submitter(updated)
+
         return ApprovalResult(suggestion=updated, document=created)
+
+    async def _notify_submitter(self, suggestion) -> None:
+        try:
+            user = await self._user_repo.get_by_id(suggestion.user_id)
+            if user is None:
+                return
+
+            await self._email_service.send_suggestion_approved_notification(
+                user_email=user.email,
+                title=suggestion.title or "",
+                locale=user.locale,
+            )
+        except Exception as e:
+            logger.warning(
+                "approval_email_failed user_id=%s error=%s",
+                suggestion.user_id,
+                e,
+            )

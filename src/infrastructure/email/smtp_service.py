@@ -141,3 +141,96 @@ async def send_admin_new_user_notification(
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
 
     return await send_email(ADMIN_EMAIL, subject, body)
+
+
+async def send_suggestion_submitted_email(
+    admin_email: str, submitter_name: str, submitter_email: str, title: str
+) -> bool:
+    subject = "New document suggestion submitted"
+    display_title = title or "Untitled"
+    body = f"""<h2>New Suggestion</h2>
+<p>A user has submitted a new document suggestion:</p>
+<table>
+<tr><td><strong>User:</strong></td><td>{submitter_name} ({submitter_email})</td></tr>
+<tr><td><strong>Title:</strong></td><td>{display_title}</td></tr>
+</table>
+<p>Log in to the admin panel to review it.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    return await send_email(admin_email, subject, body)
+
+
+async def send_suggestion_approved_email(
+    user_email: str, title: str, locale: str = "pt-BR"
+) -> bool:
+    display_title = title or "Untitled"
+    if locale.startswith("pt") or locale.startswith("es"):
+        if locale.startswith("pt"):
+            subject = "Sua sugestão foi aprovada"
+            body = f"""<h2>Sugestão Aprovada</h2>
+<p>Sua sugestão <strong>{display_title}</strong> foi aprovada e já está disponível na base de conhecimento.</p>
+<p>Obrigado por contribuir!</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+        else:
+            subject = "Tu sugerencia fue aprobada"
+            body = f"""<h2>Sugerencia Aprobada</h2>
+<p>Tu sugerencia <strong>{display_title}</strong> fue aprobada y ya está disponible en la base de conocimiento.</p>
+<p>¡Gracias por contribuir!</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    elif locale.startswith("fr"):
+        subject = "Votre suggestion a été approuvée"
+        body = f"""<h2>Suggestion Approuvée</h2>
+<p>Votre suggestion <strong>{display_title}</strong> a été approuvée et est désormais disponible dans la base de connaissances.</p>
+<p>Merci d'avoir contribué !</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    else:
+        subject = "Your suggestion was approved"
+        body = f"""<h2>Suggestion Approved</h2>
+<p>Your suggestion <strong>{display_title}</strong> has been approved and is now available in the knowledge base.</p>
+<p>Thank you for contributing!</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    return await send_email(user_email, subject, body)
+
+
+async def send_suggestion_rejected_email(
+    user_email: str, title: str, admin_comment: str, locale: str = "pt-BR"
+) -> bool:
+    display_title = title or "Untitled"
+    if locale.startswith("pt") or locale.startswith("es"):
+        if locale.startswith("pt"):
+            subject = "Sua sugestão foi revisada"
+            body = f"""<h2>Sugestão Revisada</h2>
+<p>Sua sugestão <strong>{display_title}</strong> foi revisada.</p>
+<p><strong>Comentário:</strong> {admin_comment}</p>
+<p>Você pode enviar uma nova sugestão a qualquer momento.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+        else:
+            subject = "Tu sugerencia fue revisada"
+            body = f"""<h2>Sugerencia Revisada</h2>
+<p>Tu sugerencia <strong>{display_title}</strong> fue revisada.</p>
+<p><strong>Comentario:</strong> {admin_comment}</p>
+<p>Puedes enviar una nueva sugerencia en cualquier momento.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    elif locale.startswith("fr"):
+        subject = "Votre suggestion a été révisée"
+        body = f"""<h2>Suggestion Révisée</h2>
+<p>Votre suggestion <strong>{display_title}</strong> a été révisée.</p>
+<p><strong>Commentaire :</strong> {admin_comment}</p>
+<p>Vous pouvez envoyer une nouvelle suggestion à tout moment.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    else:
+        subject = "Your suggestion was reviewed"
+        body = f"""<h2>Suggestion Reviewed</h2>
+<p>Your suggestion <strong>{display_title}</strong> has been reviewed.</p>
+<p><strong>Comment:</strong> {admin_comment}</p>
+<p>You can submit a new suggestion at any time.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    return await send_email(user_email, subject, body)

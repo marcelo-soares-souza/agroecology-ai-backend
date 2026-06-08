@@ -57,3 +57,24 @@ class SmtpEmailService(EmailPort):
         return await smtp_service.send_admin_new_user_notification(
             user_email, user_name, locale
         )
+
+    async def send_suggestion_submitted_notification(
+        self, admin_email: str, submitter_name: str, submitter_email: str, title: str
+    ) -> bool:
+        return await smtp_service.send_suggestion_submitted_email(
+            admin_email, submitter_name, submitter_email, title
+        )
+
+    async def send_suggestion_approved_notification(
+        self, user_email: str, title: str, locale: str = "pt-BR"
+    ) -> bool:
+        return await smtp_service.send_suggestion_approved_email(
+            user_email, title, locale
+        )
+
+    async def send_suggestion_rejected_notification(
+        self, user_email: str, title: str, admin_comment: str, locale: str = "pt-BR"
+    ) -> bool:
+        return await smtp_service.send_suggestion_rejected_email(
+            user_email, title, admin_comment, locale
+        )

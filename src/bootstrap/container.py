@@ -48,6 +48,9 @@ from src.application.suggestions.delete_document_suggestion import (
 from src.application.suggestions.replace_suggestion_file import (
     ReplaceSuggestionFile,
 )
+from src.application.suggestions.get_suggestion_file import (
+    GetSuggestionFile,
+)
 from src.application.suggestions.admin_list_document_suggestions import (
     AdminListDocumentSuggestions,
 )
@@ -176,6 +179,7 @@ class Container:
         self.update_document_suggestion: UpdateDocumentSuggestion | None = None
         self.delete_document_suggestion: DeleteDocumentSuggestion | None = None
         self.replace_suggestion_file: ReplaceSuggestionFile | None = None
+        self.get_suggestion_file: GetSuggestionFile | None = None
         self.admin_list_document_suggestions: AdminListDocumentSuggestions | None = None
         self.admin_update_document_suggestion: AdminUpdateDocumentSuggestion | None = (
             None
@@ -379,6 +383,7 @@ class Container:
             "update_document_suggestion",
             "delete_document_suggestion",
             "replace_suggestion_file",
+            "get_suggestion_file",
             "admin_list_document_suggestions",
             "admin_update_document_suggestion",
             "admin_reject_document_suggestion",
@@ -609,6 +614,10 @@ class Container:
         self.replace_suggestion_file = ReplaceSuggestionFile(
             suggestion_repo=self.suggestion_repo,
             doc_repo=self.doc_repo,
+            storage=self.file_storage,
+        )
+        self.get_suggestion_file = GetSuggestionFile(
+            suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
         )
         self.admin_list_document_suggestions = AdminListDocumentSuggestions(

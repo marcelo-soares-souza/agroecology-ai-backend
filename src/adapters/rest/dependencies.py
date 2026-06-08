@@ -54,6 +54,9 @@ from src.application.suggestions.list_my_document_suggestions import (
 from src.application.suggestions.replace_suggestion_file import (
     ReplaceSuggestionFile,
 )
+from src.application.suggestions.get_suggestion_file import (
+    GetSuggestionFile,
+)
 from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
@@ -306,6 +309,11 @@ def get_delete_document_suggestion() -> DeleteDocumentSuggestion:
 def get_replace_suggestion_file() -> ReplaceSuggestionFile:
     assert container.replace_suggestion_file is not None
     return container.replace_suggestion_file
+
+
+def get_suggestion_file() -> GetSuggestionFile:
+    assert container.get_suggestion_file is not None
+    return container.get_suggestion_file
 
 
 def get_admin_list_document_suggestions() -> AdminListDocumentSuggestions:

@@ -16,6 +16,7 @@ from src.adapters.rest.dependencies import (
     get_request_password_reset,
     get_resend_confirmation_email,
     get_user_by_slug as get_user_by_slug_use_case,
+    get_user_repo,
 )
 from src.adapters.rest.serializers import serialize_user
 from src.adapters.rest.schemas import (
@@ -235,3 +236,10 @@ async def get_user_by_slug(slug: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return serialize_user(user)
+
+
+@router.get("/users", response_model=list[UserResponse])
+async def list_active_users():
+    repo = await get_user_repo()
+    users = await repo.list_active()
+    return [serialize_user(u) for u in users]

@@ -107,6 +107,18 @@ class PostgresUserRepository(UserRepository):
                     users.append(await self._enrich_user(dict(r)))
                 return users
 
+    async def list_active(self) -> list[User]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "SELECT * FROM users WHERE status = 'active' ORDER BY full_name ASC"
+                )
+                rows = await cur.fetchall()
+                users = []
+                for r in rows:
+                    users.append(await self._enrich_user(dict(r)))
+                return users
+
     async def update(self, user_id: str, **kwargs) -> User | None:
         sets = []
         params = []

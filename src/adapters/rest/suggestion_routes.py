@@ -3,8 +3,13 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
-from src.adapters.rest.auth_middleware import get_current_user, require_role
+from src.adapters.rest.auth_middleware import (
+    get_current_user,
+    get_current_user_from_query_or_header,
+    require_role,
+)
 from src.adapters.rest.dependencies import (
     get_admin_approve_document_suggestion,
     get_admin_delete_document_suggestion,
@@ -17,6 +22,8 @@ from src.adapters.rest.dependencies import (
     get_get_document_suggestion,
     get_list_my_document_suggestions,
     get_replace_suggestion_file,
+    get_suggestion_file,
+    get_suggestion_repo,
     get_update_document_suggestion,
 )
 from src.adapters.rest.schemas import (
@@ -112,6 +119,31 @@ async def get_suggestion(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     return serialize_document_suggestion(result)
+
+
+@user_router.get("/{suggestion_id}/view")
+async def view_suggestion_file(
+    suggestion_id: str,
+    current_user: User = Depends(get_current_user_from_query_or_header),
+):
+    is_admin = current_user.roles is not None and "admin" in current_user.roles
+    user_id = None if is_admin else current_user.id
+
+    result = await get_suggestion_file().execute(
+        suggestion_id=suggestion_id, user_id=user_id
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from urllib.parse import quote
+
+    return FileResponse(
+        path=result.path,
+        media_type=result.media_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(result.filename)}"
+        },
+    )
 
 
 @user_router.put("/{suggestion_id}", response_model=DocumentSuggestionResponse)
@@ -212,6 +244,26 @@ async def admin_get_suggestion(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     return serialize_document_suggestion(result)
+
+
+@admin_router.get("/{suggestion_id}/view")
+async def admin_view_suggestion_file(
+    suggestion_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
+    result = await get_suggestion_file().execute(suggestion_id=suggestion_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from urllib.parse import quote
+
+    return FileResponse(
+        path=result.path,
+        media_type=result.media_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(result.filename)}"
+        },
+    )
 
 
 @admin_router.put("/{suggestion_id}", response_model=DocumentSuggestionResponse)

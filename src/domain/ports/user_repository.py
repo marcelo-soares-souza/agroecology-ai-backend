@@ -28,6 +28,9 @@ class UserRepository(ABC):
     async def list_all(self) -> list[User]: ...
 
     @abstractmethod
+    async def list_active(self) -> list[User]: ...
+
+    @abstractmethod
     async def update(self, user_id: str, **kwargs) -> User | None: ...
 
     @abstractmethod

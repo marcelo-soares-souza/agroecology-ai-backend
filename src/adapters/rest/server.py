@@ -37,6 +37,10 @@ from src.adapters.rest.openapi_docs import (
 from src.adapters.rest.admin_routes import router as admin_router
 from src.adapters.rest.auth_middleware import get_current_user, require_role
 from src.adapters.rest.auth_routes import router as auth_router
+from src.adapters.rest.suggestion_routes import (
+    admin_router as suggestion_admin_router,
+    user_router as suggestion_user_router,
+)
 from src.adapters.rest.serializers import (
     serialize_document,
     serialize_ingestion_run,
@@ -104,6 +108,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(suggestion_user_router)
+app.include_router(suggestion_admin_router)
 
 
 @app.get("/api/v1/openapi.json", include_in_schema=False)

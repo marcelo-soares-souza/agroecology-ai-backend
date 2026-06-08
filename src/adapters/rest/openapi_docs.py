@@ -67,6 +67,10 @@ TAGS_METADATA = [
         "name": "admin",
         "description": "Admin-only user management endpoints.",
     },
+    {
+        "name": "suggestions",
+        "description": "Document suggestion workflow: users propose documents, admins review and approve them.",
+    },
 ]
 
 

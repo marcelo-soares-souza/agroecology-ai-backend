@@ -169,3 +169,44 @@ class ChallengeResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+# ── Suggestions ─────────────────────────────────────────────────────────────
+
+
+class DocumentSuggestionResponse(BaseModel):
+    id: str
+    user_id: str
+    status: str
+    title: str | None = None
+    authors: str | None = None
+    url: str | None = None
+    user_comment: str
+    admin_comment: str | None = None
+    original_filename: str | None = None
+    file_type: str | None = None
+    file_size: int | None = None
+    document_id: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class DocumentSuggestionUpdateBody(BaseModel):
+    title: str | None = None
+    authors: str | None = None
+    url: str | None = None
+    user_comment: str | None = None
+
+
+class AdminDocumentSuggestionUpdateBody(BaseModel):
+    title: str | None = None
+    authors: str | None = None
+    url: str | None = None
+    user_comment: str | None = None
+    admin_comment: str | None = None
+
+
+class AdminDocumentSuggestionDecisionBody(BaseModel):
+    admin_comment: str | None = None

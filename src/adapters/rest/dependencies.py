@@ -24,6 +24,39 @@ from src.application.get_document_file import GetDocumentFile
 from src.application.get_status import GetStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.manage_documents import ManageDocuments
+from src.application.suggestions.admin_approve_document_suggestion import (
+    AdminApproveDocumentSuggestion,
+)
+from src.application.suggestions.admin_delete_document_suggestion import (
+    AdminDeleteDocumentSuggestion,
+)
+from src.application.suggestions.admin_list_document_suggestions import (
+    AdminListDocumentSuggestions,
+)
+from src.application.suggestions.admin_reject_document_suggestion import (
+    AdminRejectDocumentSuggestion,
+)
+from src.application.suggestions.admin_update_document_suggestion import (
+    AdminUpdateDocumentSuggestion,
+)
+from src.application.suggestions.create_document_suggestion import (
+    CreateDocumentSuggestion,
+)
+from src.application.suggestions.delete_document_suggestion import (
+    DeleteDocumentSuggestion,
+)
+from src.application.suggestions.get_document_suggestion import (
+    GetDocumentSuggestion,
+)
+from src.application.suggestions.list_my_document_suggestions import (
+    ListMyDocumentSuggestions,
+)
+from src.application.suggestions.replace_suggestion_file import (
+    ReplaceSuggestionFile,
+)
+from src.application.suggestions.update_document_suggestion import (
+    UpdateDocumentSuggestion,
+)
 from src.application.delete_document import DeleteDocument
 from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
@@ -240,6 +273,64 @@ def get_enqueue_pending_metadata() -> EnqueuePendingMetadata:
 def get_metadata_job_status() -> GetMetadataJobStatus:
     assert container.get_metadata_job_status is not None
     return container.get_metadata_job_status
+
+
+# ── Suggestion use case getters ──────────────────────────────────────────
+
+
+def get_create_document_suggestion() -> CreateDocumentSuggestion:
+    assert container.create_document_suggestion is not None
+    return container.create_document_suggestion
+
+
+def get_list_my_document_suggestions() -> ListMyDocumentSuggestions:
+    assert container.list_my_document_suggestions is not None
+    return container.list_my_document_suggestions
+
+
+def get_get_document_suggestion() -> GetDocumentSuggestion:
+    assert container.get_document_suggestion is not None
+    return container.get_document_suggestion
+
+
+def get_update_document_suggestion() -> UpdateDocumentSuggestion:
+    assert container.update_document_suggestion is not None
+    return container.update_document_suggestion
+
+
+def get_delete_document_suggestion() -> DeleteDocumentSuggestion:
+    assert container.delete_document_suggestion is not None
+    return container.delete_document_suggestion
+
+
+def get_replace_suggestion_file() -> ReplaceSuggestionFile:
+    assert container.replace_suggestion_file is not None
+    return container.replace_suggestion_file
+
+
+def get_admin_list_document_suggestions() -> AdminListDocumentSuggestions:
+    assert container.admin_list_document_suggestions is not None
+    return container.admin_list_document_suggestions
+
+
+def get_admin_update_document_suggestion() -> AdminUpdateDocumentSuggestion:
+    assert container.admin_update_document_suggestion is not None
+    return container.admin_update_document_suggestion
+
+
+def get_admin_reject_document_suggestion() -> AdminRejectDocumentSuggestion:
+    assert container.admin_reject_document_suggestion is not None
+    return container.admin_reject_document_suggestion
+
+
+def get_admin_approve_document_suggestion() -> AdminApproveDocumentSuggestion:
+    assert container.admin_approve_document_suggestion is not None
+    return container.admin_approve_document_suggestion
+
+
+def get_admin_delete_document_suggestion() -> AdminDeleteDocumentSuggestion:
+    assert container.admin_delete_document_suggestion is not None
+    return container.admin_delete_document_suggestion
 
 
 async def init_services() -> None:

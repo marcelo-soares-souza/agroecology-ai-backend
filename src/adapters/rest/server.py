@@ -441,10 +441,7 @@ async def view_document(doc_id: str):
 
 
 @app.get("/api/v1/documents/{doc_id}/download")
-async def download_document(
-    doc_id: str,
-    current_user: User = Depends(require_role("admin")),
-):
+async def download_document(doc_id: str):
     doc_file = await get_document_file().execute(doc_id)
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -455,7 +452,7 @@ async def download_document(
         path=doc_file.path,
         media_type=doc_file.media_type,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(doc_file.filename)}"
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(doc_file.filename)}"
         },
     )
 

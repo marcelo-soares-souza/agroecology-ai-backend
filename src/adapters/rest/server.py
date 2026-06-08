@@ -23,7 +23,6 @@ from src.adapters.rest.dependencies import (
     get_manage_docs,
     get_retriever,
     get_metadata_job_status,
-    get_suggestion_repo,
     get_status_service,
     get_task_manager,
     get_upload_document,
@@ -44,7 +43,6 @@ from src.adapters.rest.suggestion_routes import (
 )
 from src.adapters.rest.serializers import (
     serialize_document,
-    serialize_document_suggestion,
     serialize_ingestion_run,
 )
 from src.adapters.rest.schemas import (
@@ -112,15 +110,6 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(suggestion_user_router)
 app.include_router(suggestion_admin_router)
-
-
-@app.get("/api/v1/suggestions/public")
-async def public_suggestions(user_id: str):
-    repo = await get_suggestion_repo()
-    suggestions = await repo.list_all(
-        status="approved", user_id=user_id, limit=100
-    )
-    return [serialize_document_suggestion(s) for s in suggestions]
 
 
 @app.get("/api/v1/openapi.json", include_in_schema=False)

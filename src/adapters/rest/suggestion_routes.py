@@ -23,6 +23,7 @@ from src.adapters.rest.dependencies import (
     get_list_my_document_suggestions,
     get_replace_suggestion_file,
     get_suggestion_file,
+    get_suggestion_repo,
     get_update_document_suggestion,
 )
 from src.adapters.rest.schemas import (
@@ -55,6 +56,18 @@ def _error(
     if "cannot delete" in lower:
         return HTTPException(status_code=409, detail=msg)
     return HTTPException(status_code=400, detail=msg)
+
+
+# ── Public routes ────────────────────────────────────────────────────────
+
+
+@user_router.get("/public")
+async def public_suggestions(user_id: str):
+    repo = await get_suggestion_repo()
+    suggestions = await repo.list_all(
+        status="approved", user_id=user_id, limit=100
+    )
+    return [serialize_document_suggestion(s) for s in suggestions]
 
 
 # ── User routes ─────────────────────────────────────────────────────────

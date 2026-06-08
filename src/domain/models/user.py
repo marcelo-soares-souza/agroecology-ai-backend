@@ -18,3 +18,5 @@ class User:
     email_confirmed_at: datetime | None = None
     last_login_at: datetime | None = None
     roles: list[str] | None = None  # populated on login/me
+    about: str | None = None
+    link: str | None = None

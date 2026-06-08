@@ -38,6 +38,8 @@ def serialize_user(user: User | UserDTO) -> dict:
         "last_login_at": user.last_login_at,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
+        "about": user.about,
+        "link": user.link,
     }
 
 

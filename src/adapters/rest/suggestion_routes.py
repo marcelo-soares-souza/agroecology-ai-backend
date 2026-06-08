@@ -64,9 +64,7 @@ def _error(
 @user_router.get("/public")
 async def public_suggestions(user_id: str):
     repo = await get_suggestion_repo()
-    suggestions = await repo.list_all(
-        status="approved", user_id=user_id, limit=100
-    )
+    suggestions = await repo.list_all(status="approved", user_id=user_id, limit=100)
     return [serialize_document_suggestion(s) for s in suggestions]
 
 

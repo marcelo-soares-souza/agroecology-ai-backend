@@ -132,6 +132,8 @@ class PostgresUserRepository(UserRepository):
                 "locale",
                 "email_confirmed_at",
                 "last_login_at",
+                "about",
+                "link",
             ):
                 sets.append(f"{key} = %s")
                 params.append(value)
@@ -300,4 +302,6 @@ class PostgresUserRepository(UserRepository):
             updated_at=row["updated_at"],
             email_confirmed_at=row.get("email_confirmed_at"),
             last_login_at=row.get("last_login_at"),
+            about=row.get("about"),
+            link=row.get("link"),
         )

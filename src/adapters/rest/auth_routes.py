@@ -27,6 +27,7 @@ from src.adapters.rest.schemas import (
     RegisterRequest,
     TokenResponse,
     UserResponse,
+    UserUpdateRequest,
 )
 from src.domain.models.user import User
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
@@ -228,6 +229,40 @@ async def confirm_password_reset(token: str, new_password: str, request: Request
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
     return serialize_user(user)
+
+
+@router.put("/me/profile", response_model=UserResponse)
+async def update_my_profile(
+    body: UserUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    repo = await get_user_repo()
+    updates: dict[str, str | None] = {}
+    if body.about is not None:
+        if len(body.about) > 4096:
+            raise HTTPException(status_code=400, detail="About must not exceed 4096 characters")
+        updates["about"] = body.about
+    if body.link is not None:
+        if body.link and not body.link.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="Link must start with http:// or https://")
+        if body.link and len(body.link) > 2000:
+            raise HTTPException(status_code=400, detail="Link must not exceed 2000 characters")
+        updates["link"] = body.link or None
+    if body.full_name is not None:
+        updates["full_name"] = body.full_name
+    if body.email is not None:
+        updates["email"] = body.email
+
+    if not updates:
+        user = await repo.get_by_id(current_user.id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return serialize_user(user)
+
+    updated = await repo.update(current_user.id, **updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+    return serialize_user(updated)
 
 
 @router.get("/users/by-slug/{slug}", response_model=UserResponse)

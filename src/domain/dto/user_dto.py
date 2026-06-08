@@ -18,6 +18,8 @@ class UserDTO:
     last_login_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    about: str | None = None
+    link: str | None = None
 
     @staticmethod
     def from_user(user: User, include_timestamps: bool = True) -> UserDTO:
@@ -35,6 +37,8 @@ class UserDTO:
             last_login_at=user.last_login_at.isoformat()
             if user.last_login_at
             else None,
+            about=user.about,
+            link=user.link,
         )
         if include_timestamps:
             dto.created_at = user.created_at.isoformat()
@@ -51,4 +55,6 @@ class UserDTO:
             slug=user.slug,
             locale=user.locale,
             roles=user.roles or [],
+            about=user.about,
+            link=user.link,
         )

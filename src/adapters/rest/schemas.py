@@ -152,11 +152,15 @@ class UserResponse(BaseModel):
     last_login_at: str | None = None
     created_at: str
     updated_at: str
+    about: str | None = None
+    link: str | None = None
 
 
 class UserUpdateRequest(BaseModel):
     full_name: str | None = None
     email: str | None = None
+    about: str | None = None
+    link: str | None = None
     status: str | None = None
     role_key: str | None = None
     locale: str | None = None

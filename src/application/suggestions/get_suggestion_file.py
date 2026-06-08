@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.domain.models.document_suggestion import DocumentSuggestion
 from src.domain.ports.document_suggestion_repository import (
     DocumentSuggestionRepository,
 )
@@ -42,9 +41,7 @@ class GetSuggestionFile:
             return None
         if not suggestion.original_filename or suggestion.file_type != "pdf":
             return None
-        if not await self._storage.exists(
-            _SUGGESTIONS_DIR, suggestion_id, ".pdf"
-        ):
+        if not await self._storage.exists(_SUGGESTIONS_DIR, suggestion_id, ".pdf"):
             return None
 
         return SuggestionFile(

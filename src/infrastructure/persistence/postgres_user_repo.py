@@ -111,7 +111,7 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM users WHERE status = 'active' ORDER BY full_name ASC"
+                    "SELECT * FROM users WHERE status = 'active' ORDER BY last_login_at DESC NULLS LAST"
                 )
                 rows = await cur.fetchall()
                 users = []

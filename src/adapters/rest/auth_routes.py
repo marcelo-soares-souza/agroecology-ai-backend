@@ -240,13 +240,19 @@ async def update_my_profile(
     updates: dict[str, str | None] = {}
     if body.about is not None:
         if len(body.about) > 4096:
-            raise HTTPException(status_code=400, detail="About must not exceed 4096 characters")
+            raise HTTPException(
+                status_code=400, detail="About must not exceed 4096 characters"
+            )
         updates["about"] = body.about
     if body.link is not None:
         if body.link and not body.link.startswith(("http://", "https://")):
-            raise HTTPException(status_code=400, detail="Link must start with http:// or https://")
+            raise HTTPException(
+                status_code=400, detail="Link must start with http:// or https://"
+            )
         if body.link and len(body.link) > 2000:
-            raise HTTPException(status_code=400, detail="Link must not exceed 2000 characters")
+            raise HTTPException(
+                status_code=400, detail="Link must not exceed 2000 characters"
+            )
         updates["link"] = body.link or None
     if body.full_name is not None:
         updates["full_name"] = body.full_name

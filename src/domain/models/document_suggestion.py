@@ -47,6 +47,7 @@ class DocumentSuggestionUpdate:
     authors: str | None = field(default=None)
     url: str | None = field(default=None)
     user_comment: str | None = field(default=None)
+    admin_comment: str | None = field(default=None)
     original_filename: str | None = field(default=None)
     file_type: str | None = field(default=None)
     file_size: int | None = field(default=None)

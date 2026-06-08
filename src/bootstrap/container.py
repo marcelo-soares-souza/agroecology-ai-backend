@@ -30,6 +30,39 @@ from src.application.delete_document import DeleteDocument
 from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.upload_document import UploadDocument
+from src.application.suggestions.create_document_suggestion import (
+    CreateDocumentSuggestion,
+)
+from src.application.suggestions.list_my_document_suggestions import (
+    ListMyDocumentSuggestions,
+)
+from src.application.suggestions.get_document_suggestion import (
+    GetDocumentSuggestion,
+)
+from src.application.suggestions.update_document_suggestion import (
+    UpdateDocumentSuggestion,
+)
+from src.application.suggestions.delete_document_suggestion import (
+    DeleteDocumentSuggestion,
+)
+from src.application.suggestions.replace_suggestion_file import (
+    ReplaceSuggestionFile,
+)
+from src.application.suggestions.admin_list_document_suggestions import (
+    AdminListDocumentSuggestions,
+)
+from src.application.suggestions.admin_update_document_suggestion import (
+    AdminUpdateDocumentSuggestion,
+)
+from src.application.suggestions.admin_reject_document_suggestion import (
+    AdminRejectDocumentSuggestion,
+)
+from src.application.suggestions.admin_delete_document_suggestion import (
+    AdminDeleteDocumentSuggestion,
+)
+from src.application.suggestions.admin_approve_document_suggestion import (
+    AdminApproveDocumentSuggestion,
+)
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.services.retriever import RetrieverService
@@ -135,6 +168,27 @@ class Container:
         self.resend_confirmation_email: ResendConfirmationEmail | None = None
         self.request_password_reset: RequestPasswordReset | None = None
         self.confirm_password_reset: ConfirmPasswordReset | None = None
+
+        # Suggestion use cases
+        self.create_document_suggestion: CreateDocumentSuggestion | None = None
+        self.list_my_document_suggestions: ListMyDocumentSuggestions | None = None
+        self.get_document_suggestion: GetDocumentSuggestion | None = None
+        self.update_document_suggestion: UpdateDocumentSuggestion | None = None
+        self.delete_document_suggestion: DeleteDocumentSuggestion | None = None
+        self.replace_suggestion_file: ReplaceSuggestionFile | None = None
+        self.admin_list_document_suggestions: AdminListDocumentSuggestions | None = None
+        self.admin_update_document_suggestion: AdminUpdateDocumentSuggestion | None = (
+            None
+        )
+        self.admin_reject_document_suggestion: AdminRejectDocumentSuggestion | None = (
+            None
+        )
+        self.admin_approve_document_suggestion: (
+            AdminApproveDocumentSuggestion | None
+        ) = None
+        self.admin_delete_document_suggestion: AdminDeleteDocumentSuggestion | None = (
+            None
+        )
 
         # Admin use cases
         self.list_users: ListUsers | None = None
@@ -319,6 +373,17 @@ class Container:
             "get_metadata_job_status",
             "ask_task_service",
             "ingestion_task_service",
+            "create_document_suggestion",
+            "list_my_document_suggestions",
+            "get_document_suggestion",
+            "update_document_suggestion",
+            "delete_document_suggestion",
+            "replace_suggestion_file",
+            "admin_list_document_suggestions",
+            "admin_update_document_suggestion",
+            "admin_reject_document_suggestion",
+            "admin_approve_document_suggestion",
+            "admin_delete_document_suggestion",
             "get_human_challenge",
             "register_user",
             "login_user",
@@ -518,6 +583,50 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
         )
+        # Suggestion use cases
+        assert self.suggestion_repo is not None
+        self.create_document_suggestion = CreateDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+            doc_repo=self.doc_repo,
+            storage=self.file_storage,
+        )
+        self.list_my_document_suggestions = ListMyDocumentSuggestions(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.get_document_suggestion = GetDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.update_document_suggestion = UpdateDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.delete_document_suggestion = DeleteDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+            storage=self.file_storage,
+        )
+        self.replace_suggestion_file = ReplaceSuggestionFile(
+            suggestion_repo=self.suggestion_repo,
+            doc_repo=self.doc_repo,
+            storage=self.file_storage,
+        )
+        self.admin_list_document_suggestions = AdminListDocumentSuggestions(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.admin_update_document_suggestion = AdminUpdateDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.admin_reject_document_suggestion = AdminRejectDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+        )
+        self.admin_delete_document_suggestion = AdminDeleteDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+            storage=self.file_storage,
+        )
+        self.admin_approve_document_suggestion = AdminApproveDocumentSuggestion(
+            suggestion_repo=self.suggestion_repo,
+            doc_repo=self.doc_repo,
+            storage=self.file_storage,
+        )
+
         # Admin use cases
         self.list_users = ListUsers(repo=self.user_repo)
         self.get_user = AdminGetUser(repo=self.user_repo)

@@ -161,6 +161,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
             "authors",
             "url",
             "user_comment",
+            "admin_comment",
             "original_filename",
             "file_type",
             "file_size",

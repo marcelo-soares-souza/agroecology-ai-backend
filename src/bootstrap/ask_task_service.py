@@ -98,7 +98,7 @@ class AskTaskService:
                 answer=result.answer,
                 sources=result.to_source_dicts(),
             )
-            if should_cache:
+            if should_cache and result.answer.strip():
                 self._cache.set(question, result, top_k)
             log_event(
                 logger,

@@ -168,9 +168,11 @@ class PostgresUserRepository(UserRepository):
     async def delete(self, user_id: str) -> User | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                user = await self.get_by_id(user_id)
-                if not user:
+                await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+                row = await cur.fetchone()
+                if row is None:
                     return None
+                user = await self._enrich_user(dict(row), conn)
                 await cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 return user
 

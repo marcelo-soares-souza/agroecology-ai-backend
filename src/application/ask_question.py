@@ -28,6 +28,48 @@ _CONTEXT_DEPENDENT_PATTERNS = (
 )
 
 _MAX_HISTORY_SNIPPET_CHARS = 500
+_LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "Portuguese",
+        (
+            re.compile(r"[ãõáàâêéíóôúç]"),
+            re.compile(
+                r"\b(o que|como|quais|qual|porque|por que|para|uma|não|voc[eê]|sobre)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "Spanish",
+        (
+            re.compile(r"[ñ¿¡]"),
+            re.compile(
+                r"\b(qué|como|cu[aá]l|cu[aá]les|porque|por qu[eé]|para|una|sobre|usted)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "French",
+        (
+            re.compile(r"[àâçéèêëîïôùûüœ]"),
+            re.compile(
+                r"\b(quoi|comment|quel|quelle|quels|quelles|pourquoi|avec|une|sur)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "English",
+        (
+            re.compile(
+                r"\b(what|how|which|why|when|where|can|could|would|should|about|the|is|are)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+)
+_LANGUAGE_FALLBACK_LABEL = "the same language as the current user question"
 logger = logging.getLogger("agroecology.rag")
 
 
@@ -83,6 +125,11 @@ class AskQuestion:
         follow_up = bool(normalized_history) and self._is_context_dependent_question(
             question
         )
+        (
+            expected_language,
+            language_confidence,
+            language_source,
+        ) = self._resolve_answer_language(question, normalized_history, follow_up)
         log_event(
             logger,
             logging.INFO,
@@ -91,6 +138,9 @@ class AskQuestion:
             top_k=top_k or RERANK_TOP_K,
             history_messages=len(normalized_history),
             follow_up_detected=follow_up,
+            expected_language=expected_language,
+            language_confidence=language_confidence,
+            language_source=language_source,
         )
         search_query = question
         if self._query_rewriter and normalized_history:
@@ -118,7 +168,12 @@ class AskQuestion:
             selected_chars=sum(len(chunk.text) for chunk in context_chunks),
             history_messages=len(answer_history),
         )
-        answer = self._generate_answer(question, context_chunks, answer_history)
+        answer = self._generate_answer(
+            question,
+            context_chunks,
+            answer_history,
+            expected_language,
+        )
         if not answer and len(context_chunks) > 1:
             retry_chunks = context_chunks[:LLM_CONTEXT_RETRY_MAX_CHUNKS]
             log_event(
@@ -131,7 +186,12 @@ class AskQuestion:
                 retry_context_chars=sum(len(chunk.text) for chunk in retry_chunks),
                 question_chars=len(question),
             )
-            retry_answer = self._generate_answer(question, retry_chunks, answer_history)
+            retry_answer = self._generate_answer(
+                question,
+                retry_chunks,
+                answer_history,
+                expected_language,
+            )
             if retry_answer:
                 log_event(
                     logger,
@@ -184,6 +244,9 @@ class AskQuestion:
             retrieved_sources=len(sources),
             answer_chars=len(answer),
             search_query_rewritten=search_query != question,
+            expected_language=expected_language,
+            language_confidence=language_confidence,
+            language_source=language_source,
         )
         return AnswerResult(answer=answer, sources=sources)
 
@@ -231,11 +294,14 @@ class AskQuestion:
         question: str,
         context_chunks: list[RetrievedChunk],
         answer_history: list[dict[str, Any]],
+        expected_language: str,
     ) -> str:
         context = self._build_context(context_chunks)
         return self._llm.complete(
             SYSTEM_PROMPT,
-            USER_PROMPT.replace("{context}", context).replace("{question}", question),
+            USER_PROMPT.replace("{context}", context)
+            .replace("{question}", question)
+            .replace("{expected_language}", expected_language),
             history=answer_history,
         )
 
@@ -307,3 +373,49 @@ class AskQuestion:
     def _normalize_snippet(content: str) -> str:
         compact_content = " ".join(content.split())
         return compact_content[:_MAX_HISTORY_SNIPPET_CHARS]
+
+    @staticmethod
+    def _detect_question_language(question: str) -> tuple[str, str]:
+        compact_question = " ".join(question.strip().split())
+        if not compact_question:
+            return _LANGUAGE_FALLBACK_LABEL, "low"
+
+        best_language = ""
+        best_score = 0
+
+        for language_name, patterns in _LANGUAGE_PATTERN_RULES:
+            score = sum(1 for pattern in patterns if pattern.search(compact_question))
+            if score > best_score:
+                best_language = language_name
+                best_score = score
+
+        if not best_language:
+            return _LANGUAGE_FALLBACK_LABEL, "low"
+
+        if best_score >= 2 or len(compact_question.split()) >= 6:
+            return best_language, "high"
+        if len(compact_question.split()) >= 3:
+            return best_language, "medium"
+        return best_language, "low"
+
+    @classmethod
+    def _resolve_answer_language(
+        cls,
+        question: str,
+        history: list[dict[str, Any]],
+        follow_up: bool,
+    ) -> tuple[str, str, str]:
+        detected_language, confidence = cls._detect_question_language(question)
+        if confidence in {"high", "medium"}:
+            return detected_language, confidence, "current_question"
+
+        if follow_up:
+            last_user = cls._find_last_message(history, "user")
+            if last_user:
+                previous_language, previous_confidence = cls._detect_question_language(
+                    last_user
+                )
+                if previous_confidence in {"high", "medium"}:
+                    return previous_language, previous_confidence, "history_last_user"
+
+        return detected_language, confidence, "current_question_fallback"

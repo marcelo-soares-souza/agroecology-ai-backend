@@ -168,16 +168,19 @@ SYSTEM_PROMPT = (
 )
 
 USER_PROMPT = (
+    "MANDATORY OUTPUT LANGUAGE: {expected_language}\n"
+    "You must answer only in {expected_language}. "
+    "This rule has priority over conversation history and retrieved context.\n\n"
     "Current user question, used ONLY to determine the answer language:\n"
     "{question}\n\n"
     "Retrieved context, used ONLY as factual source and NOT as language signal:\n"
     "---\n"
     "{context}\n"
     "---\n\n"
-    "Answer the current user question in the SAME language as that question. "
+    "Answer the current user question in {expected_language}. "
     "Ignore the language of the retrieved context and conversation history when "
     "choosing the answer language. If useful context is in another language, translate "
-    "its relevant meaning into the question's language. "
+    "its relevant meaning into {expected_language}. "
     "Use only the context provided. Be cordial and conversational."
 )
 

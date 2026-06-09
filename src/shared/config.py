@@ -131,6 +131,9 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:password@localhost:5432/agroecology_ai",
 )
 
+DB_POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN_SIZE", "2"))
+DB_POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX_SIZE", "15"))
+
 SYSTEM_PROMPT = (
     "You are a cordial assistant specialized in Agroecology, Agroforestry, "
     "Permaculture, Ecology, and sustainable agriculture. "

@@ -1,27 +1,29 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from datetime import datetime, timezone
 
 from src.domain.models.user import User
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import DATABASE_URL
 from src.shared.uuid7 import uuid7
 
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+    from psycopg import AsyncConnection
 
 
 class PostgresUserRepository(UserRepository):
-    def __init__(self) -> None:
-        self._pool = AsyncConnectionPool(
-            conninfo=DATABASE_URL, min_size=1, max_size=5, open=False
-        )
+    def __init__(self, pool: AsyncConnectionPool) -> None:
+        self._pool = pool
 
     async def initialize(self) -> None:
-        await self._pool.open()
+        pass
 
     async def close(self) -> None:
-        await self._pool.close()
+        pass
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -76,7 +78,7 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
                 row = await cur.fetchone()
                 if row is not None:
-                    return await self._enrich_user(dict(row))
+                    return await self._enrich_user(dict(row), conn)
                 return None
 
     async def get_by_email(self, email: str) -> User | None:
@@ -85,7 +87,7 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute("SELECT * FROM users WHERE email = %s", (email,))
                 row = await cur.fetchone()
                 if row is not None:
-                    return await self._enrich_user(dict(row))
+                    return await self._enrich_user(dict(row), conn)
                 return None
 
     async def get_by_slug(self, slug: str) -> User | None:
@@ -94,7 +96,7 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute("SELECT * FROM users WHERE slug = %s", (slug,))
                 row = await cur.fetchone()
                 if row is not None:
-                    return await self._enrich_user(dict(row))
+                    return await self._enrich_user(dict(row), conn)
                 return None
 
     async def list_all(self) -> list[User]:
@@ -104,7 +106,7 @@ class PostgresUserRepository(UserRepository):
                 rows = await cur.fetchall()
                 users = []
                 for r in rows:
-                    users.append(await self._enrich_user(dict(r)))
+                    users.append(await self._enrich_user(dict(r), conn))
                 return users
 
     async def list_active(self) -> list[User]:
@@ -122,7 +124,7 @@ class PostgresUserRepository(UserRepository):
                 rows = await cur.fetchall()
                 users = []
                 for r in rows:
-                    users.append(await self._enrich_user(dict(r)))
+                    users.append(await self._enrich_user(dict(r), conn))
                 return users
 
     async def update(self, user_id: str, **kwargs) -> User | None:
@@ -160,7 +162,7 @@ class PostgresUserRepository(UserRepository):
                 )
                 row = await cur.fetchone()
                 if row is not None:
-                    return await self._enrich_user(dict(row))
+                    return await self._enrich_user(dict(row), conn)
                 return None
 
     async def delete(self, user_id: str) -> User | None:
@@ -281,10 +283,13 @@ class PostgresUserRepository(UserRepository):
                     (uuid7(), user_id, role_id),
                 )
 
-    async def _enrich_user(self, row: dict) -> User:
+    async def _enrich_user(
+        self, row: dict, conn: AsyncConnection | None = None
+    ) -> User:
         user = self._to_user(row)
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
+
+        async def _do_enrich(c: AsyncConnection) -> None:
+            async with c.cursor() as cur:
                 await cur.execute(
                     """SELECT r.role_key FROM user_roles ur
                        JOIN roles r ON ur.role_id = r.id
@@ -301,6 +306,12 @@ class PostgresUserRepository(UserRepository):
                     )
                     count_row = await cur.fetchone()
                     user.approved_suggestions_count = count_row[0] if count_row else 0
+
+        if conn is not None:
+            await _do_enrich(conn)
+        else:
+            async with self._pool.connection() as c:
+                await _do_enrich(c)
         return user
 
     @staticmethod

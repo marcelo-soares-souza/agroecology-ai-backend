@@ -1,27 +1,28 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from datetime import datetime, timezone
 
 from src.domain.models.ingestion_run import IngestionRun
 from src.domain.ports.ingestion_repository import IngestionRepository
-from src.shared.config import DATABASE_URL
 from src.shared.uuid7 import uuid7
 
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
 
 
 class PostgresIngestionRepository(IngestionRepository):
-    def __init__(self) -> None:
-        self._pool = AsyncConnectionPool(
-            conninfo=DATABASE_URL, min_size=1, max_size=2, open=False
-        )
+    def __init__(self, pool: AsyncConnectionPool) -> None:
+        self._pool = pool
 
     async def initialize(self) -> None:
-        await self._pool.open()
+        pass
 
     async def close(self) -> None:
-        await self._pool.close()
+        pass
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)

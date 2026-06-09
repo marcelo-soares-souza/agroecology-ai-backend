@@ -4,6 +4,8 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
+from psycopg_pool import AsyncConnectionPool
+
 from src.application.admin.delete_user import DeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers
@@ -105,6 +107,9 @@ from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtract
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
 from src.shared.config import (
     CACHE_TTL,
+    DATABASE_URL,
+    DB_POOL_MIN_SIZE,
+    DB_POOL_MAX_SIZE,
     EMBEDDING_BACKEND,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
@@ -130,6 +135,13 @@ logger = logging.getLogger("agroecology.bootstrap")
 
 class Container:
     def __init__(self) -> None:
+        self._db_pool: AsyncConnectionPool | None = AsyncConnectionPool(
+            conninfo=DATABASE_URL,
+            min_size=DB_POOL_MIN_SIZE,
+            max_size=DB_POOL_MAX_SIZE,
+            open=False,
+        )
+
         self.embedder: EmbeddingPort | None = None
         self.vector_store: VectorStorePort | None = None
         self.llm: LLMPort | None = None
@@ -211,24 +223,34 @@ class Container:
             return
         log_event(logger, logging.INFO, "container_init_started")
         try:
+            assert self._db_pool is not None
+            await self._db_pool.open()
+            log_event(
+                logger,
+                logging.INFO,
+                "db_pool_opened",
+                min_size=DB_POOL_MIN_SIZE,
+                max_size=DB_POOL_MAX_SIZE,
+            )
+
             self._create_embedder()
             self._create_llm()
             self._create_cache()
             self._create_reranker()
 
-            self.doc_repo = PostgresDocumentRepository()
+            self.doc_repo = PostgresDocumentRepository(self._db_pool)
             await self.doc_repo.initialize()
             log_event(logger, logging.INFO, "document_repo_initialized")
 
-            self.ingestion_repo = PostgresIngestionRepository()
+            self.ingestion_repo = PostgresIngestionRepository(self._db_pool)
             await self.ingestion_repo.initialize()
             log_event(logger, logging.INFO, "ingestion_repo_initialized")
 
-            self.user_repo = PostgresUserRepository()
+            self.user_repo = PostgresUserRepository(self._db_pool)
             await self.user_repo.initialize()
             log_event(logger, logging.INFO, "user_repo_initialized")
 
-            self.suggestion_repo = PostgresDocumentSuggestionRepository()
+            self.suggestion_repo = PostgresDocumentSuggestionRepository(self._db_pool)
             await self.suggestion_repo.initialize()
             log_event(logger, logging.INFO, "suggestion_repo_initialized")
 
@@ -339,6 +361,14 @@ class Container:
                 except Exception as e:
                     logger.warning("suggestion_repo_close_failed error=%s", e)
 
+            if self._db_pool is not None:
+                try:
+                    await self._db_pool.close()
+                except Exception as e:
+                    logger.warning("db_pool_close_failed error=%s", e)
+                self._db_pool = None
+                log_event(logger, logging.INFO, "db_pool_closed")
+
             if self.cache is not None:
                 try:
                     self.cache.close()
@@ -350,6 +380,7 @@ class Container:
 
     def reset(self) -> None:
         for attr in (
+            "_db_pool",
             "embedder",
             "vector_store",
             "llm",

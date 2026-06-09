@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
+from psycopg_pool import PoolTimeout
 
 from src.adapters.rest.dependencies import (
     get_ask_task_service,
@@ -107,6 +108,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(PoolTimeout)
+async def pool_timeout_handler(request: Request, exc: PoolTimeout):
+    logger.warning(
+        "db_pool_exhausted path=%s",
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Service temporarily unavailable. Please try again later."},
+    )
+
 
 app.include_router(auth_router)
 app.include_router(admin_router)

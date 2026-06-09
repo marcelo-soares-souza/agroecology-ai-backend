@@ -15,6 +15,7 @@ from src.domain.ports.llm_port import LLMPort
 from src.shared.logging_utils import log_event
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
+_CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
 logger = logging.getLogger("agroecology.llm")
 
 
@@ -79,6 +80,7 @@ class OpenAILLM(LLMPort):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                extra_body={"num_ctx": _CTX_LENGTH},
             )
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             choice = response.choices[0]

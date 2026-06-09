@@ -2,6 +2,8 @@ import logging
 import re
 from typing import Any
 
+from lingua import Language, LanguageDetectorBuilder
+
 from src.domain.dto.answer_result import AnswerResult, SourceResult
 from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.llm_port import LLMPort
@@ -70,6 +72,19 @@ _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     ),
 )
 _LANGUAGE_FALLBACK_LABEL = "the same language as the current user question"
+_LINGUA_LANGUAGES = (
+    Language.ENGLISH,
+    Language.PORTUGUESE,
+    Language.SPANISH,
+    Language.FRENCH,
+)
+_LINGUA_LANGUAGE_NAMES = {
+    Language.ENGLISH: "English",
+    Language.PORTUGUESE: "Portuguese",
+    Language.SPANISH: "Spanish",
+    Language.FRENCH: "French",
+}
+_LINGUA_DETECTOR = LanguageDetectorBuilder.from_languages(*_LINGUA_LANGUAGES).build()
 logger = logging.getLogger("agroecology.rag")
 
 
@@ -380,6 +395,10 @@ class AskQuestion:
         if not compact_question:
             return _LANGUAGE_FALLBACK_LABEL, "low"
 
+        lingua_result = AskQuestion._detect_with_lingua(compact_question)
+        if lingua_result is not None:
+            return lingua_result
+
         best_language = ""
         best_score = 0
 
@@ -407,7 +426,7 @@ class AskQuestion:
     ) -> tuple[str, str, str]:
         detected_language, confidence = cls._detect_question_language(question)
         if confidence in {"high", "medium"}:
-            return detected_language, confidence, "current_question"
+            return detected_language, confidence, "current_question_lingua"
 
         if follow_up:
             last_user = cls._find_last_message(history, "user")
@@ -416,6 +435,37 @@ class AskQuestion:
                     last_user
                 )
                 if previous_confidence in {"high", "medium"}:
-                    return previous_language, previous_confidence, "history_last_user"
+                    return (
+                        previous_language,
+                        previous_confidence,
+                        "history_last_user_lingua",
+                    )
 
         return detected_language, confidence, "current_question_fallback"
+
+    @staticmethod
+    def _detect_with_lingua(question: str) -> tuple[str, str] | None:
+        compact_question = " ".join(question.strip().split())
+        if not compact_question:
+            return None
+
+        detected_language = _LINGUA_DETECTOR.detect_language_of(compact_question)
+        if detected_language is None:
+            return None
+
+        confidence_values = _LINGUA_DETECTOR.compute_language_confidence_values(
+            compact_question
+        )
+        top_confidence = float(confidence_values[0].value) if confidence_values else 0.0
+        language_name = _LINGUA_LANGUAGE_NAMES.get(detected_language)
+        if not language_name:
+            return None
+
+        if top_confidence >= 0.9:
+            confidence = "high"
+        elif top_confidence >= 0.6:
+            confidence = "medium"
+        else:
+            confidence = "low"
+
+        return language_name, confidence

@@ -67,7 +67,12 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM document_suggestions WHERE id = %s",
+                    "SELECT ds.*, "
+                    "COALESCE(d.title, ds.title) AS title, "
+                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "FROM document_suggestions ds "
+                    "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "WHERE ds.id = %s",
                     (suggestion_id,),
                 )
                 row = await cur.fetchone()
@@ -79,7 +84,12 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM document_suggestions WHERE id = %s AND user_id = %s",
+                    "SELECT ds.*, "
+                    "COALESCE(d.title, ds.title) AS title, "
+                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "FROM document_suggestions ds "
+                    "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "WHERE ds.id = %s AND ds.user_id = %s",
                     (suggestion_id, user_id),
                 )
                 row = await cur.fetchone()
@@ -88,16 +98,24 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
     async def list_for_user(
         self, user_id: str, status: str | None = None
     ) -> list[DocumentSuggestion]:
+        base_query = (
+            "SELECT ds.*, "
+            "COALESCE(d.title, ds.title) AS title, "
+            "COALESCE(d.authors, ds.authors) AS authors "
+            "FROM document_suggestions ds "
+            "LEFT JOIN documents d ON ds.document_id = d.id "
+            "WHERE ds.user_id = %s"
+        )
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 if status:
                     await cur.execute(
-                        "SELECT * FROM document_suggestions WHERE user_id = %s AND status = %s ORDER BY created_at DESC",
+                        base_query + " AND ds.status = %s ORDER BY ds.created_at DESC",
                         (user_id, status),
                     )
                 else:
                     await cur.execute(
-                        "SELECT * FROM document_suggestions WHERE user_id = %s ORDER BY created_at DESC",
+                        base_query + " ORDER BY ds.created_at DESC",
                         (user_id,),
                     )
                 rows = await cur.fetchall()
@@ -128,7 +146,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 conditions.append("original_filename IS NULL")
         if q is not None:
             conditions.append(
-                "(title ILIKE %s OR authors ILIKE %s OR user_comment ILIKE %s)"
+                "(ds.title ILIKE %s OR ds.authors ILIKE %s OR ds.user_comment ILIKE %s)"
             )
             like = f"%{q}%"
             params.extend([like, like, like])
@@ -142,10 +160,16 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
 
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(
-                    f"SELECT * FROM document_suggestions {where_clause} ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                    params,
+                query = (
+                    "SELECT ds.*, "
+                    "COALESCE(d.title, ds.title) AS title, "
+                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "FROM document_suggestions ds "
+                    "LEFT JOIN documents d ON ds.document_id = d.id "
+                    f"{where_clause} "
+                    "ORDER BY ds.created_at DESC LIMIT %s OFFSET %s"
                 )
+                await cur.execute(query, params)
                 rows = await cur.fetchall()
                 return [self._to_domain(dict(r)) for r in rows]
 

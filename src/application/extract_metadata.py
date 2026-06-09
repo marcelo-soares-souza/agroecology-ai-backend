@@ -57,7 +57,7 @@ class ExtractMetadata:
                 system_prompt="Return only valid JSON.",
                 user_prompt=_EXTRACT_PROMPT.replace("{text}", truncated),
                 temperature=0.0,
-                max_tokens=1024,
+                max_tokens=8192,
             )
 
             cleaned = raw.strip()

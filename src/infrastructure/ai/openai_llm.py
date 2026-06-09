@@ -16,6 +16,11 @@ from src.shared.logging_utils import log_event
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
 _CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
+_LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
+    "0",
+    "false",
+    "no",
+)
 logger = logging.getLogger("agroecology.llm")
 
 
@@ -32,6 +37,13 @@ class OpenAILLM(LLMPort):
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
+
+    @staticmethod
+    def _build_extra_body() -> dict[str, object]:
+        body: dict[str, object] = {"num_ctx": _CTX_LENGTH}
+        if not _LLM_THINK_ENABLE:
+            body["enable_thinking"] = False
+        return body
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
         messages: list[ChatCompletionMessageParam] = [
@@ -80,7 +92,7 @@ class OpenAILLM(LLMPort):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                extra_body={"num_ctx": _CTX_LENGTH},
+                extra_body=self._build_extra_body(),
             )
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             choice = response.choices[0]

@@ -111,7 +111,13 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM users WHERE status = 'active' ORDER BY last_login_at DESC NULLS LAST"
+                    """SELECT u.*,
+                              (SELECT COUNT(*) FROM document_suggestions ds
+                               WHERE ds.user_id = u.id AND ds.status = 'approved')
+                              AS approved_suggestions_count
+                       FROM users u
+                       WHERE u.status = 'active'
+                       ORDER BY u.last_login_at DESC NULLS LAST"""
                 )
                 rows = await cur.fetchall()
                 users = []
@@ -287,6 +293,14 @@ class PostgresUserRepository(UserRepository):
                 )
                 role_rows = await cur.fetchall()
                 user.roles = [r[0] for r in role_rows]
+
+                if "approved_suggestions_count" not in row:
+                    await cur.execute(
+                        "SELECT COUNT(*) FROM document_suggestions WHERE user_id = %s AND status = 'approved'",
+                        (user.id,),
+                    )
+                    count_row = await cur.fetchone()
+                    user.approved_suggestions_count = count_row[0] if count_row else 0
         return user
 
     @staticmethod
@@ -306,4 +320,5 @@ class PostgresUserRepository(UserRepository):
             about=row.get("about"),
             link=row.get("link"),
             avatar_path=row.get("avatar_path"),
+            approved_suggestions_count=row.get("approved_suggestions_count", 0),
         )

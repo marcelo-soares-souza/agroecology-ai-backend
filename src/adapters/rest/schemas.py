@@ -155,6 +155,7 @@ class UserResponse(BaseModel):
     about: str | None = None
     link: str | None = None
     avatar_url: str | None = None
+    approved_suggestions_count: int = 0
 
 
 class UserUpdateRequest(BaseModel):

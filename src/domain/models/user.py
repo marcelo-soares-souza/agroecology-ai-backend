@@ -21,3 +21,4 @@ class User:
     about: str | None = None
     link: str | None = None
     avatar_path: str | None = None
+    approved_suggestions_count: int = 0

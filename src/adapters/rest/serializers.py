@@ -41,6 +41,7 @@ def serialize_user(user: User | UserDTO) -> dict:
         "about": user.about,
         "link": user.link,
         "avatar_url": user.avatar_url,
+        "approved_suggestions_count": user.approved_suggestions_count,
     }
 
 

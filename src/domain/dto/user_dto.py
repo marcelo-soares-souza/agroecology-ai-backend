@@ -22,6 +22,7 @@ class UserDTO:
     link: str | None = None
     avatar_url: str | None = None
     avatar_path: str | None = None
+    approved_suggestions_count: int = 0
 
     @staticmethod
     def from_user(user: User, include_timestamps: bool = True) -> UserDTO:
@@ -45,6 +46,7 @@ class UserDTO:
             if user.avatar_path
             else None,
             avatar_path=user.avatar_path,
+            approved_suggestions_count=user.approved_suggestions_count,
         )
         if include_timestamps:
             dto.created_at = user.created_at.isoformat()
@@ -67,4 +69,5 @@ class UserDTO:
             if user.avatar_path
             else None,
             avatar_path=user.avatar_path,
+            approved_suggestions_count=user.approved_suggestions_count,
         )

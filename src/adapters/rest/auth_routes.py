@@ -244,7 +244,7 @@ async def update_my_profile(
             raise HTTPException(
                 status_code=400, detail="About must not exceed 4096 characters"
             )
-        updates["about"] = body.about
+        updates["about"] = body.about or None
     if body.link is not None:
         if body.link and not body.link.startswith(("http://", "https://")):
             raise HTTPException(

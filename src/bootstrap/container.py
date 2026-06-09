@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from psycopg_pool import AsyncConnectionPool
 
@@ -73,6 +74,7 @@ from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.services.retriever import RetrieverService
 from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
+from src.infrastructure.ai.ollama_native_llm import OllamaNativeLLM
 from src.infrastructure.ai.openai_llm import OpenAILLM
 from src.infrastructure.ai.sentence_transformer_embedder import (
     SentenceTransformerEmbedder,
@@ -131,6 +133,12 @@ if TYPE_CHECKING:
     from src.domain.ports.vector_store_port import VectorStorePort
 
 logger = logging.getLogger("agroecology.bootstrap")
+
+
+def _is_ollama_base_url(base_url: str) -> bool:
+    parsed = urlparse(base_url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "ollama", "agroecology-ollama"}
 
 
 class Container:
@@ -475,18 +483,28 @@ class Container:
             LLM_TEMPERATURE,
         )
 
-        self.llm = OpenAILLM(
-            api_key=LLM_API_KEY,
-            base_url=LLM_BASE_URL,
-            model=LLM_MODEL,
-            temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_TOKENS,
-        )
+        if _is_ollama_base_url(LLM_BASE_URL):
+            self.llm = OllamaNativeLLM(
+                base_url=LLM_BASE_URL,
+                model=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS,
+            )
+            provider = "ollama_native"
+        else:
+            self.llm = OpenAILLM(
+                api_key=LLM_API_KEY,
+                base_url=LLM_BASE_URL,
+                model=LLM_MODEL,
+                temperature=LLM_TEMPERATURE,
+                max_tokens=LLM_MAX_TOKENS,
+            )
+            provider = "openai_compatible"
         log_event(
             logger,
             logging.INFO,
             "llm_initialized",
-            provider="openai_compatible",
+            provider=provider,
             model=LLM_MODEL,
             base_url=LLM_BASE_URL,
         )

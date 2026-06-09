@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 import logging
 import re
+from typing import Any
 
 from src.domain.dto.answer_result import AnswerResult, SourceResult
 from src.domain.dto.retrieval_result import RetrievedChunk
@@ -78,21 +77,24 @@ class AskQuestion:
         question: str,
         top_k: int | None = None,
         title_map: dict[str, str | None] | None = None,
-        history: list[dict] | None = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> AnswerResult:
-        follow_up = bool(history) and self._is_context_dependent_question(question)
+        normalized_history: list[dict[str, Any]] = history or []
+        follow_up = bool(normalized_history) and self._is_context_dependent_question(
+            question
+        )
         log_event(
             logger,
             logging.INFO,
             "rag_question_started",
             question_chars=len(question),
             top_k=top_k or RERANK_TOP_K,
-            history_messages=len(history or []),
+            history_messages=len(normalized_history),
             follow_up_detected=follow_up,
         )
         search_query = question
-        if self._query_rewriter and history:
-            search_query = self._query_rewriter.rewrite(question, history)
+        if self._query_rewriter and normalized_history:
+            search_query = self._query_rewriter.rewrite(question, normalized_history)
         retrieved = self._retriever.hybrid_search(
             search_query,
             top_k=top_k or RERANK_TOP_K,
@@ -105,11 +107,30 @@ class AskQuestion:
                 if doc_title:
                     chunk.title = doc_title
 
-        answer_history = history if follow_up else []
+        answer_history: list[dict[str, Any]] = normalized_history if follow_up else []
         context_chunks = self._select_context_chunks(retrieved)
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_context_selected",
+            retrieved_count=len(retrieved),
+            selected_count=len(context_chunks),
+            selected_chars=sum(len(chunk.text) for chunk in context_chunks),
+            history_messages=len(answer_history),
+        )
         answer = self._generate_answer(question, context_chunks, answer_history)
         if not answer and len(context_chunks) > 1:
             retry_chunks = context_chunks[:LLM_CONTEXT_RETRY_MAX_CHUNKS]
+            log_event(
+                logger,
+                logging.WARNING,
+                "rag_empty_answer_retrying",
+                initial_context_chunks=len(context_chunks),
+                retry_context_chunks=len(retry_chunks),
+                initial_context_chars=sum(len(chunk.text) for chunk in context_chunks),
+                retry_context_chars=sum(len(chunk.text) for chunk in retry_chunks),
+                question_chars=len(question),
+            )
             retry_answer = self._generate_answer(question, retry_chunks, answer_history)
             if retry_answer:
                 log_event(
@@ -209,7 +230,7 @@ class AskQuestion:
         self,
         question: str,
         context_chunks: list[RetrievedChunk],
-        answer_history: list[dict],
+        answer_history: list[dict[str, Any]],
     ) -> str:
         context = self._build_context(context_chunks)
         return self._llm.complete(
@@ -231,7 +252,7 @@ class AskQuestion:
             if not trimmed_text:
                 continue
 
-            chunk_copy = RetrievedChunk.from_dict(chunk.to_row())
+            chunk_copy = RetrievedChunk.from_dict(chunk.to_dict())
             chunk_copy.text = trimmed_text
 
             estimated_chars = len(trimmed_text) + 300
@@ -244,7 +265,7 @@ class AskQuestion:
         return selected or retrieved[:1]
 
     @classmethod
-    def _build_search_query(cls, question: str, history: list[dict]) -> str:
+    def _build_search_query(cls, question: str, history: list[dict[str, Any]]) -> str:
         if not history or not cls._is_context_dependent_question(question):
             return question
 
@@ -276,7 +297,7 @@ class AskQuestion:
         )
 
     @staticmethod
-    def _find_last_message(history: list[dict], role: str) -> str:
+    def _find_last_message(history: list[dict[str, Any]], role: str) -> str:
         for message in reversed(history):
             if message.get("role") == role and message.get("content"):
                 return str(message["content"])

@@ -24,7 +24,19 @@ _LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
     "false",
     "no",
 )
+_NO_THINK_PREFIX = (
+    "/no_think\n"
+    "Return only the final answer in message.content. "
+    "Do not include reasoning, analysis, thinking steps, or scratchpad output.\n\n"
+)
 logger = logging.getLogger("agroecology.llm")
+
+
+def _truncate_for_log(value: Any, limit: int = 3000) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
 
 
 class OpenAILLM(LLMPort):
@@ -46,12 +58,17 @@ class OpenAILLM(LLMPort):
         body: dict[str, object] = {"num_ctx": _CTX_LENGTH}
         if not _LLM_THINK_ENABLE:
             body["enable_thinking"] = False
+            body["think"] = False
+            body["chat_template_kwargs"] = {"enable_thinking": False}
         return body
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
         messages: list[ChatCompletionMessageParam] = [
             ChatCompletionSystemMessageParam(role="system", content=system_prompt)
         ]
+        effective_user_prompt = (
+            f"{_NO_THINK_PREFIX}{user_prompt}" if not _LLM_THINK_ENABLE else user_prompt
+        )
 
         history = kwargs.get("history") or []
         if history:
@@ -94,7 +111,7 @@ class OpenAILLM(LLMPort):
                     )
 
         messages.append(
-            ChatCompletionUserMessageParam(role="user", content=user_prompt)
+            ChatCompletionUserMessageParam(role="user", content=effective_user_prompt)
         )
 
         started_at = time.perf_counter()
@@ -108,7 +125,8 @@ class OpenAILLM(LLMPort):
             "llm_request_started",
             model=self._model,
             history_messages=history_count,
-            prompt_chars=len(user_prompt),
+            prompt_chars=len(effective_user_prompt),
+            prompt_preview=_truncate_for_log(effective_user_prompt, 1200),
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -137,6 +155,35 @@ class OpenAILLM(LLMPort):
                 completion_tokens=usage.completion_tokens if usage else None,
             )
             if not answer:
+                message_payload = (
+                    choice.message.model_dump(exclude_none=False)
+                    if hasattr(choice.message, "model_dump")
+                    else str(choice.message)
+                )
+                choice_payload = (
+                    choice.model_dump(exclude_none=False)
+                    if hasattr(choice, "model_dump")
+                    else str(choice)
+                )
+                response_payload = (
+                    response.model_dump(exclude_none=False)
+                    if hasattr(response, "model_dump")
+                    else str(response)
+                )
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "llm_empty_response_payload",
+                    model=self._model,
+                    finish_reason=finish_reason,
+                    duration_ms=duration_ms,
+                    prompt_chars=len(effective_user_prompt),
+                    history_messages=history_count,
+                    choice_index=getattr(choice, "index", 0),
+                    message_payload=_truncate_for_log(message_payload),
+                    choice_payload=_truncate_for_log(choice_payload),
+                    response_payload=_truncate_for_log(response_payload),
+                )
                 logger.warning(
                     "LLM returned empty response: finish_reason=%s model=%s duration_ms=%s",
                     finish_reason,

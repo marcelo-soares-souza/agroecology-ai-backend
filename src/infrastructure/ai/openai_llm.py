@@ -16,6 +16,9 @@ from src.shared.logging_utils import log_event
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
 _CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
+_MAX_HISTORY_MESSAGE_CHARS = int(os.getenv("MAX_HISTORY_MESSAGE_CHARS", "1000"))
+_MAX_HISTORY_TOTAL_CHARS = int(os.getenv("MAX_HISTORY_TOTAL_CHARS", "4000"))
+_MAX_COMPLETION_TOKENS = int(os.getenv("LLM_COMPLETION_MAX_TOKENS", "768"))
 _LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
     "0",
     "false",
@@ -53,14 +56,36 @@ class OpenAILLM(LLMPort):
         history = kwargs.get("history") or []
         if history:
             recent = history[-(_MAX_HISTORY_TURNS * 2) :]
-            for msg in recent:
+            selected_history: list[dict[str, str]] = []
+            total_history_chars = 0
+            for msg in reversed(recent):
                 role = msg.get("role", "user")
-                content = msg.get("content", "")
-                if role == "user" and content:
+                content = str(msg.get("content", "")).strip()
+                if not content:
+                    continue
+
+                trimmed_content = content[:_MAX_HISTORY_MESSAGE_CHARS].strip()
+                if not trimmed_content:
+                    continue
+
+                if (
+                    selected_history
+                    and total_history_chars + len(trimmed_content)
+                    > _MAX_HISTORY_TOTAL_CHARS
+                ):
+                    break
+
+                selected_history.append({"role": role, "content": trimmed_content})
+                total_history_chars += len(trimmed_content)
+
+            for msg in reversed(selected_history):
+                role = msg["role"]
+                content = msg["content"]
+                if role == "user":
                     messages.append(
                         ChatCompletionUserMessageParam(role="user", content=content)
                     )
-                elif role == "assistant" and content:
+                elif role == "assistant":
                     messages.append(
                         ChatCompletionAssistantMessageParam(
                             role="assistant",
@@ -74,7 +99,8 @@ class OpenAILLM(LLMPort):
 
         started_at = time.perf_counter()
         temperature = kwargs.get("temperature", self._temperature)
-        max_tokens = kwargs.get("max_tokens", self._max_tokens)
+        requested_max_tokens = kwargs.get("max_tokens", self._max_tokens)
+        max_tokens = max(1, min(requested_max_tokens, _MAX_COMPLETION_TOKENS))
         history_count = max(0, len(messages) - 2)
         log_event(
             logger,

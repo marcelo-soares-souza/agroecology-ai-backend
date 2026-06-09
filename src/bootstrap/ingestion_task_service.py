@@ -18,6 +18,9 @@ class IngestionTaskService:
             log_event(logger, logging.WARNING, "ingest_start_rejected", force=force)
             return "already_running"
 
+        self._ingest_documents.status = "processing"
+        self._ingest_documents.error = None
+
         async def _run() -> None:
             try:
                 await self._ingest_documents.execute(force=force)

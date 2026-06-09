@@ -8,7 +8,15 @@ from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
-from src.shared.config import RERANK_TOP_K, SYSTEM_PROMPT, USER_PROMPT
+from src.shared.config import (
+    LLM_CONTEXT_CHARS_BUDGET,
+    LLM_CONTEXT_MAX_CHUNKS,
+    LLM_CONTEXT_RETRY_MAX_CHUNKS,
+    LLM_CHUNK_MAX_CHARS,
+    RERANK_TOP_K,
+    SYSTEM_PROMPT,
+    USER_PROMPT,
+)
 from src.shared.logging_utils import log_event
 
 _CONTEXT_DEPENDENT_PATTERNS = (
@@ -97,18 +105,28 @@ class AskQuestion:
                 if doc_title:
                     chunk.title = doc_title
 
-        context = self._build_context(retrieved)
         answer_history = history if follow_up else []
-        answer = self._llm.complete(
-            SYSTEM_PROMPT,
-            USER_PROMPT.replace("{context}", context).replace("{question}", question),
-            history=answer_history,
-        )
+        context_chunks = self._select_context_chunks(retrieved)
+        answer = self._generate_answer(question, context_chunks, answer_history)
+        if not answer and len(context_chunks) > 1:
+            retry_chunks = context_chunks[:LLM_CONTEXT_RETRY_MAX_CHUNKS]
+            retry_answer = self._generate_answer(question, retry_chunks, answer_history)
+            if retry_answer:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "rag_empty_answer_recovered",
+                    initial_context_chunks=len(context_chunks),
+                    retry_context_chunks=len(retry_chunks),
+                    question_chars=len(question),
+                )
+                answer = retry_answer
+                context_chunks = retry_chunks
 
-        _normalize_scores(retrieved)
+        _normalize_scores(context_chunks)
 
         sources = []
-        for rank, chunk in enumerate(retrieved, 1):
+        for rank, chunk in enumerate(context_chunks, 1):
             source = chunk.source or "unknown"
             meta = {
                 "source": source,
@@ -186,6 +204,44 @@ class AskQuestion:
             parts.append("\n".join(lines))
 
         return "\n\n".join(parts)
+
+    def _generate_answer(
+        self,
+        question: str,
+        context_chunks: list[RetrievedChunk],
+        answer_history: list[dict],
+    ) -> str:
+        context = self._build_context(context_chunks)
+        return self._llm.complete(
+            SYSTEM_PROMPT,
+            USER_PROMPT.replace("{context}", context).replace("{question}", question),
+            history=answer_history,
+        )
+
+    @staticmethod
+    def _select_context_chunks(retrieved: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        selected: list[RetrievedChunk] = []
+        used_chars = 0
+
+        for chunk in retrieved:
+            if len(selected) >= LLM_CONTEXT_MAX_CHUNKS:
+                break
+
+            trimmed_text = chunk.text.strip()[:LLM_CHUNK_MAX_CHARS].strip()
+            if not trimmed_text:
+                continue
+
+            chunk_copy = RetrievedChunk.from_dict(chunk.to_row())
+            chunk_copy.text = trimmed_text
+
+            estimated_chars = len(trimmed_text) + 300
+            if selected and used_chars + estimated_chars > LLM_CONTEXT_CHARS_BUDGET:
+                break
+
+            selected.append(chunk_copy)
+            used_chars += estimated_chars
+
+        return selected or retrieved[:1]
 
     @classmethod
     def _build_search_query(cls, question: str, history: list[dict]) -> str:

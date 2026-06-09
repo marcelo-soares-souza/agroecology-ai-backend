@@ -81,7 +81,10 @@ class OpenAILLM(LLMPort):
                 max_tokens=max_tokens,
             )
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-            answer = response.choices[0].message.content or ""
+            choice = response.choices[0]
+            answer = choice.message.content or ""
+            finish_reason = choice.finish_reason or "unknown"
+            usage = response.usage
             log_event(
                 logger,
                 logging.INFO,
@@ -89,7 +92,17 @@ class OpenAILLM(LLMPort):
                 model=self._model,
                 duration_ms=duration_ms,
                 answer_chars=len(answer),
+                finish_reason=finish_reason,
+                prompt_tokens=usage.prompt_tokens if usage else None,
+                completion_tokens=usage.completion_tokens if usage else None,
             )
+            if not answer:
+                logger.warning(
+                    "LLM returned empty response: finish_reason=%s model=%s duration_ms=%s",
+                    finish_reason,
+                    self._model,
+                    duration_ms,
+                )
             return answer
         except Exception as exc:
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)

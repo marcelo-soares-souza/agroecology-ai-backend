@@ -13,6 +13,11 @@ load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:14b")
+LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
+    "0",
+    "false",
+    "no",
+)
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "sentence_transformer")

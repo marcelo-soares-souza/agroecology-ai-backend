@@ -45,6 +45,10 @@ class StatusResponse(BaseModel):
     pending_docs: int = 0
     indexed_docs: int = 0
     total_docs: int = 0
+    llm_model: str
+    llm_provider: str
+    llm_transport: str
+    llm_think_enabled: bool
     embedding_model: str
     embedding_device: str
     similarity_top_k: int

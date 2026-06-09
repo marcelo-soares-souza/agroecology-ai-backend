@@ -153,6 +153,8 @@ class Container:
         self.embedder: EmbeddingPort | None = None
         self.vector_store: VectorStorePort | None = None
         self.llm: LLMPort | None = None
+        self.llm_provider: str = "unknown"
+        self.llm_transport: str = "unknown"
         self.cache: CachePort | None = None
         self.reranker: RerankerPort | None = None
         self.doc_repo: PostgresDocumentRepository | None = None
@@ -446,6 +448,8 @@ class Container:
             "_job_worker_thread",
         ):
             setattr(self, attr, None)
+        self.llm_provider = "unknown"
+        self.llm_transport = "unknown"
         self._initialized = False
         self._started = False
 
@@ -491,6 +495,7 @@ class Container:
                 max_tokens=LLM_MAX_TOKENS,
             )
             provider = "ollama_native"
+            transport = "ollama_native_api"
         else:
             self.llm = OpenAILLM(
                 api_key=LLM_API_KEY,
@@ -500,11 +505,15 @@ class Container:
                 max_tokens=LLM_MAX_TOKENS,
             )
             provider = "openai_compatible"
+            transport = "remote_openai_compatible_api"
+        self.llm_provider = provider
+        self.llm_transport = transport
         log_event(
             logger,
             logging.INFO,
             "llm_initialized",
             provider=provider,
+            transport=transport,
             model=LLM_MODEL,
             base_url=LLM_BASE_URL,
         )
@@ -569,6 +578,8 @@ class Container:
             cache=self.cache,
             ingestion_repo=self.ingestion_repo,
             doc_repo=self.doc_repo,
+            llm_provider=self.llm_provider,
+            llm_transport=self.llm_transport,
         )
         self.extract_metadata = ExtractMetadata(self.llm)
 

@@ -26,6 +26,10 @@ class StatusResult:
     pending_docs: int
     indexed_docs: int
     total_docs: int
+    llm_model: str
+    llm_provider: str
+    llm_transport: str
+    llm_think_enabled: bool
     embedding_model: str
     embedding_device: str
     similarity_top_k: int

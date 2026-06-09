@@ -11,6 +11,8 @@ from src.shared.config import (
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
     HYBRID_TOP_K,
+    LLM_MODEL,
+    LLM_THINK_ENABLE,
     RERANK_DEVICE,
     RERANK_MODEL,
     RERANK_TOP_K,
@@ -28,12 +30,16 @@ class GetStatus:
         cache: CachePort,
         ingestion_repo: IngestionRepository,
         doc_repo: DocumentRepository,
+        llm_provider: str,
+        llm_transport: str,
     ) -> None:
         self._vector_store = vector_store
         self._ingest = ingest
         self._cache = cache
         self._ingestion_repo = ingestion_repo
         self._doc_repo = doc_repo
+        self._llm_provider = llm_provider
+        self._llm_transport = llm_transport
 
     async def execute(self, active_tasks: int) -> StatusResult:
         last_ingestion = None
@@ -73,6 +79,10 @@ class GetStatus:
             pending_docs=pending_docs,
             indexed_docs=indexed_docs,
             total_docs=total_docs,
+            llm_model=LLM_MODEL,
+            llm_provider=self._llm_provider,
+            llm_transport=self._llm_transport,
+            llm_think_enabled=LLM_THINK_ENABLE,
             embedding_model=EMBEDDING_MODEL,
             embedding_device=EMBEDDING_DEVICE,
             similarity_top_k=SIMILARITY_TOP_K,

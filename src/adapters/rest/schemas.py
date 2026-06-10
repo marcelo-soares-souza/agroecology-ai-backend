@@ -136,8 +136,25 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
 class ConfirmEmailRequest(BaseModel):
     token: str
+
+
+class ResendConfirmationRequest(BaseModel):
+    email: str
 
 
 class TokenResponse(BaseModel):
@@ -158,6 +175,17 @@ class UserResponse(BaseModel):
     last_login_at: str | None = None
     created_at: str
     updated_at: str
+    about: str | None = None
+    link: str | None = None
+    avatar_url: str | None = None
+    approved_suggestions_count: int = 0
+
+
+class PublicUserResponse(BaseModel):
+    id: str
+    full_name: str
+    slug: str
+    locale: str
     about: str | None = None
     link: str | None = None
     avatar_url: str | None = None

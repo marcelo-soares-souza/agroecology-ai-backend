@@ -59,6 +59,7 @@ from src.adapters.rest.suggestion_routes import admin_router as suggestion_admin
 from src.adapters.rest.suggestion_routes import user_router as suggestion_user_router
 from src.bootstrap.container import container
 from src.domain.models.user import User
+from src.shared.config import APP_URL
 from src.shared.logging_utils import (
     configure_logging,
     header_value,
@@ -91,7 +92,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[APP_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

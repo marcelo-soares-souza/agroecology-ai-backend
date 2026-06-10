@@ -110,7 +110,7 @@ class AdminApproveDocumentSuggestion:
                     document_id=document_id,
                     error=cleanup_error,
                 )
-            raise
+            raise ValueError("Failed to approve suggestion")
 
         await self._notify_submitter(updated)
 

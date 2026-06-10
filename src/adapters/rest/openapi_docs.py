@@ -108,7 +108,7 @@ the email confirmation endpoint succeeds.
         "description": """
 Sends a new email confirmation token to a registered but unconfirmed user.
 
-Provide the email as the `email` query parameter.
+Provide the email in the request body.
 """,
     },
     ("POST", "/api/v1/auth/confirm-email"): {
@@ -134,7 +134,7 @@ The response contains an `access_token` for authenticated API calls and a
         "description": """
 Rotates a refresh token and returns a new access token and refresh token.
 
-Provide the current refresh token as the `refresh_token` query parameter. The old
+Provide the current refresh token in the request body. The old
 refresh token is revoked when the new pair is issued.
 """,
     },
@@ -152,7 +152,7 @@ remain valid until their normal expiration, but refresh is disabled.
         "description": """
 Starts a password reset flow for an email address.
 
-Provide the email as the `email` query parameter. The endpoint returns the same
+Provide the email in the request body. The endpoint returns the same
 message whether or not the email exists.
 """,
     },
@@ -161,7 +161,7 @@ message whether or not the email exists.
         "description": """
 Sets a new password using a valid reset token.
 
-Provide `token` and `new_password` as query parameters. The new password must
+Provide `token` and `new_password` in the request body. The new password must
 have at least 8 characters.
 """,
     },

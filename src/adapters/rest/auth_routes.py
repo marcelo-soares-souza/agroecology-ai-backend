@@ -32,12 +32,17 @@ from src.adapters.rest.schemas import (
     ConfirmEmailRequest,
     LoginRequest,
     MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    PublicUserResponse,
+    RefreshRequest,
     RegisterRequest,
+    ResendConfirmationRequest,
     TokenResponse,
     UserResponse,
     UserUpdateRequest,
 )
-from src.adapters.rest.serializers import serialize_user
+from src.adapters.rest.serializers import serialize_public_user, serialize_user
 from src.domain.models.user import User
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
@@ -82,7 +87,7 @@ async def register(body: RegisterRequest, request: Request):
         )
     except ValueError as e:
         log_event(logger, logging.WARNING, "register_failed", reason=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Registration failed")
 
     log_event(
         logger,
@@ -98,7 +103,7 @@ async def register(body: RegisterRequest, request: Request):
 
 
 @router.post("/confirm-email/resend", response_model=MessageResponse)
-async def resend_confirmation(email: str, request: Request):
+async def resend_confirmation(body: ResendConfirmationRequest, request: Request):
     log_event(
         logger,
         logging.INFO,
@@ -106,13 +111,15 @@ async def resend_confirmation(email: str, request: Request):
         ip=resolve_client_ip(
             request.headers, request.client.host if request.client else None
         ),
-        email=mask_email(email),
+        email=mask_email(body.email),
     )
     try:
-        result = await get_resend_confirmation_email().execute(email=email)
+        result = await get_resend_confirmation_email().execute(email=body.email)
     except ValueError as e:
         log_event(logger, logging.WARNING, "confirm_email_resend_failed", reason=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400, detail="Confirmation email could not be sent"
+        )
 
     return MessageResponse(message=result.message)
 
@@ -169,9 +176,9 @@ async def login(body: LoginRequest, request: Request):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(refresh_token: str, request: Request):
+async def refresh(body: RefreshRequest, request: Request):
     try:
-        result = await get_refresh_token().execute(refresh_token=refresh_token)
+        result = await get_refresh_token().execute(refresh_token=body.refresh_token)
     except ValueError as e:
         log_event(
             logger,
@@ -205,9 +212,9 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
 
 
 @router.post("/password-reset/request", response_model=MessageResponse)
-async def request_password_reset(email: str, request: Request):
+async def request_password_reset(body: PasswordResetRequest, request: Request):
     try:
-        await get_request_password_reset().execute(email=email)
+        await get_request_password_reset().execute(email=body.email)
     except ValueError:
         pass  # intentionally swallow - don't reveal whether email exists
 
@@ -215,10 +222,10 @@ async def request_password_reset(email: str, request: Request):
 
 
 @router.post("/password-reset/confirm", response_model=MessageResponse)
-async def confirm_password_reset(token: str, new_password: str, request: Request):
+async def confirm_password_reset(body: PasswordResetConfirmRequest, request: Request):
     try:
         await get_confirm_password_reset().execute(
-            token=token, new_password=new_password
+            token=body.token, new_password=body.new_password
         )
     except ValueError as e:
         log_event(
@@ -287,7 +294,7 @@ async def get_user_by_slug(slug: str):
     return serialize_user(user)
 
 
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=list[PublicUserResponse])
 async def list_active_users():
     users = await get_list_active_users_use_case().execute()
-    return [serialize_user(u) for u in users]
+    return [serialize_public_user(u) for u in users]

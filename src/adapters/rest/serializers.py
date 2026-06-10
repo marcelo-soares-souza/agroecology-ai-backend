@@ -7,6 +7,35 @@ from src.domain.models.ingestion_run import IngestionRun
 from src.domain.models.user import User
 
 
+def serialize_public_user(user: User | UserDTO) -> dict:
+    if isinstance(user, User):
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
+        return {
+            "id": user.id,
+            "full_name": user.full_name,
+            "slug": user.slug,
+            "locale": user.locale,
+            "about": user.about,
+            "link": user.link,
+            "avatar_url": avatar_url,
+            "approved_suggestions_count": user.approved_suggestions_count,
+        }
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "slug": user.slug,
+        "locale": user.locale,
+        "about": user.about,
+        "link": user.link,
+        "avatar_url": user.avatar_url,
+        "approved_suggestions_count": user.approved_suggestions_count,
+    }
+
+
 def serialize_document(doc: Document) -> dict:
     return {
         "id": doc.id,

@@ -312,11 +312,24 @@ class AskQuestion:
         expected_language: str,
     ) -> str:
         context = self._build_context(context_chunks)
+        user_prompt = USER_PROMPT.replace("{context}", context)
+        user_prompt = user_prompt.replace("{question}", question)
+        user_prompt = user_prompt.replace("{expected_language}", expected_language)
+        if answer_history:
+            user_prompt = (
+                "FOLLOW-UP QUESTION — the user is continuing a conversation. "
+                "Your previous answer is in the conversation history below. "
+                "Do NOT repeat information already covered there. "
+                "Provide NEW details, deeper explanations, or explore aspects "
+                "not yet discussed. "
+                "If the retrieved context has no new relevant information, "
+                "say: 'I have already covered the available information on this topic. "
+                "Could you specify which aspect you'd like me to explore further?'\n\n"
+                + user_prompt
+            )
         return self._llm.complete(
             SYSTEM_PROMPT,
-            USER_PROMPT.replace("{context}", context)
-            .replace("{question}", question)
-            .replace("{expected_language}", expected_language),
+            user_prompt,
             history=answer_history,
         )
 

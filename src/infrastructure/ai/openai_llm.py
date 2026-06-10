@@ -117,7 +117,10 @@ class OpenAILLM(LLMPort):
         started_at = time.perf_counter()
         temperature = kwargs.get("temperature", self._temperature)
         requested_max_tokens = kwargs.get("max_tokens", self._max_tokens)
-        max_tokens = max(1, min(requested_max_tokens, _MAX_COMPLETION_TOKENS))
+        if _LLM_THINK_ENABLE:
+            max_tokens = max(requested_max_tokens, min(_CTX_LENGTH // 2, 4096))
+        else:
+            max_tokens = max(1, min(requested_max_tokens, _MAX_COMPLETION_TOKENS))
         history_count = max(0, len(messages) - 2)
         log_event(
             logger,
@@ -141,6 +144,13 @@ class OpenAILLM(LLMPort):
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             choice = response.choices[0]
             answer = choice.message.content or ""
+            if not answer and _LLM_THINK_ENABLE:
+                reasoning = getattr(choice.message, "reasoning_content", "") or ""
+                if reasoning:
+                    import re
+                    cleaned = re.sub(r"<\s*/?\s*think\s*>", "", reasoning)
+                    if cleaned.strip():
+                        answer = cleaned.strip()
             finish_reason = choice.finish_reason or "unknown"
             usage = response.usage
             log_event(

@@ -227,6 +227,7 @@ class DocumentSuggestionResponse(BaseModel):
     file_type: str | None = None
     file_size: int | None = None
     document_id: str | None = None
+    ingested: bool = False
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     created_at: str

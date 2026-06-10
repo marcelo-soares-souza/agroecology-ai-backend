@@ -88,6 +88,17 @@ class DocumentRepository(ABC):
         """
 
     @abstractmethod
+    async def get_many(self, ids: list[str]) -> list[Document]:
+        """Retrieve multiple documents by their IDs.
+
+        Args:
+            ids: A list of document IDs.
+
+        Returns:
+            A list of found documents (missing IDs are silently skipped).
+        """
+
+    @abstractmethod
     async def get_title_map(self) -> dict[str, str | None]:
         """Retrieve a mapping of document IDs to their titles.
 

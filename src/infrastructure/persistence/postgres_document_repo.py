@@ -122,6 +122,19 @@ class PostgresDocumentRepository(DocumentRepository):
                 )
                 return await cur.fetchone() is not None
 
+    async def get_many(self, ids: list[str]) -> list[Document]:
+        if not ids:
+            return []
+        placeholders = ",".join(["%s"] * len(ids))
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    f"SELECT * FROM documents WHERE id IN ({placeholders})",
+                    ids,
+                )
+                rows = await cur.fetchall()
+                return [self._to_domain(dict(r)) for r in rows]
+
     async def get_title_map(self) -> dict[str, str | None]:
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:

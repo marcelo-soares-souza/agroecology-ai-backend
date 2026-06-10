@@ -45,6 +45,7 @@ class DocumentSuggestion:
     storage_directory: str | None = None
     sha256: str | None = None
     document_id: str | None = None
+    ingested: bool = False
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
 

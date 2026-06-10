@@ -773,6 +773,7 @@ class Container:
         )
         self.list_public_suggestions = ListPublicSuggestions(
             suggestion_repo=self.suggestion_repo,
+            doc_repo=self.doc_repo,
         )
 
         # Admin use cases

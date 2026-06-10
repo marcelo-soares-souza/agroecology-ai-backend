@@ -93,6 +93,7 @@ def serialize_document_suggestion(s: DocumentSuggestion) -> dict:
         "file_type": s.file_type,
         "file_size": s.file_size,
         "document_id": s.document_id,
+        "ingested": s.ingested,
         "reviewed_by": s.reviewed_by,
         "reviewed_at": s.reviewed_at.isoformat() if s.reviewed_at else None,
         "created_at": s.created_at.isoformat(),

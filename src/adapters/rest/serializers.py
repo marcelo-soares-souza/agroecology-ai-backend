@@ -83,6 +83,7 @@ def serialize_document_suggestion(s: DocumentSuggestion) -> dict:
     return {
         "id": s.id,
         "user_id": s.user_id,
+        "user_name": s.user_name,
         "status": s.status,
         "title": s.title,
         "authors": s.authors,

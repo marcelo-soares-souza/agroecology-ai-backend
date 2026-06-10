@@ -64,9 +64,11 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 await cur.execute(
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
-                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "COALESCE(d.authors, ds.authors) AS authors, "
+                    "u.full_name AS user_name "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "LEFT JOIN users u ON ds.user_id = u.id "
                     "WHERE ds.id = %s",
                     (suggestion_id,),
                 )
@@ -81,9 +83,11 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 await cur.execute(
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
-                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "COALESCE(d.authors, ds.authors) AS authors, "
+                    "u.full_name AS user_name "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "LEFT JOIN users u ON ds.user_id = u.id "
                     "WHERE ds.id = %s AND ds.user_id = %s",
                     (suggestion_id, user_id),
                 )
@@ -96,9 +100,11 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         base_query = (
             "SELECT ds.*, "
             "COALESCE(d.title, ds.title) AS title, "
-            "COALESCE(d.authors, ds.authors) AS authors "
+            "COALESCE(d.authors, ds.authors) AS authors, "
+            "u.full_name AS user_name "
             "FROM document_suggestions ds "
             "LEFT JOIN documents d ON ds.document_id = d.id "
+            "LEFT JOIN users u ON ds.user_id = u.id "
             "WHERE ds.user_id = %s"
         )
         async with self._pool.connection() as conn:
@@ -129,16 +135,16 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         params: list[str | int | None] = []
 
         if status is not None:
-            conditions.append("status = %s")
+            conditions.append("ds.status = %s")
             params.append(status)
         if user_id is not None:
-            conditions.append("user_id = %s")
+            conditions.append("ds.user_id = %s")
             params.append(user_id)
         if has_pdf is not None:
             if has_pdf:
-                conditions.append("original_filename IS NOT NULL")
+                conditions.append("ds.original_filename IS NOT NULL")
             else:
-                conditions.append("original_filename IS NULL")
+                conditions.append("ds.original_filename IS NULL")
         if q is not None:
             conditions.append(
                 "(ds.title ILIKE %s OR ds.authors ILIKE %s OR ds.user_comment ILIKE %s)"
@@ -158,9 +164,11 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 query = (
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
-                    "COALESCE(d.authors, ds.authors) AS authors "
+                    "COALESCE(d.authors, ds.authors) AS authors, "
+                    "u.full_name AS user_name "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "LEFT JOIN users u ON ds.user_id = u.id "
                     f"{where_clause} "
                     "ORDER BY ds.created_at DESC LIMIT %s OFFSET %s"
                 )
@@ -281,6 +289,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         return DocumentSuggestion(
             id=row["id"],
             user_id=row["user_id"],
+            user_name=row.get("user_name"),
             status=row["status"],
             title=row.get("title"),
             authors=row.get("authors"),

@@ -217,6 +217,7 @@ class MessageResponse(BaseModel):
 class DocumentSuggestionResponse(BaseModel):
     id: str
     user_id: str
+    user_name: str | None = None
     status: str
     title: str | None = None
     authors: str | None = None

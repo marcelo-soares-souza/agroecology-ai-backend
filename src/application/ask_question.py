@@ -18,7 +18,7 @@ from src.shared.config import (
     SYSTEM_PROMPT,
     USER_PROMPT,
 )
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
 _CONTEXT_DEPENDENT_PATTERNS = (
     re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
@@ -136,6 +136,7 @@ class AskQuestion:
         title_map: dict[str, str | None] | None = None,
         history: list[dict[str, Any]] | None = None,
     ) -> AnswerResult:
+        started_at = take_perf_snapshot()
         normalized_history: list[dict[str, Any]] = history or []
         follow_up = bool(normalized_history) and self._is_context_dependent_question(
             question
@@ -158,8 +159,10 @@ class AskQuestion:
             language_source=language_source,
         )
         search_query = question
+        rewrite_started_at = take_perf_snapshot()
         if self._query_rewriter and normalized_history:
             search_query = self._query_rewriter.rewrite(question, normalized_history)
+        rewrite_metrics = perf_fields(rewrite_started_at, "rewrite")
         retrieved = self._retriever.hybrid_search(
             search_query,
             top_k=top_k or RERANK_TOP_K,
@@ -173,6 +176,7 @@ class AskQuestion:
                     chunk.title = doc_title
 
         answer_history: list[dict[str, Any]] = normalized_history if follow_up else []
+        context_started_at = take_perf_snapshot()
         context_chunks = self._select_context_chunks(retrieved)
         log_event(
             logger,
@@ -182,7 +186,9 @@ class AskQuestion:
             selected_count=len(context_chunks),
             selected_chars=sum(len(chunk.text) for chunk in context_chunks),
             history_messages=len(answer_history),
+            **perf_fields(context_started_at, "context_select"),
         )
+        answer_started_at = take_perf_snapshot()
         answer = self._generate_answer(
             question,
             context_chunks,
@@ -262,6 +268,9 @@ class AskQuestion:
             expected_language=expected_language,
             language_confidence=language_confidence,
             language_source=language_source,
+            **rewrite_metrics,
+            **perf_fields(answer_started_at, "answer"),
+            **perf_fields(started_at, "total"),
         )
         return AnswerResult(answer=answer, sources=sources)
 
@@ -270,24 +279,16 @@ class AskQuestion:
         parts = []
         for i, chunk in enumerate(retrieved, 1):
             source = chunk.source or "unknown"
+            source_name = source.rsplit("/", 1)[-1]
             text = chunk.text.strip()
 
             lines = [f"[{i}]"]
             title = chunk.title
-            authors = chunk.authors
-            year = chunk.year
-            section = chunk.section_title
             page_start = chunk.page_start or 0
             page_end = chunk.page_end or 0
 
             if title:
                 lines.append(f"Title: {title}")
-            if authors:
-                lines.append(f"Authors: {authors}")
-            if year:
-                lines.append(f"Year: {year}")
-            if section:
-                lines.append(f"Section: {section}")
 
             page_info = ""
             if page_start and page_end and page_start != page_end:
@@ -298,7 +299,7 @@ class AskQuestion:
             if page_info:
                 lines.append(f"Pages{page_info}")
 
-            lines.append(f"Source: {source}")
+            lines.append(f"Source: {source_name}")
             lines.append(f"Text:\n{text}")
             parts.append("\n".join(lines))
 
@@ -317,13 +318,10 @@ class AskQuestion:
         user_prompt = user_prompt.replace("{expected_language}", expected_language)
         if answer_history:
             user_prompt = (
-                "FOLLOW-UP QUESTION — the user is continuing a conversation. "
-                "Your previous answer is in the conversation history below. "
-                "Do NOT repeat information already covered there. "
-                "Provide NEW details, deeper explanations, or explore aspects "
-                "not yet discussed. "
-                "If the retrieved context has no new relevant information, "
-                "say: 'I have already covered the available information on this topic. "
+                "FOLLOW-UP QUESTION. Use the conversation history to avoid repeating "
+                "what was already explained. Add only new details supported by the "
+                "retrieved context. If the context adds nothing new, say: "
+                "'I have already covered the available information on this topic. "
                 "Could you specify which aspect you'd like me to explore further?'\n\n"
                 + user_prompt
             )

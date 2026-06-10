@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import httpx
 
 from src.domain.ports.llm_port import LLMPort
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
 _CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
@@ -121,6 +121,7 @@ class OllamaNativeLLM(LLMPort):
         )
 
         started_at = time.perf_counter()
+        perf_started_at = take_perf_snapshot()
         try:
             with self._lock:
                 response = self._client.post(self._api_url, json=payload)
@@ -143,6 +144,7 @@ class OllamaNativeLLM(LLMPort):
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 transport="ollama_native",
+                **perf_fields(perf_started_at, "llm"),
             )
             if not answer:
                 log_event(
@@ -175,5 +177,6 @@ class OllamaNativeLLM(LLMPort):
                 duration_ms=duration_ms,
                 error=exc,
                 transport="ollama_native",
+                **perf_fields(perf_started_at, "llm"),
             )
             raise

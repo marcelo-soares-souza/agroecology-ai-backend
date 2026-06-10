@@ -8,7 +8,7 @@ from src.application.manage_documents import ManageDocuments
 from src.bootstrap.task_manager import TaskManager
 from src.domain.dto.answer_result import TaskSubmissionResult
 from src.domain.ports.cache_port import CachePort
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
 logger = logging.getLogger("agroecology.http")
 
@@ -85,6 +85,7 @@ class AskTaskService:
         history: list[dict],
         should_cache: bool,
     ) -> None:
+        started_at = take_perf_snapshot()
         try:
             result = self._ask_question.execute(
                 question,
@@ -108,6 +109,7 @@ class AskTaskService:
                 retrieved_sources=len(result.sources),
                 answer_chars=len(result.answer),
                 cached=should_cache,
+                **perf_fields(started_at, "task"),
             )
         except Exception as exc:
             self._task_manager.update(task_id, status="error", error=str(exc))
@@ -117,4 +119,5 @@ class AskTaskService:
                 "ask_task_failed",
                 task_id=task_id,
                 error=exc,
+                **perf_fields(started_at, "task"),
             )

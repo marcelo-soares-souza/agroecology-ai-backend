@@ -12,7 +12,7 @@ from openai.types.chat import ChatCompletionSystemMessageParam
 from openai.types.chat import ChatCompletionUserMessageParam
 
 from src.domain.ports.llm_port import LLMPort
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
 _MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
 _CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
@@ -115,6 +115,7 @@ class OpenAILLM(LLMPort):
         )
 
         started_at = time.perf_counter()
+        perf_started_at = take_perf_snapshot()
         temperature = kwargs.get("temperature", self._temperature)
         requested_max_tokens = kwargs.get("max_tokens", self._max_tokens)
         if _LLM_THINK_ENABLE:
@@ -164,6 +165,7 @@ class OpenAILLM(LLMPort):
                 finish_reason=finish_reason,
                 prompt_tokens=usage.prompt_tokens if usage else None,
                 completion_tokens=usage.completion_tokens if usage else None,
+                **perf_fields(perf_started_at, "llm"),
             )
             if not answer:
                 message_payload = (
@@ -211,5 +213,6 @@ class OpenAILLM(LLMPort):
                 model=self._model,
                 duration_ms=duration_ms,
                 error=exc,
+                **perf_fields(perf_started_at, "llm"),
             )
             raise

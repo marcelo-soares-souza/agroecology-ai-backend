@@ -10,6 +10,7 @@ from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
+from src.shared.logging_utils import perf_fields, take_perf_snapshot
 from src.shared.config import (
     BM25_TOP_K,
     HYBRID_TOP_K,
@@ -60,6 +61,7 @@ class RetrieverService:
         top_k: int,
         filters: dict[str, Any] | None = None,
     ) -> list[RetrievedChunk]:
+        started_at = take_perf_snapshot()
         t0 = time.perf_counter()
 
         t1 = time.perf_counter()
@@ -74,9 +76,14 @@ class RetrieverService:
 
         if not bm25_results:
             logger.info(
-                "retrieval_completed step=vector_only vector_count=%d vec_ms=%s",
+                "retrieval_completed step=vector_only vector_count=%d vec_ms=%s %s",
                 len(vec_results[:top_k]),
                 t_vec,
+                " ".join(
+                    f"{key}={value}"
+                    for key, value in perf_fields(started_at, "retrieval").items()
+                    if value is not None
+                ),
             )
             return vec_results[:top_k]
 
@@ -98,7 +105,7 @@ class RetrieverService:
         total_ms = round((time.perf_counter() - t0) * 1000, 2)
         unique_docs = len({r.source for r in results})
         logger.info(
-            "retrieval_completed step=hybrid vector_count=%d bm25_count=%d rrf_candidates=%d rerank_candidates=%d final_count=%d unique_docs=%d vec_ms=%s bm25_ms=%s rrf_ms=%s rerank_ms=%s total_ms=%s",
+            "retrieval_completed step=hybrid vector_count=%d bm25_count=%d rrf_candidates=%d rerank_candidates=%d final_count=%d unique_docs=%d vec_ms=%s bm25_ms=%s rrf_ms=%s rerank_ms=%s total_ms=%s %s",
             len(vec_results),
             len(bm25_results),
             len(fused),
@@ -110,6 +117,11 @@ class RetrieverService:
             t_rrf,
             t_rerank,
             total_ms,
+            " ".join(
+                f"{key}={value}"
+                for key, value in perf_fields(started_at, "retrieval").items()
+                if value is not None
+            ),
         )
 
         results = self._mmr_diversify(results, MMR_LAMBDA)

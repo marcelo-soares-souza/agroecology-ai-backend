@@ -139,7 +139,11 @@ logger = logging.getLogger("agroecology.bootstrap")
 def _is_ollama_base_url(base_url: str) -> bool:
     parsed = urlparse(base_url)
     hostname = (parsed.hostname or "").lower()
-    return hostname in OLLAMA_LLM_HOSTS
+    if hostname not in OLLAMA_LLM_HOSTS:
+        return False
+    if parsed.port is not None and parsed.port != 11434:
+        return False
+    return True
 
 
 class Container:

@@ -117,6 +117,7 @@ from src.shared.config import (
     EMBEDDING_MODEL,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
+    OLLAMA_LLM_HOSTS,
     RERANK_DEVICE,
     RERANK_MODEL,
     read_index_version,
@@ -138,7 +139,7 @@ logger = logging.getLogger("agroecology.bootstrap")
 def _is_ollama_base_url(base_url: str) -> bool:
     parsed = urlparse(base_url)
     hostname = (parsed.hostname or "").lower()
-    return hostname in {"localhost", "127.0.0.1", "ollama", "agroecology-ollama"}
+    return hostname in OLLAMA_LLM_HOSTS
 
 
 class Container:

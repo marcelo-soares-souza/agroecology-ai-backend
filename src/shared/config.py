@@ -13,6 +13,14 @@ load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:14b")
+OLLAMA_LLM_HOSTS = tuple(
+    host.strip().lower()
+    for host in os.getenv(
+        "OLLAMA_LLM_HOSTS",
+        "localhost,127.0.0.1,ollama,agroecology-ollama,agroecology-ai-ollama",
+    ).split(",")
+    if host.strip()
+)
 LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
     "0",
     "false",

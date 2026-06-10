@@ -20,6 +20,7 @@ Swagger: `http://localhost:8000/docs`
 | `POST` | `/api/v1/ask` | Submit a question (async) |
 | `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
 | `GET` | `/api/v1/status` | Server health and cache stats |
+| `GET` | `/api/v1/health` | Simple health check |
 | `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | List ingestion run history |
@@ -32,6 +33,7 @@ Swagger: `http://localhost:8000/docs`
 | `GET` | `/api/v1/documents/{id}/download` | Download original file |
 | `POST` | `/api/v1/documents/{id}/extract-metadata` | Extract title/authors from PDF |
 | `POST` | `/api/v1/documents/extract-all-metadata` | Enqueue metadata extraction for all PDFs |
+| `GET` | `/api/v1/documents/metadata-status` | Check extraction queue status |
 | `DELETE` | `/api/v1/documents/{id}` | Delete file + record |
 | `POST` | `/api/v1/ingest?force=true` | Full index rebuild |
 | `GET` | `/api/v1/auth/human-challenge` | Get anti-bot challenge |
@@ -44,11 +46,30 @@ Swagger: `http://localhost:8000/docs`
 | `POST` | `/api/v1/auth/password-reset/request` | Request password reset |
 | `POST` | `/api/v1/auth/password-reset/confirm` | Reset password with token |
 | `GET` | `/api/v1/auth/me` | Get current user |
+| `PUT` | `/api/v1/auth/me/profile` | Update own profile |
+| `POST` | `/api/v1/auth/me/profile/avatar` | Upload profile avatar |
 | `GET` | `/api/v1/auth/users/by-slug/{slug}` | Lookup user by slug |
+| `GET` | `/api/v1/auth/users` | List active users (public) |
+| `GET` | `/api/v1/users/{slug}/profile/avatar/file` | Get user avatar image |
 | `GET` | `/api/v1/admin/users` | List users (admin) |
 | `GET` | `/api/v1/admin/users/{id}` | Get user (admin) |
 | `PUT` | `/api/v1/admin/users/{id}` | Update user + role (admin) |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete user (admin) |
+| `GET` | `/api/v1/suggestions/public` | Public suggestions by user ID |
+| `POST` | `/api/v1/suggestions` | Submit a document suggestion |
+| `GET` | `/api/v1/suggestions` | List my suggestions |
+| `GET` | `/api/v1/suggestions/{id}` | Get suggestion |
+| `GET` | `/api/v1/suggestions/{id}/view` | View suggestion file |
+| `PUT` | `/api/v1/suggestions/{id}` | Update my suggestion |
+| `PUT` | `/api/v1/suggestions/{id}/file` | Replace suggestion file |
+| `DELETE` | `/api/v1/suggestions/{id}` | Delete my suggestion |
+| `GET` | `/api/v1/admin/suggestions` | List all suggestions (admin) |
+| `GET` | `/api/v1/admin/suggestions/{id}` | Get suggestion (admin) |
+| `GET` | `/api/v1/admin/suggestions/{id}/view` | View suggestion file (admin) |
+| `PUT` | `/api/v1/admin/suggestions/{id}` | Update suggestion (admin) |
+| `POST` | `/api/v1/admin/suggestions/{id}/approve` | Approve + create document |
+| `POST` | `/api/v1/admin/suggestions/{id}/reject` | Reject suggestion |
+| `DELETE` | `/api/v1/admin/suggestions/{id}` | Delete suggestion (admin) |
 
 ---
 
@@ -445,6 +466,263 @@ Response: registro que foi deletado.
 
 ---
 
+### `GET /api/v1/documents/{id}/view` — View PDF inline
+
+Returns the PDF file for inline viewing in the browser.
+
+```bash
+curl -O http://localhost:8000/api/v1/documents/1/view
+```
+
+**Errors**
+
+| Code | Condition |
+|---|---|
+| `404` | Documento ou arquivo não encontrado |
+
+---
+
+### `POST /api/v1/documents/{id}/extract-metadata` — Extract metadata from PDF
+
+Extracts title and authors from a single PDF using the LLM. Updates the document record.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/1/extract-metadata
+```
+
+Requires admin role. Response: updated document record.
+
+---
+
+### `POST /api/v1/documents/extract-all-metadata` — Enqueue all PDFs for metadata extraction
+
+Enqueues all PDFs without extracted metadata into the background job queue.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/extract-all-metadata
+```
+
+Requires admin role. Response:
+
+```json
+{"message": "5 document(s) enqueued for metadata extraction"}
+```
+
+---
+
+### `GET /api/v1/documents/metadata-status` — Extraction queue status
+
+```bash
+curl http://localhost:8000/api/v1/documents/metadata-status
+```
+
+Response:
+
+```json
+{"pending": 3, "running": 1, "active": true}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `pending` | integer | Jobs waiting in the queue |
+| `running` | integer | Jobs currently being processed |
+| `active` | boolean | Whether the worker is running |
+
+Requires admin role.
+
+---
+
+### `GET /api/v1/health` — Simple health check
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+```json
+{"status": "ok"}
+```
+
+---
+
+## Auth Endpoints
+
+All auth endpoints are under `/api/v1/auth/`. Most require Bearer token authentication (except register, login, confirm-email, and password-reset).
+
+### `POST /api/v1/auth/register` — Register new user
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "full_name": "João Silva", "password": "securepass123", "locale": "pt-BR", "challenge_id": "<id>", "challenge_answer": "<answer>"}'
+```
+
+First get a challenge from `GET /api/v1/auth/human-challenge?locale=pt-BR`. Response on success:
+
+```json
+{"message": "Registration successful. Check your email to confirm your account."}
+```
+
+Requires SMTP to be configured for confirmation email to be sent.
+
+### `POST /api/v1/auth/confirm-email` — Confirm email
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/confirm-email \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token-from-email>"}'
+```
+
+### `POST /api/v1/auth/login` — Login
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "securepass123"}'
+```
+
+```json
+{"access_token": "eyJ...", "refresh_token": "eyJ..."}
+```
+
+### `GET /api/v1/auth/me` — Current user profile
+
+```bash
+curl http://localhost:8000/api/v1/auth/me \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Returns user object with `id`, `email`, `full_name`, `slug`, `roles`, `about`, `link`, `avatar_path`.
+
+### `PUT /api/v1/auth/me/profile` — Update profile
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/auth/me/profile \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"full_name": "João S.", "about": "Agroecology researcher", "link": "https://example.com"}'
+```
+
+All fields are optional. `about` max 4096 chars, `link` max 2000 chars and must start with `http://` or `https://`.
+
+### `POST /api/v1/auth/me/profile/avatar` — Upload avatar
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/me/profile/avatar \
+  -H "Authorization: Bearer <access_token>" \
+  -F "file=@avatar.jpg"
+```
+
+Accepted formats: JPEG, PNG, WebP. Max 5 MB. Image is resized to 400x400 WebP.
+
+### `GET /api/v1/auth/users` — List active users (public)
+
+```bash
+curl http://localhost:8000/api/v1/auth/users
+```
+
+Returns list of users with public profiles. No authentication required.
+
+### `GET /api/v1/users/{slug}/profile/avatar/file` — Get avatar image
+
+```bash
+curl -O http://localhost:8000/api/v1/users/joao-silva/profile/avatar/file
+```
+
+Returns the avatar WebP image with 1-day browser cache. No authentication required.
+
+---
+
+## Suggestions
+
+Users can submit document suggestions for admin review. Admins can approve (converting to a document) or reject.
+
+### User endpoints (auth required)
+
+### `POST /api/v1/suggestions` — Submit a suggestion
+
+```bash
+curl -X POST http://localhost:8000/api/v1/suggestions \
+  -H "Authorization: Bearer <access_token>" \
+  -F "user_comment=This paper covers agroforestry benefits" \
+  -F "title=Agroforestry Systems Review" \
+  -F "authors=Silva, J." \
+  -F "url=https://doi.org/10.1234/example" \
+  -F "file=@paper.pdf"
+```
+
+`user_comment` is required. `file`, `title`, `authors`, `url` are optional. Response: `201 Created` with the suggestion object.
+
+### `GET /api/v1/suggestions` — List my suggestions
+
+```bash
+curl http://localhost:8000/api/v1/suggestions \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Optional query param: `?status=approved` to filter by status (`pending`, `approved`, `rejected`).
+
+### `GET /api/v1/suggestions/{id}` — Get my suggestion
+
+```bash
+curl http://localhost:8000/api/v1/suggestions/<id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### `PUT /api/v1/suggestions/{id}` — Update my suggestion
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/suggestions/<id> \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated Title", "user_comment": "Updated comment"}'
+```
+
+All fields optional. Can only update pending suggestions.
+
+### `DELETE /api/v1/suggestions/{id}` — Delete my suggestion
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/suggestions/<id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Can only delete pending suggestions.
+
+### Admin endpoints (admin role required)
+
+Admins use `/api/v1/admin/suggestions/` with extended capabilities including filtering and status management.
+
+### `GET /api/v1/admin/suggestions` — List all suggestions
+
+```bash
+curl http://localhost:8000/api/v1/admin/suggestions \
+  -H "Authorization: Bearer <access_token>"
+```
+
+Optional query params: `?status=pending&user_id=<id>&has_pdf=true&q=agroforestry&limit=50&offset=0`.
+
+### `POST /api/v1/admin/suggestions/{id}/approve` — Approve suggestion
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/suggestions/<id>/approve \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"admin_comment": "Good reference, approved"}'
+```
+
+Creates a new document from the suggestion. If `AUTO_EXTRACT_METADATA=true` and the suggestion has a PDF file, metadata extraction is automatically enqueued.
+
+### `POST /api/v1/admin/suggestions/{id}/reject` — Reject suggestion
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/suggestions/<id>/reject \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"admin_comment": "Duplicate of existing document"}'
+```
+
+---
+
 ## Polling flow
 
 ```
@@ -574,8 +852,14 @@ python main.py db:migrate
 Estrutura:
 ```
 migrations/
-├── 001_create_schema_migrations.sql   # tracking table
-└── 002_create_documents_table.sql     # documents table (UUIDv7 TEXT PK)
+├── 001_create_schema_migrations.sql        # tracking table
+├── 002_create_documents_table.sql          # documents table (UUIDv7 TEXT PK)
+├── 003_create_ingestion_runs.sql           # ingestion history
+├── 006_create_users_table.sql              # users table
+├── 007_create_roles_table.sql              # roles table
+├── 012_create_job_queue.sql                # background job queue
+├── 014_create_document_suggestions.sql     # suggestion workflow
+└── ...                                      # ~17 migrations total
 ```
 
 Para adicionar uma nova migration: crie um arquivo `003_<descricao>.sql` com SQL idempotente (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, etc.) e rode `python main.py db:migrate`.

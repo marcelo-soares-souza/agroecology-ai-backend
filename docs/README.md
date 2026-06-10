@@ -10,8 +10,9 @@ adapters/          Protocol translation (HTTP, CLI)
 ├── cli/           CLI adapter (future)
 
 application/       Use cases (orchestrate domain + ports)
-├── auth/          RegisterUser, LoginUser, RefreshToken, etc.
-├── admin/         ListUsers, GetUser, UpdateUser, DeleteUser
+├── auth/              RegisterUser, LoginUser, RefreshToken, etc.
+├── admin/             ListUsers, GetUser, UpdateUser, DeleteUser
+├── suggestions/       CreateSuggestion, ApproveSuggestion, RejectSuggestion
 ├── ask_question.py
 ├── ingest_documents.py
 ├── manage_documents.py
@@ -20,8 +21,8 @@ application/       Use cases (orchestrate domain + ports)
 └── extract_metadata.py
 
 domain/            Pure business logic
-├── dto/           UserDTO, AnswerResult, SourceResult, LoginResult
-├── models/        User, Document, IngestionRun, ParsedDocument
+├── dto/           UserDTO, AnswerResult, SourceResult, LoginResult, SuggestionDTO
+├── models/        User, Document, IngestionRun, ParsedDocument, DocumentSuggestion
 ├── ports/         Abstract interfaces (repositories, vector store, LLM, cache, storage)
 └── services/      RetrieverService, chunker
 
@@ -105,6 +106,7 @@ Documents (PDF/MD/Web)
 - **Auth system**: Register, login, refresh tokens, password reset, email confirmation
 - **Admin API**: User management, role assignment
 - **Document management**: Upload, list, edit, download, delete. SHA256-based deduplication. Auto-extracts title/authors from PDF first pages via LLM
+- **Document suggestions**: Users suggest documents for review; admins approve or reject. Approved suggestions become uploaded documents
 - **Background jobs**: Metadata extraction via job queue (PostgreSQL-backed)
 - **Incremental ingestion**: Only processes new documents by default. `?force=true` rebuilds all
 - **Secure lifecycle**: Every resource (pools, threads, cache) is properly initialized and shut down. Container is restart-safe.
@@ -180,7 +182,11 @@ Full API reference: [HOW_TO_USE_API.md](HOW_TO_USE_API.md)
 | `POST` | `/api/v1/auth/password-reset/request` | Request password reset |
 | `POST` | `/api/v1/auth/password-reset/confirm` | Reset password with token |
 | `GET` | `/api/v1/auth/me` | Get current user |
+| `PUT` | `/api/v1/auth/me/profile` | Update own profile |
+| `POST` | `/api/v1/auth/me/profile/avatar` | Upload profile avatar |
 | `GET` | `/api/v1/auth/users/by-slug/{slug}` | Lookup user by slug |
+| `GET` | `/api/v1/auth/users` | List active users (public) |
+| `GET` | `/api/v1/users/{slug}/profile/avatar/file` | Get avatar image |
 
 ### Admin (requires admin role)
 
@@ -206,6 +212,26 @@ Full API reference: [HOW_TO_USE_API.md](HOW_TO_USE_API.md)
 | `POST` | `/api/v1/documents/extract-all-metadata` | Enqueue metadata extraction for all PDFs |
 | `GET` | `/api/v1/documents/metadata-status` | Check extraction queue status |
 
+### Suggestions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/suggestions/public` | Public suggestions by user ID |
+| `POST` | `/api/v1/suggestions` | Submit suggestion |
+| `GET` | `/api/v1/suggestions` | List my suggestions |
+| `GET` | `/api/v1/suggestions/{id}` | Get suggestion |
+| `GET` | `/api/v1/suggestions/{id}/view` | View suggestion file |
+| `PUT` | `/api/v1/suggestions/{id}` | Update suggestion |
+| `PUT` | `/api/v1/suggestions/{id}/file` | Replace suggestion file |
+| `DELETE` | `/api/v1/suggestions/{id}` | Delete suggestion |
+| `GET` | `/api/v1/admin/suggestions` | List all suggestions (admin) |
+| `GET` | `/api/v1/admin/suggestions/{id}` | Get suggestion (admin) |
+| `GET` | `/api/v1/admin/suggestions/{id}/view` | View suggestion file (admin) |
+| `PUT` | `/api/v1/admin/suggestions/{id}` | Update suggestion (admin) |
+| `POST` | `/api/v1/admin/suggestions/{id}/approve` | Approve + create document |
+| `POST` | `/api/v1/admin/suggestions/{id}/reject` | Reject suggestion |
+| `DELETE` | `/api/v1/admin/suggestions/{id}` | Delete suggestion (admin) |
+
 ### RAG
 
 | Method | Path | Description |
@@ -213,11 +239,11 @@ Full API reference: [HOW_TO_USE_API.md](HOW_TO_USE_API.md)
 | `POST` | `/api/v1/ask` | Submit question (async) |
 | `GET` | `/api/v1/answer/{task_id}` | Poll for answer |
 | `GET` | `/api/v1/status` | System health + index state |
+| `GET` | `/api/v1/health` | Simple health check |
 | `POST` | `/api/v1/ingest` | Trigger ingestion (async) |
 | `GET` | `/api/v1/ingest/status` | Ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | Ingestion history |
 | `GET` | `/api/v1/ingestion/runs/{id}` | Run details |
-| `GET` | `/api/v1/health` | Simple health check |
 
 ## Configuration
 

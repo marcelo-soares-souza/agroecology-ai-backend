@@ -366,6 +366,190 @@ Requires the `admin` role.
 Deletes a user account by id. Requires the `admin` role.
 """,
     },
+    ("PUT", "/api/v1/auth/me/profile"): {
+        "summary": "Update own profile",
+        "description": """
+Updates the authenticated user's profile fields.
+
+Acceptable fields: `full_name`, `email`, `about` (max 4096 chars), and `link`
+(max 2000 chars, must start with `http://` or `https://`). Send only the fields
+that should change. Requires authentication.
+""",
+    },
+    ("POST", "/api/v1/auth/me/profile/avatar"): {
+        "summary": "Upload profile avatar",
+        "description": """
+Uploads a profile avatar image for the authenticated user.
+
+Accepts JPEG, PNG, or WebP images up to 5 MB. The image is cropped to a square
+and resized to 400×400 pixels, then stored as WebP. Requires authentication.
+""",
+    },
+    ("GET", "/api/v1/auth/users"): {
+        "summary": "List active users",
+        "description": """
+Returns a public list of active users with their profile information.
+
+This endpoint does not require authentication and is used for public profile
+discovery and user lookup.
+""",
+    },
+    ("GET", "/api/v1/users/{slug}/profile/avatar/file"): {
+        "summary": "Get user avatar image",
+        "description": """
+Returns the avatar image for a user identified by their slug.
+
+The response is a WebP image file with a 1-day browser cache header.
+No authentication required.
+""",
+    },
+    ("GET", "/api/v1/suggestions/public"): {
+        "tags": ["suggestions"],
+        "summary": "Get public suggestions for a user",
+        "description": """
+Returns approved suggestions for a specific user.
+
+Use the `user_id` query parameter. Results are limited to 100 suggestions.
+""",
+    },
+    ("POST", "/api/v1/suggestions"): {
+        "tags": ["suggestions"],
+        "summary": "Submit a document suggestion",
+        "description": """
+Submits a document suggestion for admin review.
+
+Use `user_comment` (required) to explain why the document is relevant. Optional
+fields: `title`, `authors`, `url`, and a `file` upload. Requires authentication.
+Returns status 201 on success.
+""",
+    },
+    ("GET", "/api/v1/suggestions"): {
+        "tags": ["suggestions"],
+        "summary": "List my suggestions",
+        "description": """
+Returns suggestions submitted by the authenticated user.
+
+Optional `status` query parameter filters by suggestion state: `pending`,
+`approved`, or `rejected`. Requires authentication.
+""",
+    },
+    ("GET", "/api/v1/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Get a suggestion",
+        "description": """
+Returns a single suggestion by id.
+
+Users can only access their own suggestions. Admins can access any suggestion.
+Requires authentication.
+""",
+    },
+    ("GET", "/api/v1/suggestions/{suggestion_id}/view"): {
+        "tags": ["suggestions"],
+        "summary": "View suggestion file",
+        "description": """
+Returns the uploaded file for a suggestion inline.
+
+The response is a file response, not JSON. Users can view their own files;
+admins can view any. Supports query-string auth via `?token=` parameter.
+""",
+    },
+    ("PUT", "/api/v1/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Update a suggestion",
+        "description": """
+Updates editable fields of a pending suggestion.
+
+All fields (`title`, `authors`, `url`, `user_comment`) are optional. Only the
+suggestion owner can update it, and only while the status is `pending`.
+Requires authentication.
+""",
+    },
+    ("PUT", "/api/v1/suggestions/{suggestion_id}/file"): {
+        "tags": ["suggestions"],
+        "summary": "Replace suggestion file",
+        "description": """
+Replaces the uploaded file of a pending suggestion.
+
+Send the new file as multipart form data. Only the owner can replace the file,
+and only while the status is `pending`. Requires authentication.
+""",
+    },
+    ("DELETE", "/api/v1/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Delete a suggestion",
+        "description": """
+Deletes a pending suggestion and its uploaded file.
+
+Only the suggestion owner can delete it, and only while the status is `pending`.
+Requires authentication.
+""",
+    },
+    ("GET", "/api/v1/admin/suggestions"): {
+        "tags": ["suggestions"],
+        "summary": "List all suggestions (admin)",
+        "description": """
+Returns all document suggestions with optional filtering.
+
+Query parameters: `status`, `user_id`, `has_pdf`, `q` (search), `limit`
+(default 50), and `offset`. Requires the `admin` role.
+""",
+    },
+    ("GET", "/api/v1/admin/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Get a suggestion (admin)",
+        "description": """
+Returns a single suggestion by id without ownership restrictions.
+
+Requires the `admin` role.
+""",
+    },
+    ("GET", "/api/v1/admin/suggestions/{suggestion_id}/view"): {
+        "tags": ["suggestions"],
+        "summary": "View suggestion file (admin)",
+        "description": """
+Returns the uploaded file for a suggestion, bypassing ownership checks.
+
+Requires the `admin` role.
+""",
+    },
+    ("PUT", "/api/v1/admin/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Update a suggestion (admin)",
+        "description": """
+Updates a suggestion with optional `admin_comment` alongside user-visible fields.
+
+Requires the `admin` role.
+""",
+    },
+    ("POST", "/api/v1/admin/suggestions/{suggestion_id}/approve"): {
+        "tags": ["suggestions"],
+        "summary": "Approve a suggestion",
+        "description": """
+Approves a pending suggestion and converts it into a new uploaded document.
+
+If `AUTO_EXTRACT_METADATA` is enabled, a metadata extraction job is enqueued
+for the new document. Requires the `admin` role.
+""",
+    },
+    ("POST", "/api/v1/admin/suggestions/{suggestion_id}/reject"): {
+        "tags": ["suggestions"],
+        "summary": "Reject a suggestion",
+        "description": """
+Rejects a pending suggestion with an optional `admin_comment`.
+
+The suggestion is marked as `rejected` and the submitter should be notified.
+Requires the `admin` role.
+""",
+    },
+    ("DELETE", "/api/v1/admin/suggestions/{suggestion_id}"): {
+        "tags": ["suggestions"],
+        "summary": "Delete a suggestion (admin)",
+        "description": """
+Deletes any suggestion and its uploaded file.
+
+Requires the `admin` role.
+""",
+    },
 }
 
 

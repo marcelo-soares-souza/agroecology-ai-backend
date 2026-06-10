@@ -148,6 +148,7 @@ class OpenAILLM(LLMPort):
                 reasoning = getattr(choice.message, "reasoning_content", "") or ""
                 if reasoning:
                     import re
+
                     cleaned = re.sub(r"<\s*/?\s*think\s*>", "", reasoning)
                     if cleaned.strip():
                         answer = cleaned.strip()

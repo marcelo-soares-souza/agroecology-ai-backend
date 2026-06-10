@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 from src.domain.ports.embedding_port import EmbeddingPort
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.embedding")
 
 
 @contextmanager
@@ -36,6 +36,9 @@ class SentenceTransformerEmbedder(EmbeddingPort):
             self._model = SentenceTransformer(model_name, device=self._device)
         self._dim = self._model.get_embedding_dimension()
         assert self._dim is not None
+
+    def close(self) -> None:
+        pass
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         embeddings = self._model.encode(texts, normalize_embeddings=True)

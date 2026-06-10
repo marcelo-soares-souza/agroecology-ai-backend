@@ -25,7 +25,12 @@ def serialize_document(doc: Document) -> dict:
 
 def serialize_user(user: User | UserDTO) -> dict:
     if isinstance(user, User):
-        user = UserDTO.from_user(user)
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
+        user = UserDTO.from_user(user, avatar_url=avatar_url)
     return {
         "id": user.id,
         "email": user.email,

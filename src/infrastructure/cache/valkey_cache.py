@@ -11,7 +11,7 @@ from src.domain.dto.answer_result import AnswerResult
 from src.domain.ports.cache_port import CachePort
 from src.shared.logging_utils import log_event
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.cache")
 
 if TYPE_CHECKING:
     import redis

@@ -8,7 +8,7 @@ from sentence_transformers import CrossEncoder
 from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.reranker_port import RerankerPort
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.embedding")
 
 
 class SentenceTransformerReranker(RerankerPort):
@@ -33,6 +33,9 @@ class SentenceTransformerReranker(RerankerPort):
 
     def initialize(self) -> None:
         self._load_model()
+
+    def close(self) -> None:
+        pass
 
     def rerank(
         self,

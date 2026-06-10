@@ -5,17 +5,14 @@ import re
 from typing import Any
 
 from src.domain.ports.query_rewrite_port import QueryRewritePort
-
-logger = logging.getLogger(__name__)
-
-_ELIPSIS_PATTERNS = (
-    re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
-    re.compile(r"\b(this|that|it|they|them|those|these)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(tell me more|more detail|more details|expand on|go deeper|explain)\b",
-        re.IGNORECASE,
-    ),
+from src.shared.history_utils import (
+    _CONTEXT_DEPENDENT_PATTERNS,
+    find_last_message,
+    is_context_dependent_question,
 )
+from src.shared.logging_utils import log_event
+
+logger = logging.getLogger("agroecology.llm")
 
 _CONTRAST_PATTERNS = (
     re.compile(
@@ -46,44 +43,33 @@ class LLMQueryRewriter(QueryRewritePort):
         if not history:
             return question
 
-        if not self._is_context_dependent(question):
+        if not is_context_dependent_question(question):
             return question
 
         heuristic_result = self._heuristic_rewrite(question, history)
         if heuristic_result and heuristic_result != question:
-            logger.info(
-                "query_rewrite_heuristic original=%r rewritten=%r",
-                question[:80],
-                heuristic_result[:80],
+            log_event(
+                logger,
+                logging.INFO,
+                "query_rewrite_heuristic",
+                original=question[:80],
+                rewritten=heuristic_result[:80],
             )
             return heuristic_result
 
         return self._llm_rewrite(question, history)
 
     @staticmethod
-    def _is_context_dependent(question: str) -> bool:
-        compact = " ".join(question.strip().split())
-        if not compact:
-            return False
-        if len(compact.split()) <= _SHORT_QUESTION_WORDS:
-            return True
-        for pattern in _ELIPSIS_PATTERNS:
-            if pattern.search(compact):
-                return True
-        return False
-
-    @staticmethod
     def _heuristic_rewrite(question: str, history: list[dict]) -> str:
-        last_user = _find_last_message(history, "user")
-        last_assistant = _find_last_message(history, "assistant")
+        last_user = find_last_message(history, "user")
+        last_assistant = find_last_message(history, "assistant")
 
         if not last_user and not last_assistant:
             return question
 
         compact = " ".join(question.strip().split())
 
-        # Continuation / more detail
-        for pattern in _ELIPSIS_PATTERNS:
+        for pattern in _CONTEXT_DEPENDENT_PATTERNS:
             if pattern.search(compact):
                 parts = []
                 if last_user:
@@ -126,23 +112,18 @@ class LLMQueryRewriter(QueryRewritePort):
             )
             rewritten = result.strip().strip('"').strip("'")
             if rewritten and len(rewritten) > 3:
-                logger.info(
-                    "query_rewrite_llm original=%r rewritten=%r",
-                    question[:80],
-                    rewritten[:80],
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "query_rewrite_llm",
+                    original=question[:80],
+                    rewritten=rewritten[:80],
                 )
                 return rewritten
         except Exception as e:
-            logger.warning("query_rewrite_llm_failed error=%s", e)
+            log_event(logger, logging.WARNING, "query_rewrite_llm_failed", error=e)
 
         return question
-
-
-def _find_last_message(history: list[dict], role: str) -> str:
-    for m in reversed(history):
-        if m.get("role") == role and m.get("content"):
-            return str(m["content"])
-    return ""
 
 
 def _snip(text: str, max_chars: int = 200) -> str:

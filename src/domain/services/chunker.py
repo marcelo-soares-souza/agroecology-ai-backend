@@ -1,14 +1,27 @@
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock
-from src.shared.config import CHUNK_OVERLAP, CHUNK_SIZE
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\u00c0-\u00da\u00c7])")
 
 
 @dataclass
 class ChunkMetadata:
+    """Metadata attached to each chunk produced by the chunking pipeline.
+
+    Attributes:
+        document_id: The parent document's unique identifier.
+        section_title: The section heading this chunk belongs to.
+        page_start: First page number covered by this chunk.
+        page_end: Last page number covered by this chunk.
+        chunk_index: Zero-based position of this chunk within the document.
+        block_types: List of block type identifiers in this chunk.
+        token_estimate: Estimated token count for the chunk text.
+    """
+
     document_id: str
     section_title: str | None
     page_start: int
@@ -19,10 +32,26 @@ class ChunkMetadata:
 
 
 def estimate_tokens(text: str) -> int:
+    """Roughly estimate the token count of a text.
+
+    Args:
+        text: The input text.
+
+    Returns:
+        Estimated token count (at least 1).
+    """
     return max(1, len(text) // 4)
 
 
 def split_sentences(text: str) -> list[str]:
+    """Split text into sentences, respecting paragraph boundaries.
+
+    Args:
+        text: The input text.
+
+    Returns:
+        A list of sentence strings.
+    """
     paragraphs = re.split(r"\n\s*\n", text)
     sentences: list[str] = []
 
@@ -46,9 +75,19 @@ def split_sentences(text: str) -> list[str]:
 
 def chunk_text(
     text: str,
-    chunk_size: int = CHUNK_SIZE,
-    overlap: int = CHUNK_OVERLAP,
+    chunk_size: int,
+    overlap: int,
 ) -> list[str]:
+    """Split plain text into overlapping chunks of roughly equal token size.
+
+    Args:
+        text: The input text.
+        chunk_size: Target chunk size in tokens.
+        overlap: Overlap between consecutive chunks in tokens.
+
+    Returns:
+        A list of chunk text strings.
+    """
     sentences = split_sentences(text)
     if not sentences:
         return []
@@ -90,16 +129,28 @@ def chunk_text(
 def chunk_blocks(
     blocks: list[ParsedBlock],
     document_id: str,
+    chunk_size: int,
+    overlap: int,
     title: str | None = None,
     authors: str | None = None,
     year: int | None = None,
-    chunk_size: int = CHUNK_SIZE,
-    overlap: int = CHUNK_OVERLAP,
 ) -> list[tuple[str, str, ChunkMetadata]]:
     """Chunk ParsedBlock list into (text, embedding_text, metadata) tuples.
 
     Groups blocks by section, avoids mixing sections in the same chunk,
     and produces enriched embedding_text with document context.
+
+    Args:
+        blocks: The parsed blocks to chunk.
+        document_id: The parent document's identifier.
+        title: The document's title for embedding enrichment.
+        authors: The document's authors for embedding enrichment.
+        year: The publication year for embedding enrichment.
+        chunk_size: Target chunk size in tokens.
+        overlap: Overlap between consecutive chunks in tokens.
+
+    Returns:
+        A list of (chunk_text, embedding_text, ChunkMetadata) tuples.
     """
 
     if not blocks:

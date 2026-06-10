@@ -14,4 +14,9 @@ class GetUserBySlug:
             user = await self._repo.get_by_id(slug_or_id)
         if not user:
             return None
-        return UserDTO.from_user(user)
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
+        return UserDTO.from_user(user, avatar_url=avatar_url)

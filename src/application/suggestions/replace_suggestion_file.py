@@ -7,14 +7,9 @@ from src.domain.models.document_suggestion import (
     DocumentSuggestionUpdate,
 )
 from src.domain.ports.document_repository import DocumentRepository
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-
-
-_PENDING_DIR = "suggestions"
-_MAX_FILE_SIZE = 50 * 1024 * 1024
+from src.shared.config import DATA_DIR_PENDING, MAX_FILE_SIZE
 
 
 class ReplaceSuggestionFile:
@@ -53,7 +48,7 @@ class ReplaceSuggestionFile:
         if len(file_content) == 0:
             raise ValueError("Empty file")
 
-        if len(file_content) > _MAX_FILE_SIZE:
+        if len(file_content) > MAX_FILE_SIZE:
             raise ValueError(
                 f"File exceeds 50 MB ({len(file_content) / 1024 / 1024:.1f} MB)"
             )
@@ -67,15 +62,17 @@ class ReplaceSuggestionFile:
             raise ValueError("This file has already been uploaded as a document")
 
         if suggestion.original_filename is not None:
-            await self._storage.delete(_PENDING_DIR, suggestion_id, ".pdf")
+            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
 
-        await self._storage.save(_PENDING_DIR, suggestion_id, ".pdf", file_content)
+        await self._storage.save(
+            DATA_DIR_PENDING.name, suggestion_id, ".pdf", file_content
+        )
 
         data = DocumentSuggestionUpdate(
             original_filename=original_filename,
             file_type="pdf",
             file_size=len(file_content),
-            storage_directory=_PENDING_DIR,
+            storage_directory=DATA_DIR_PENDING.name,
             sha256=sha256_hash,
         )
 

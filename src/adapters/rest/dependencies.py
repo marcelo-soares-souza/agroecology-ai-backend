@@ -6,24 +6,36 @@ from src.application.admin.delete_user import DeleteUser as AdminDeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers as AdminListUsers
 from src.application.admin.update_user import UpdateUser as AdminUpdateUser
+from src.application.ask_question import AskQuestion
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_avatar_file import GetAvatarFile
 from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
+from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
 from src.application.auth.refresh_token import RefreshToken
 from src.application.auth.register_user import RegisterUser
 from src.application.auth.request_password_reset import RequestPasswordReset
 from src.application.auth.resend_confirmation import ResendConfirmationEmail
-from src.application.ask_question import AskQuestion
+from src.application.auth.update_my_profile import UpdateMyProfile
+from src.application.auth.upload_my_avatar import UploadMyAvatar
+from src.application.auth.validate_session import ValidateSession
+from src.application.delete_document import DeleteDocument
+from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
+from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
-from src.application.get_metadata_job_status import GetMetadataJobStatus
 from src.application.get_document_file import GetDocumentFile
+from src.application.get_metadata_job_status import GetMetadataJobStatus
+from src.application.get_schema_status import GetSchemaStatus
 from src.application.get_status import GetStatus
+from src.application.get_task_status import GetTaskStatus
 from src.application.ingest_documents import IngestDocuments
+from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
+from src.application.scrape_urls import ScrapeUrls
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
 )
@@ -45,68 +57,31 @@ from src.application.suggestions.create_document_suggestion import (
 from src.application.suggestions.delete_document_suggestion import (
     DeleteDocumentSuggestion,
 )
-from src.application.suggestions.get_document_suggestion import (
-    GetDocumentSuggestion,
-)
+from src.application.suggestions.get_document_suggestion import GetDocumentSuggestion
+from src.application.suggestions.get_suggestion_file import GetSuggestionFile
 from src.application.suggestions.list_my_document_suggestions import (
     ListMyDocumentSuggestions,
 )
-from src.application.suggestions.replace_suggestion_file import (
-    ReplaceSuggestionFile,
-)
-from src.application.suggestions.get_suggestion_file import (
-    GetSuggestionFile,
-)
+from src.application.suggestions.list_public_suggestions import ListPublicSuggestions
+from src.application.suggestions.replace_suggestion_file import ReplaceSuggestionFile
 from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
-from src.application.delete_document import DeleteDocument
-from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
-from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.upload_document import UploadDocument
 from src.bootstrap.ask_task_service import AskTaskService
-from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.bootstrap.container import container
-from src.bootstrap.task_manager import TaskManager
-from src.domain.ports.cache_port import CachePort
-from src.domain.ports.document_repository import DocumentRepository
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
-from src.domain.ports.embedding_port import EmbeddingPort
+from src.bootstrap.ingestion_task_service import IngestionTaskService
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.user_repository import UserRepository
-from src.domain.ports.llm_port import LLMPort
-from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
-from src.domain.services.retriever import RetrieverService
 
 logger = logging.getLogger("agroecology.bootstrap")
-
-
-def get_embedder() -> EmbeddingPort:
-    assert container.embedder is not None, "embedder not initialized"
-    return container.embedder
 
 
 def get_vector_store() -> VectorStorePort:
     assert container.vector_store is not None, "vector_store not initialized"
     return container.vector_store
-
-
-def get_llm() -> LLMPort:
-    assert container.llm is not None, "llm not initialized"
-    return container.llm
-
-
-def get_cache() -> CachePort:
-    assert container.cache is not None, "cache not initialized"
-    return container.cache
-
-
-async def get_doc_repo() -> DocumentRepository:
-    assert container.doc_repo is not None, "doc_repo not initialized"
-    return container.doc_repo
 
 
 async def get_ingestion_repo() -> IngestionRepository:
@@ -122,15 +97,6 @@ async def get_user_repo() -> UserRepository:
 async def get_suggestion_repo() -> DocumentSuggestionRepository:
     assert container.suggestion_repo is not None, "suggestion_repo not initialized"
     return container.suggestion_repo
-
-
-def get_reranker() -> RerankerPort | None:
-    return container.reranker
-
-
-def get_retriever() -> RetrieverService:
-    assert container.retriever is not None, "retriever not initialized"
-    return container.retriever
 
 
 def get_ingest() -> IngestDocuments:
@@ -155,9 +121,9 @@ def get_extract_metadata() -> ExtractMetadata | None:
     return container.extract_metadata
 
 
-def get_task_manager() -> TaskManager:
-    assert container.task_manager is not None, "task_manager not initialized"
-    return container.task_manager
+def get_task_status() -> GetTaskStatus:
+    assert container.task_status is not None
+    return container.task_status
 
 
 def get_ask_task_service() -> AskTaskService:
@@ -225,6 +191,31 @@ def get_confirm_password_reset() -> ConfirmPasswordReset:
     return container.confirm_password_reset
 
 
+def get_update_my_profile() -> UpdateMyProfile:
+    assert container.update_my_profile is not None
+    return container.update_my_profile
+
+
+def get_upload_my_avatar() -> UploadMyAvatar:
+    assert container.upload_my_avatar is not None
+    return container.upload_my_avatar
+
+
+def get_list_active_users() -> ListActiveUsers:
+    assert container.list_active_users is not None
+    return container.list_active_users
+
+
+def get_validate_session() -> ValidateSession:
+    assert container.validate_session is not None
+    return container.validate_session
+
+
+def get_avatar_file() -> GetAvatarFile:
+    assert container.get_avatar_file is not None
+    return container.get_avatar_file
+
+
 # ── Admin use case getters ───────────────────────────────────────────────
 
 
@@ -271,9 +262,24 @@ def get_delete_document() -> DeleteDocument:
     return container.delete_document
 
 
+def get_web_scraper() -> ScrapeUrls:
+    assert container.web_scraper is not None
+    return container.web_scraper
+
+
 def get_enqueue_document_metadata() -> EnqueueDocumentMetadata:
     assert container.enqueue_document_metadata is not None
     return container.enqueue_document_metadata
+
+
+def get_list_ingestion_runs() -> ListIngestionRuns:
+    assert container.list_ingestion_runs is not None
+    return container.list_ingestion_runs
+
+
+def get_schema_status() -> GetSchemaStatus:
+    assert container.schema_status is not None
+    return container.schema_status
 
 
 def get_enqueue_pending_metadata() -> EnqueuePendingMetadata:
@@ -347,6 +353,11 @@ def get_admin_approve_document_suggestion() -> AdminApproveDocumentSuggestion:
 def get_admin_delete_document_suggestion() -> AdminDeleteDocumentSuggestion:
     assert container.admin_delete_document_suggestion is not None
     return container.admin_delete_document_suggestion
+
+
+def get_list_public_suggestions() -> ListPublicSuggestions:
+    assert container.list_public_suggestions is not None
+    return container.list_public_suggestions
 
 
 async def init_services() -> None:

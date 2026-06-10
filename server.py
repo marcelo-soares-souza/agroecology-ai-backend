@@ -7,5 +7,3 @@ from src.shared.logging_utils import configure_logging
 
 configure_logging()
 app = ProxyHeadersMiddleware(cast(Any, fastapi_app), trusted_hosts="*")
-
-__all__ = ["app"]

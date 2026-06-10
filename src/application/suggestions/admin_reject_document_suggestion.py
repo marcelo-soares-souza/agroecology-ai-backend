@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from src.application.suggestions._guard import require_pending_suggestion
 from src.domain.models.document_suggestion import DocumentSuggestion
 from src.domain.ports.auth_services_port import EmailPort
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.user_repository import UserRepository
+from src.shared.logging_utils import log_event
 
 logger = logging.getLogger("agroecology.suggestions")
 
@@ -30,12 +30,7 @@ class AdminRejectDocumentSuggestion:
         reviewed_by: str,
         admin_comment: str | None = None,
     ) -> DocumentSuggestion:
-        suggestion = await self._suggestion_repo.get(suggestion_id)
-        if suggestion is None:
-            raise ValueError("Suggestion not found")
-
-        if suggestion.status != "pending":
-            raise ValueError("Only pending suggestions can be rejected")
+        await require_pending_suggestion(self._suggestion_repo, suggestion_id)
 
         if not admin_comment or not admin_comment.strip():
             raise ValueError("Admin comment is required when rejecting")
@@ -71,8 +66,10 @@ class AdminRejectDocumentSuggestion:
                 locale=user.locale,
             )
         except Exception as e:
-            logger.warning(
-                "rejection_email_failed user_id=%s error=%s",
-                suggestion.user_id,
-                e,
+            log_event(
+                logger,
+                logging.WARNING,
+                "rejection_email_failed",
+                user_id=suggestion.user_id,
+                error=e,
             )

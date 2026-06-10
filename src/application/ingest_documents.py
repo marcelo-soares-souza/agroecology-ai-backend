@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 
 from src.domain.dto.retrieval_result import IndexedChunk
 from src.domain.ports.document_loader_port import DocumentLoaderPort
@@ -9,8 +10,17 @@ from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.domain.services.chunker import chunk_blocks
-from src.shared.config import INGEST_BATCH_SIZE
+from src.shared.config import CHUNK_OVERLAP, CHUNK_SIZE, INGEST_BATCH_SIZE
 from src.shared.logging_utils import log_event
+
+
+@dataclass
+class IngestStatus:
+    status: str
+    chunks_indexed: int | None = None
+    error: str | None = None
+    run_id: str | None = None
+
 
 logger = logging.getLogger("agroecology.ingestion")
 
@@ -157,6 +167,8 @@ class IngestDocuments:
                     title=parsed.title,
                     authors=parsed.authors,
                     year=parsed.year,
+                    chunk_size=CHUNK_SIZE,
+                    overlap=CHUNK_OVERLAP,
                 )
                 for i, (text, embedding_text, meta) in enumerate(chunks):
                     if not text.strip():
@@ -265,12 +277,10 @@ class IngestDocuments:
     async def _mark_all_not_ingested(self) -> None:
         await self._ingestion_repo.mark_all_not_ingested()
 
-    def to_dict(self) -> dict:
-        result: dict = {"status": self.status}
-        if self.status == "done":
-            result["chunks_indexed"] = self.chunks_indexed
-        elif self.status == "error":
-            result["error"] = self.error
-        if self.current_run_id:
-            result["run_id"] = self.current_run_id
-        return result
+    def to_dict(self) -> IngestStatus:
+        return IngestStatus(
+            status=self.status,
+            chunks_indexed=self.chunks_indexed if self.status == "done" else None,
+            error=self.error if self.status == "error" else None,
+            run_id=self.current_run_id,
+        )

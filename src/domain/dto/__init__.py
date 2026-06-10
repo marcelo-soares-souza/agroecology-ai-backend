@@ -1,8 +1,10 @@
+"""Public DTO re-exports for the domain layer."""
+
 from src.domain.dto.answer_result import AnswerResult, SourceResult
 from src.domain.dto.auth_result import LoginResult
 from src.domain.dto.document_result import (
-    MetadataResult,
     MetadataExtractionResult,
+    MetadataResult,
     UploadDocumentResult,
 )
 from src.domain.dto.message_result import MessageResult

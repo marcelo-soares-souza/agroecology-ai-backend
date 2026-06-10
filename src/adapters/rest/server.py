@@ -5,30 +5,30 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
-from pathlib import Path
-
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from psycopg_pool import PoolTimeout
 
+from src.adapters.rest.admin_routes import router as admin_router
+from src.adapters.rest.auth_middleware import get_current_user, require_role
+from src.adapters.rest.auth_routes import router as auth_router
 from src.adapters.rest.dependencies import (
     get_ask_task_service,
+    get_avatar_file,
     get_delete_document,
     get_document_file,
-    get_enqueue_document_metadata,
     get_enqueue_pending_metadata,
     get_extract_document_metadata,
     get_ingest,
     get_ingestion_task_service,
-    get_ingestion_repo,
+    get_list_ingestion_runs,
     get_manage_docs,
     get_metadata_job_status,
     get_status_service,
-    get_task_manager,
+    get_task_status,
     get_upload_document,
-    get_vector_store,
     init_services,
     shutdown_services,
 )
@@ -37,40 +37,28 @@ from src.adapters.rest.openapi_docs import (
     TAGS_METADATA,
     apply_openapi_docs,
 )
-from src.adapters.rest.admin_routes import router as admin_router
-from src.adapters.rest.auth_middleware import get_current_user, require_role
-from src.adapters.rest.auth_routes import router as auth_router
-from src.adapters.rest.suggestion_routes import (
-    admin_router as suggestion_admin_router,
-    user_router as suggestion_user_router,
-)
-from src.adapters.rest.serializers import (
-    serialize_document,
-    serialize_ingestion_run,
-)
 from src.adapters.rest.schemas import (
+    AnswerResponse,
     AskRequest,
     AskResponse,
-    AnswerResponse,
     DocumentRecord,
     DocumentSkipped,
     DocumentUpdateBody,
     DocumentUploaded,
     DocumentUploadResponse,
     HealthResponse,
+    IngestionRunSchema,
     IngestResponse,
     IngestStatusResponse,
-    IngestionRunSchema,
-    MetadataExtractionStatusResponse,
     MessageResponse,
+    MetadataExtractionStatusResponse,
     StatusResponse,
 )
+from src.adapters.rest.serializers import serialize_document, serialize_ingestion_run
+from src.adapters.rest.suggestion_routes import admin_router as suggestion_admin_router
+from src.adapters.rest.suggestion_routes import user_router as suggestion_user_router
 from src.bootstrap.container import container
 from src.domain.models.user import User
-from src.shared.config import (
-    AUTO_EXTRACT_METADATA,
-    check_schema_version,
-)
 from src.shared.logging_utils import (
     configure_logging,
     header_value,
@@ -112,9 +100,11 @@ app.add_middleware(
 
 @app.exception_handler(PoolTimeout)
 async def pool_timeout_handler(request: Request, exc: PoolTimeout):
-    logger.warning(
-        "db_pool_exhausted path=%s",
-        request.url.path,
+    log_event(
+        logger,
+        logging.WARNING,
+        "db_pool_exhausted",
+        path=request.url.path,
     )
     return JSONResponse(
         status_code=503,
@@ -159,50 +149,47 @@ async def log_http_requests(request: Request, call_next):
     try:
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        logger.info(
-            "ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=%s duration_ms=%.2f",
-            client_ip,
-            cf_connecting_ip or "-",
-            forwarded_for or "-",
-            real_ip or "-",
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
+        log_event(
+            logger,
+            logging.INFO,
+            "http_request",
+            ip=client_ip,
+            cf_connecting_ip=cf_connecting_ip or "-",
+            x_forwarded_for=forwarded_for or "-",
+            x_real_ip=real_ip or "-",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=duration_ms,
         )
         return response
     except Exception:
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        logger.exception(
-            "ip=%s cf_connecting_ip=%s x_forwarded_for=%s x_real_ip=%s method=%s path=%s status=500 duration_ms=%.2f",
-            client_ip,
-            cf_connecting_ip or "-",
-            forwarded_for or "-",
-            real_ip or "-",
-            request.method,
-            request.url.path,
-            duration_ms,
+        log_event(
+            logger,
+            logging.ERROR,
+            "http_request_failed",
+            ip=client_ip,
+            cf_connecting_ip=cf_connecting_ip or "-",
+            x_forwarded_for=forwarded_for or "-",
+            x_real_ip=real_ip or "-",
+            method=request.method,
+            path=request.url.path,
+            status=500,
+            duration_ms=duration_ms,
         )
         raise
 
 
 @app.post("/api/v1/ask", response_model=AskResponse)
 async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
-    schema_ok, expected, actual = check_schema_version()
-    if not schema_ok:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Index schema is outdated (expected={expected}, found={actual}). "
-                "An administrator must re-ingest documents via POST /api/v1/ingest?force=true."
-            ),
-        )
+    status_svc = get_status_service()
+    if status_svc is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
 
-    if not get_vector_store().index_exists():
-        raise HTTPException(
-            status_code=503,
-            detail="Index not found. Run: python main.py ingest",
-        )
+    index_ready, message = await status_svc.check_readiness()
+    if not index_ready:
+        raise HTTPException(status_code=503, detail=message)
 
     result = await get_ask_task_service().submit(
         question=body.question,
@@ -214,7 +201,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
 async def answer(task_id: str, current_user: User = Depends(get_current_user)):
-    task = get_task_manager().get(task_id)
+    task = get_task_status().get(task_id)
     if task is None:
         raise HTTPException(
             status_code=404,
@@ -237,7 +224,7 @@ async def status(current_user: User = Depends(get_current_user)):
     use_case = get_status_service()
     if use_case is None:
         raise HTTPException(status_code=503, detail="Not initialized")
-    data = await use_case.execute(get_task_manager().active_count())
+    data = await use_case.execute(get_task_status().active_count())
     return StatusResponse(**asdict(data))
 
 
@@ -255,13 +242,12 @@ async def ingest_start(
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
 async def ingest_status(current_user: User = Depends(get_current_user)):
     ingest = get_ingest()
-    return IngestStatusResponse(**ingest.to_dict())
+    return IngestStatusResponse(**asdict(ingest.to_dict()))
 
 
 @app.get("/api/v1/ingestion/runs", response_model=list[IngestionRunSchema])
 async def list_runs(current_user: User = Depends(get_current_user)):
-    repo = await get_ingestion_repo()
-    runs = await repo.list_all()
+    runs = await get_list_ingestion_runs().list_all()
     return [IngestionRunSchema(**serialize_ingestion_run(r)) for r in runs]
 
 
@@ -270,8 +256,7 @@ async def list_runs(current_user: User = Depends(get_current_user)):
     response_model=IngestionRunSchema,
 )
 async def get_run(run_id: str, current_user: User = Depends(get_current_user)):
-    repo = await get_ingestion_repo()
-    run = await repo.get(run_id)
+    run = await get_list_ingestion_runs().get(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
     return IngestionRunSchema(**serialize_ingestion_run(run))
@@ -290,7 +275,6 @@ async def upload_documents(
 ):
     uploaded: list[DocumentUploaded] = []
     skipped: list[DocumentSkipped] = []
-    uploaded_pdf_ids: list[str] = []
 
     for f in files:
         if not f.filename:
@@ -321,16 +305,6 @@ async def upload_documents(
                 size=result.size,
             )
         )
-
-        if result.should_extract_metadata:
-            uploaded_pdf_ids.append(result.id)
-
-    if AUTO_EXTRACT_METADATA and uploaded_pdf_ids:
-        try:
-            for pdf_id in uploaded_pdf_ids:
-                get_enqueue_document_metadata().execute(pdf_id)
-        except Exception as e:
-            logger.warning("metadata_enqueue_failed error=%s", e)
 
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 
@@ -496,19 +470,19 @@ async def delete_one_document(
 
 
 @app.get("/api/v1/users/{slug}/profile/avatar/file")
-async def get_avatar_file(slug: str):
+async def get_avatar_file_route(slug: str):
     from src.adapters.rest.dependencies import get_user_by_slug as get_user_by_slug_uc
 
     user = await get_user_by_slug_uc().execute(slug)
-    if not user or not user.avatar_path:
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avatar_path = await get_avatar_file().execute(user)
+    if avatar_path is None:
         raise HTTPException(status_code=404, detail="Avatar not found")
 
-    avatar_file = Path(user.avatar_path)
-    if not avatar_file.exists():
-        raise HTTPException(status_code=404, detail="Avatar file not found")
-
     return FileResponse(
-        path=str(avatar_file),
+        path=avatar_path,
         media_type="image/webp",
         headers={"Cache-Control": "public, max-age=86400"},
     )

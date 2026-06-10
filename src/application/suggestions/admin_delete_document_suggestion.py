@@ -1,13 +1,10 @@
 from __future__ import annotations
 
+from src.application.suggestions._guard import require_pending_suggestion
 from src.domain.models.document_suggestion import DocumentSuggestion
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-
-
-_PENDING_DIR = "suggestions"
+from src.shared.config import DATA_DIR_PENDING
 
 
 class AdminDeleteDocumentSuggestion:
@@ -23,17 +20,12 @@ class AdminDeleteDocumentSuggestion:
         self,
         suggestion_id: str,
     ) -> DocumentSuggestion:
-        suggestion = await self._suggestion_repo.get(suggestion_id)
-        if suggestion is None:
-            raise ValueError("Suggestion not found")
-
-        if suggestion.status == "approved" and suggestion.document_id is not None:
-            raise ValueError(
-                "Cannot delete an approved suggestion that has a linked document"
-            )
+        suggestion = await require_pending_suggestion(
+            self._suggestion_repo, suggestion_id
+        )
 
         if suggestion.original_filename is not None:
-            await self._storage.delete(_PENDING_DIR, suggestion_id, ".pdf")
+            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
 
         deleted = await self._suggestion_repo.delete(suggestion_id)
         if deleted is None:

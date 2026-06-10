@@ -1,21 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.dto.suggestion_file import SuggestionFile
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
+from src.shared.config import DATA_DIR_PENDING
 
-
-@dataclass(frozen=True)
-class SuggestionFile:
-    filename: str
-    path: str
-    media_type: str
-
-
-_SUGGESTIONS_DIR = "suggestions"
+_SUGGESTIONS_DIR = DATA_DIR_PENDING.name
 
 
 class GetSuggestionFile:
@@ -28,14 +18,14 @@ class GetSuggestionFile:
         self._storage = storage
 
     async def execute(
-        self, suggestion_id: str, user_id: str | None = None
+        self, suggestion_id: str, user_id: str, is_admin: bool = False
     ) -> SuggestionFile | None:
-        if user_id is not None:
+        if is_admin:
+            suggestion = await self._suggestion_repo.get(suggestion_id)
+        else:
             suggestion = await self._suggestion_repo.get_for_user(
                 suggestion_id, user_id
             )
-        else:
-            suggestion = await self._suggestion_repo.get(suggestion_id)
 
         if suggestion is None:
             return None

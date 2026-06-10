@@ -1,18 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from src.domain.dto.document_file import DocumentFile
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-
-_FILE_EXTENSIONS = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
-
-
-@dataclass(frozen=True)
-class DocumentFile:
-    filename: str
-    path: str
-    media_type: str
+from src.shared.config import FILE_TYPE_TO_EXT
 
 
 class GetDocumentFile:
@@ -25,7 +16,7 @@ class GetDocumentFile:
         if not doc:
             return None
 
-        ext = _FILE_EXTENSIONS.get(doc.file_type)
+        ext = FILE_TYPE_TO_EXT.get(doc.file_type)
         if not ext:
             return None
         if not await self._storage.exists(doc.directory, doc.id, ext):

@@ -6,9 +6,7 @@ from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionUpdate,
 )
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 
 
 class UpdateDocumentSuggestion:

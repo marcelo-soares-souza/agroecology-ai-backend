@@ -5,20 +5,28 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 
 from src.adapters.rest.auth_middleware import get_current_user
+from src.adapters.rest.dependencies import get_confirm_email, get_confirm_password_reset
 from src.adapters.rest.dependencies import (
-    get_confirm_email,
-    get_confirm_password_reset,
     get_human_challenge as get_human_challenge_use_case,
+)
+from src.adapters.rest.dependencies import (
+    get_list_active_users as get_list_active_users_use_case,
+)
+from src.adapters.rest.dependencies import (
     get_login_user,
     get_logout_user,
     get_refresh_token,
     get_register_user,
     get_request_password_reset,
     get_resend_confirmation_email,
-    get_user_by_slug as get_user_by_slug_use_case,
-    get_user_repo,
 )
-from src.adapters.rest.serializers import serialize_user
+from src.adapters.rest.dependencies import (
+    get_update_my_profile as get_update_my_profile_use_case,
+)
+from src.adapters.rest.dependencies import (
+    get_upload_my_avatar as get_upload_my_avatar_use_case,
+)
+from src.adapters.rest.dependencies import get_user_by_slug as get_user_by_slug_use_case
 from src.adapters.rest.schemas import (
     ChallengeResponse,
     ConfirmEmailRequest,
@@ -29,8 +37,8 @@ from src.adapters.rest.schemas import (
     UserResponse,
     UserUpdateRequest,
 )
+from src.adapters.rest.serializers import serialize_user
 from src.domain.models.user import User
-from src.shared.config import AVATAR_DIR
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -201,7 +209,7 @@ async def request_password_reset(email: str, request: Request):
     try:
         await get_request_password_reset().execute(email=email)
     except ValueError:
-        pass
+        pass  # intentionally swallow - don't reveal whether email exists
 
     return MessageResponse(message="If the email exists, a reset link has been sent.")
 
@@ -237,43 +245,20 @@ async def update_my_profile(
     body: UserUpdateRequest,
     current_user: User = Depends(get_current_user),
 ):
-    repo = await get_user_repo()
-    updates: dict[str, str | None] = {}
-    if body.about is not None:
-        if len(body.about) > 4096:
-            raise HTTPException(
-                status_code=400, detail="About must not exceed 4096 characters"
-            )
-        updates["about"] = body.about or None
-    if body.link is not None:
-        if body.link and not body.link.startswith(("http://", "https://")):
-            raise HTTPException(
-                status_code=400, detail="Link must start with http:// or https://"
-            )
-        if body.link and len(body.link) > 2000:
-            raise HTTPException(
-                status_code=400, detail="Link must not exceed 2000 characters"
-            )
-        updates["link"] = body.link or None
-    if body.full_name is not None:
-        updates["full_name"] = body.full_name
-    if body.email is not None:
-        updates["email"] = body.email
+    try:
+        result = await get_update_my_profile_use_case().execute(
+            user_id=current_user.id,
+            full_name=body.full_name,
+            email=body.email,
+            about=body.about,
+            link=body.link,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    if not updates:
-        user = await repo.get_by_id(current_user.id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        return serialize_user(user)
-
-    updated = await repo.update(current_user.id, **updates)
-    if not updated:
+    if result is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return serialize_user(updated)
-
-
-MAX_AVATAR_SIZE = 5 * 1024 * 1024
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+    return serialize_user(result)
 
 
 @router.post("/me/profile/avatar", response_model=UserResponse)
@@ -281,47 +266,17 @@ async def upload_my_avatar(
     file: UploadFile,
     current_user: User = Depends(get_current_user),
 ):
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400, detail="Unsupported image type. Use JPEG, PNG, or WebP."
-        )
-
     content = await file.read()
-
-    if len(content) > MAX_AVATAR_SIZE:
-        raise HTTPException(status_code=400, detail="Image must not exceed 5MB.")
-
     try:
-        from PIL import Image
-        import io
+        result = await get_upload_my_avatar_use_case().execute(
+            user_id=current_user.id,
+            content=content,
+            content_type=file.content_type or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-        pil_img: Image.Image = Image.open(io.BytesIO(content))
-        pil_img = pil_img.convert("RGB")
-        pil_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
-
-        width, height = pil_img.size
-        size = min(width, height)
-        left = (width - size) // 2
-        top = (height - size) // 2
-        pil_img = pil_img.crop((left, top, left + size, top + size))
-        pil_img = pil_img.resize((400, 400), Image.Resampling.LANCZOS)
-
-        output = io.BytesIO()
-        pil_img.save(output, format="WEBP", quality=80)
-        processed = output.getvalue()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
-
-    user_dir = AVATAR_DIR / current_user.id
-    user_dir.mkdir(parents=True, exist_ok=True)
-    avatar_path = user_dir / "avatar.webp"
-    avatar_path.write_bytes(processed)
-
-    repo = await get_user_repo()
-    updated = await repo.update(current_user.id, avatar_path=str(avatar_path))
-    if not updated:
-        raise HTTPException(status_code=404, detail="User not found")
-    return serialize_user(updated)
+    return serialize_user(result)
 
 
 @router.get("/users/by-slug/{slug}", response_model=UserResponse)
@@ -334,6 +289,5 @@ async def get_user_by_slug(slug: str):
 
 @router.get("/users", response_model=list[UserResponse])
 async def list_active_users():
-    repo = await get_user_repo()
-    users = await repo.list_active()
+    users = await get_list_active_users_use_case().execute()
     return [serialize_user(u) for u in users]

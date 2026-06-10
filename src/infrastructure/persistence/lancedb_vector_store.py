@@ -14,6 +14,9 @@ class LanceDBVectorStore(VectorStorePort):
         self._dir = LANCEDB_DIR
         self._db = lancedb.connect(str(LANCEDB_DIR))
 
+    def close(self) -> None:
+        self._db.close()
+
     def _get_table(self):
         db = self._db
         if "chunks" not in db.table_names():

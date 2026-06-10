@@ -6,6 +6,27 @@ from datetime import datetime
 
 @dataclass
 class User:
+    """A registered user account.
+
+    Attributes:
+        id: Unique user identifier.
+        email: The user's email address.
+        full_name: The user's full display name.
+        status: The account status.
+        slug: The URL-friendly identifier.
+        locale: The user's preferred locale.
+        password_hash: The stored password hash.
+        created_at: Timestamp of account creation.
+        updated_at: Timestamp of last update.
+        email_confirmed_at: Timestamp of email confirmation.
+        last_login_at: Timestamp of last login.
+        roles: List of role keys (populated on login).
+        about: User's self-description.
+        link: User's external link.
+        avatar_path: Server-side path to the avatar file.
+        approved_suggestions_count: Number of suggestions approved.
+    """
+
     id: str
     email: str
     full_name: str

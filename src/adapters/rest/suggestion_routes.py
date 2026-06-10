@@ -18,12 +18,11 @@ from src.adapters.rest.dependencies import (
     get_admin_update_document_suggestion,
     get_create_document_suggestion,
     get_delete_document_suggestion,
-    get_enqueue_document_metadata,
     get_get_document_suggestion,
     get_list_my_document_suggestions,
+    get_list_public_suggestions,
     get_replace_suggestion_file,
     get_suggestion_file,
-    get_suggestion_repo,
     get_update_document_suggestion,
 )
 from src.adapters.rest.schemas import (
@@ -34,7 +33,6 @@ from src.adapters.rest.schemas import (
 )
 from src.adapters.rest.serializers import serialize_document_suggestion
 from src.domain.models.user import User
-from src.shared.config import AUTO_EXTRACT_METADATA
 
 logger = logging.getLogger("agroecology.http")
 
@@ -63,8 +61,7 @@ def _error(
 
 @user_router.get("/public")
 async def public_suggestions(user_id: str):
-    repo = await get_suggestion_repo()
-    suggestions = await repo.list_all(status="approved", user_id=user_id, limit=100)
+    suggestions = await get_list_public_suggestions().execute(user_id=user_id)
     return [serialize_document_suggestion(s) for s in suggestions]
 
 
@@ -120,10 +117,11 @@ async def get_suggestion(
     current_user: User = Depends(get_current_user),
 ):
     is_admin = current_user.roles is not None and "admin" in current_user.roles
-    user_id = None if is_admin else current_user.id
 
     result = await get_get_document_suggestion().execute(
-        suggestion_id=suggestion_id, user_id=user_id
+        suggestion_id=suggestion_id,
+        user_id=current_user.id,
+        is_admin=is_admin,
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found")
@@ -137,10 +135,11 @@ async def view_suggestion_file(
     current_user: User = Depends(get_current_user_from_query_or_header),
 ):
     is_admin = current_user.roles is not None and "admin" in current_user.roles
-    user_id = None if is_admin else current_user.id
 
     result = await get_suggestion_file().execute(
-        suggestion_id=suggestion_id, user_id=user_id
+        suggestion_id=suggestion_id,
+        user_id=current_user.id,
+        is_admin=is_admin,
     )
     if result is None:
         raise HTTPException(status_code=404, detail="File not found")
@@ -249,7 +248,11 @@ async def admin_get_suggestion(
     suggestion_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
-    result = await get_get_document_suggestion().execute(suggestion_id=suggestion_id)
+    result = await get_get_document_suggestion().execute(
+        suggestion_id=suggestion_id,
+        user_id=current_user.id,
+        is_admin=True,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
@@ -261,7 +264,11 @@ async def admin_view_suggestion_file(
     suggestion_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
-    result = await get_suggestion_file().execute(suggestion_id=suggestion_id)
+    result = await get_suggestion_file().execute(
+        suggestion_id=suggestion_id,
+        user_id=current_user.id,
+        is_admin=True,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -313,16 +320,6 @@ async def admin_approve_suggestion(
         )
     except ValueError as e:
         raise _error(e)
-
-    if AUTO_EXTRACT_METADATA:
-        try:
-            get_enqueue_document_metadata().execute(result.document.id)
-        except Exception as e:
-            logger.warning(
-                "metadata_enqueue_failed document_id=%s error=%s",
-                result.document.id,
-                e,
-            )
 
     return serialize_document_suggestion(result.suggestion)
 

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from src.domain.ports.job_queue_port import JobQueuePort
-from src.shared.config import DATABASE_URL, QUEUE_MAX_RETRIES_DEFAULT
+from src.shared.config import DATABASE_URL, QUEUE_MAX_RETRIES_DEFAULT, utcnow
 from src.shared.uuid7 import uuid7
 
 
@@ -21,9 +21,6 @@ class QueueRepository(JobQueuePort):
     def close(self) -> None:
         self._pool.close()
 
-    def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
     def enqueue(
         self,
         job_type: str,
@@ -32,7 +29,7 @@ class QueueRepository(JobQueuePort):
         max_retries: int | None = None,
     ) -> str:
         job_id = uuid7()
-        now = self._now()
+        now = utcnow()
         scheduled_at = now + timedelta(seconds=delay_seconds)
         retries = max_retries if max_retries is not None else QUEUE_MAX_RETRIES_DEFAULT
         with self._pool.connection() as conn:
@@ -82,7 +79,7 @@ class QueueRepository(JobQueuePort):
                 return {str(row["status"]): int(row["count"]) for row in cur.fetchall()}
 
     def complete(self, job_id: str) -> None:
-        now = self._now()
+        now = utcnow()
         with self._pool.connection() as conn:
             conn.execute(
                 """UPDATE job_queue SET status = 'completed', updated_at = %s
@@ -91,7 +88,7 @@ class QueueRepository(JobQueuePort):
             )
 
     def fail(self, job_id: str, error: str) -> None:
-        now = self._now()
+        now = utcnow()
         with self._pool.connection() as conn:
             conn.execute(
                 """UPDATE job_queue

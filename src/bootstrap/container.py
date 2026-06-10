@@ -11,67 +11,73 @@ from src.application.admin.delete_user import DeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers
 from src.application.admin.update_user import UpdateUser
+from src.application.ask_question import AskQuestion
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.get_avatar_file import GetAvatarFile
 from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
+from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
 from src.application.auth.refresh_token import RefreshToken
 from src.application.auth.register_user import RegisterUser
 from src.application.auth.request_password_reset import RequestPasswordReset
 from src.application.auth.resend_confirmation import ResendConfirmationEmail
-from src.application.ask_question import AskQuestion
-from src.application.extract_document_metadata import ExtractDocumentMetadata
-from src.application.extract_metadata import ExtractMetadata
-from src.application.get_metadata_job_status import GetMetadataJobStatus
-from src.application.get_document_file import GetDocumentFile
-from src.application.get_status import GetStatus
-from src.application.ingest_documents import IngestDocuments
-from src.application.manage_documents import ManageDocuments
+from src.application.auth.update_my_profile import UpdateMyProfile
+from src.application.auth.upload_my_avatar import UploadMyAvatar
+from src.application.auth.validate_session import ValidateSession
 from src.application.delete_document import DeleteDocument
 from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
-from src.application.upload_document import UploadDocument
-from src.application.suggestions.create_document_suggestion import (
-    CreateDocumentSuggestion,
-)
-from src.application.suggestions.list_my_document_suggestions import (
-    ListMyDocumentSuggestions,
-)
-from src.application.suggestions.get_document_suggestion import (
-    GetDocumentSuggestion,
-)
-from src.application.suggestions.update_document_suggestion import (
-    UpdateDocumentSuggestion,
-)
-from src.application.suggestions.delete_document_suggestion import (
-    DeleteDocumentSuggestion,
-)
-from src.application.suggestions.replace_suggestion_file import (
-    ReplaceSuggestionFile,
-)
-from src.application.suggestions.get_suggestion_file import (
-    GetSuggestionFile,
-)
-from src.application.suggestions.admin_list_document_suggestions import (
-    AdminListDocumentSuggestions,
-)
-from src.application.suggestions.admin_update_document_suggestion import (
-    AdminUpdateDocumentSuggestion,
-)
-from src.application.suggestions.admin_reject_document_suggestion import (
-    AdminRejectDocumentSuggestion,
+from src.application.extract_document_metadata import ExtractDocumentMetadata
+from src.application.extract_metadata import ExtractMetadata
+from src.application.get_document_file import GetDocumentFile
+from src.application.get_metadata_job_status import GetMetadataJobStatus
+from src.application.get_schema_status import GetSchemaStatus
+from src.application.get_status import GetStatus
+from src.application.get_task_status import GetTaskStatus
+from src.application.ingest_documents import IngestDocuments
+from src.application.list_ingestion_runs import ListIngestionRuns
+from src.application.manage_documents import ManageDocuments
+from src.application.scrape_urls import ScrapeUrls
+from src.application.suggestions.admin_approve_document_suggestion import (
+    AdminApproveDocumentSuggestion,
 )
 from src.application.suggestions.admin_delete_document_suggestion import (
     AdminDeleteDocumentSuggestion,
 )
-from src.application.suggestions.admin_approve_document_suggestion import (
-    AdminApproveDocumentSuggestion,
+from src.application.suggestions.admin_list_document_suggestions import (
+    AdminListDocumentSuggestions,
 )
+from src.application.suggestions.admin_reject_document_suggestion import (
+    AdminRejectDocumentSuggestion,
+)
+from src.application.suggestions.admin_update_document_suggestion import (
+    AdminUpdateDocumentSuggestion,
+)
+from src.application.suggestions.create_document_suggestion import (
+    CreateDocumentSuggestion,
+)
+from src.application.suggestions.delete_document_suggestion import (
+    DeleteDocumentSuggestion,
+)
+from src.application.suggestions.get_document_suggestion import GetDocumentSuggestion
+from src.application.suggestions.get_suggestion_file import GetSuggestionFile
+from src.application.suggestions.list_my_document_suggestions import (
+    ListMyDocumentSuggestions,
+)
+from src.application.suggestions.list_public_suggestions import ListPublicSuggestions
+from src.application.suggestions.replace_suggestion_file import ReplaceSuggestionFile
+from src.application.suggestions.update_document_suggestion import (
+    UpdateDocumentSuggestion,
+)
+from src.application.upload_document import UploadDocument
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.ingestion_task_service import IngestionTaskService
+from src.bootstrap.task_manager import TaskManager
 from src.domain.services.retriever import RetrieverService
+from src.infrastructure.ai.bm25_impl import BM25Impl
 from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
 from src.infrastructure.ai.ollama_native_llm import OllamaNativeLLM
@@ -91,40 +97,45 @@ from src.infrastructure.auth.auth_services import (
 from src.infrastructure.cache.valkey_cache import ValkeyCache
 from src.infrastructure.jobs.worker import start_job_worker
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
+from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
 from src.infrastructure.persistence.lancedb_vector_store import LanceDBVectorStore
 from src.infrastructure.persistence.postgres_document_repo import (
     PostgresDocumentRepository,
 )
-from src.infrastructure.persistence.postgres_ingestion_repo import (
-    PostgresIngestionRepository,
-)
-from src.infrastructure.persistence.postgres_user_repo import (
-    PostgresUserRepository,
-)
 from src.infrastructure.persistence.postgres_document_suggestion_repo import (
     PostgresDocumentSuggestionRepository,
 )
+from src.infrastructure.persistence.postgres_ingestion_repo import (
+    PostgresIngestionRepository,
+)
+from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
-from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
+from src.infrastructure.scraping.web_scraper import WebScraper
+from src.infrastructure.storage.avatar_processor import process_avatar
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
 from src.shared.config import (
+    AUTO_EXTRACT_METADATA,
+    AVATAR_DIR,
+    BM25_TOP_K,
     CACHE_TTL,
     DATABASE_URL,
-    DB_POOL_MIN_SIZE,
     DB_POOL_MAX_SIZE,
+    DB_POOL_MIN_SIZE,
     EMBEDDING_BACKEND,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
+    HYBRID_TOP_K,
+    MMR_LAMBDA,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     OLLAMA_LLM_HOSTS,
     RERANK_DEVICE,
     RERANK_MODEL,
-    read_index_version,
+    SIMILARITY_TOP_K,
     VALKEY_URL,
+    read_index_version,
 )
 from src.shared.logging_utils import log_event
-from src.bootstrap.task_manager import TaskManager
 
 if TYPE_CHECKING:
     from src.domain.ports.cache_port import CachePort
@@ -169,6 +180,7 @@ class Container:
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
         self.file_storage: LocalFileStorage | None = None
+        self.web_scraper: ScrapeUrls | None = None
 
         # Use cases / services
         self.ingest: IngestDocuments | None = None
@@ -186,6 +198,12 @@ class Container:
         self.get_metadata_job_status: GetMetadataJobStatus | None = None
         self.ask_task_service: AskTaskService | None = None
         self.ingestion_task_service: IngestionTaskService | None = None
+        self.validate_session: ValidateSession | None = None
+        self.list_ingestion_runs: ListIngestionRuns | None = None
+        self.task_status: GetTaskStatus | None = None
+        self.list_public_suggestions: ListPublicSuggestions | None = None
+        self.schema_status: GetSchemaStatus | None = None
+        self.get_avatar_file: GetAvatarFile | None = None
 
         # Auth use cases
         self.get_human_challenge: GetHumanChallenge | None = None
@@ -198,6 +216,9 @@ class Container:
         self.resend_confirmation_email: ResendConfirmationEmail | None = None
         self.request_password_reset: RequestPasswordReset | None = None
         self.confirm_password_reset: ConfirmPasswordReset | None = None
+        self.update_my_profile: UpdateMyProfile | None = None
+        self.upload_my_avatar: UploadMyAvatar | None = None
+        self.list_active_users: ListActiveUsers | None = None
 
         # Suggestion use cases
         self.create_document_suggestion: CreateDocumentSuggestion | None = None
@@ -275,6 +296,8 @@ class Container:
             self.file_storage = LocalFileStorage()
             log_event(logger, logging.INFO, "file_storage_initialized")
 
+            self.web_scraper = ScrapeUrls(scraper=WebScraper(storage=self.file_storage))
+
             self._create_use_cases()
             if self.retriever is not None:
                 self.retriever.prewarm_bm25()
@@ -302,30 +325,9 @@ class Container:
         )
         log_event(logger, logging.INFO, "job_worker_started")
 
-        self.task_manager = TaskManager()
-        self.task_manager.start_cleanup()
-        assert self.queue is not None
-        assert self.task_manager is not None
-        assert self.ask_question is not None
-        assert self.cache is not None
-        assert self.manage_docs is not None
-        assert self.ingest is not None
-        assert self.doc_repo is not None
-        self.enqueue_document_metadata = EnqueueDocumentMetadata(queue=self.queue)
-        self.enqueue_pending_metadata = EnqueuePendingMetadata(
-            repo=self.doc_repo,
-            queue=self.queue,
-        )
-        self.get_metadata_job_status = GetMetadataJobStatus(queue=self.queue)
-        self.ask_task_service = AskTaskService(
-            ask_question=self.ask_question,
-            task_manager=self.task_manager,
-            cache=self.cache,
-            manage_documents=self.manage_docs,
-        )
-        self.ingestion_task_service = IngestionTaskService(
-            ingest_documents=self.ingest,
-        )
+        if self.task_manager is not None:
+            self.task_manager.start_cleanup()
+
         self._started = True
         log_event(logger, logging.INFO, "container_start_completed")
 
@@ -391,6 +393,30 @@ class Container:
                     self.cache.close()
                 except Exception as e:
                     logger.warning("cache_close_failed error=%s", e)
+
+            if self.embedder is not None:
+                try:
+                    self.embedder.close()
+                except Exception as e:
+                    logger.warning("embedder_close_failed error=%s", e)
+
+            if self.llm is not None:
+                try:
+                    self.llm.close()
+                except Exception as e:
+                    logger.warning("llm_close_failed error=%s", e)
+
+            if self.reranker is not None:
+                try:
+                    self.reranker.close()
+                except Exception as e:
+                    logger.warning("reranker_close_failed error=%s", e)
+
+            if self.vector_store is not None:
+                try:
+                    self.vector_store.close()
+                except Exception as e:
+                    logger.warning("vector_store_close_failed error=%s", e)
         finally:
             self.reset()
             log_event(logger, logging.INFO, "container_shutdown_completed")
@@ -410,6 +436,7 @@ class Container:
             "queue",
             "task_manager",
             "file_storage",
+            "web_scraper",
             "ingest",
             "retriever",
             "ask_question",
@@ -447,10 +474,19 @@ class Container:
             "resend_confirmation_email",
             "request_password_reset",
             "confirm_password_reset",
+            "update_my_profile",
+            "upload_my_avatar",
+            "list_active_users",
             "list_users",
             "get_user",
             "update_user",
             "delete_user",
+            "validate_session",
+            "list_ingestion_runs",
+            "task_status",
+            "list_public_suggestions",
+            "schema_status",
+            "get_avatar_file",
             "_job_worker_stop",
             "_job_worker_thread",
         ):
@@ -528,7 +564,7 @@ class Container:
     def _create_cache(self) -> None:
         self.cache = ValkeyCache(VALKEY_URL, ttl=CACHE_TTL)
         self.cache.set_index_version(read_index_version())
-        from src.shared.config import EMBEDDING_MODEL, RERANK_MODEL, HYBRID_TOP_K
+        from src.shared.config import EMBEDDING_MODEL, HYBRID_TOP_K, RERANK_MODEL
 
         self.cache.configure(
             embedding_model=EMBEDDING_MODEL,
@@ -564,7 +600,12 @@ class Container:
         self.retriever = RetrieverService(
             vector_store=self.vector_store,
             embedder=self.embedder,
+            bm25=BM25Impl(),
             reranker=self.reranker,
+            bm25_top_k=BM25_TOP_K,
+            hybrid_top_k=HYBRID_TOP_K,
+            mmr_lambda=MMR_LAMBDA,
+            similarity_top_k=SIMILARITY_TOP_K,
         )
         self.manage_docs = ManageDocuments(
             repo=self.doc_repo, storage=self.file_storage
@@ -595,8 +636,15 @@ class Container:
             retriever=self.retriever, llm=self.llm, query_rewriter=rewriter
         )
 
+        self.enqueue_document_metadata = EnqueueDocumentMetadata(
+            queue=self._get_queue  # type: ignore[arg-type]
+        )
+
         self.upload_document = UploadDocument(
-            repo=self.doc_repo, storage=self.file_storage
+            repo=self.doc_repo,
+            storage=self.file_storage,
+            enqueue_metadata=self.enqueue_document_metadata.execute,
+            auto_extract_metadata=AUTO_EXTRACT_METADATA,
         )
         self.extract_document_metadata = ExtractDocumentMetadata(
             repo=self.doc_repo,
@@ -655,6 +703,18 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
         )
+        self.update_my_profile = UpdateMyProfile(user_repo=self.user_repo)
+        self.upload_my_avatar = UploadMyAvatar(
+            user_repo=self.user_repo,
+            avatar_dir=AVATAR_DIR,
+            process_avatar=process_avatar,
+        )
+        self.list_active_users = ListActiveUsers(user_repo=self.user_repo)
+        self.validate_session = ValidateSession(
+            token_service=token_service, user_repo=self.user_repo
+        )
+        self.get_avatar_file = GetAvatarFile()
+
         # Suggestion use cases
         assert self.suggestion_repo is not None
 
@@ -708,6 +768,11 @@ class Container:
             storage=self.file_storage,
             email_service=email_service,
             user_repo=self.user_repo,
+            enqueue_metadata=self.enqueue_document_metadata.execute,
+            auto_extract_metadata=AUTO_EXTRACT_METADATA,
+        )
+        self.list_public_suggestions = ListPublicSuggestions(
+            suggestion_repo=self.suggestion_repo,
         )
 
         # Admin use cases
@@ -715,6 +780,34 @@ class Container:
         self.get_user = AdminGetUser(repo=self.user_repo)
         self.update_user = UpdateUser(repo=self.user_repo)
         self.delete_user = DeleteUser(repo=self.user_repo)
+
+        self.list_ingestion_runs = ListIngestionRuns(ingestion_repo=self.ingestion_repo)
+        self.schema_status = GetSchemaStatus()
+
+        # Services that depend on queue (lazy-initialized in start())
+        self.task_manager = TaskManager()
+        self.task_status = GetTaskStatus(task_manager=self.task_manager)
+
+        self.enqueue_pending_metadata = EnqueuePendingMetadata(
+            repo=self.doc_repo,
+            queue=self._get_queue,  # type: ignore[arg-type]
+        )
+        self.get_metadata_job_status = GetMetadataJobStatus(
+            queue=self._get_queue,  # type: ignore[arg-type]
+        )
+        self.ask_task_service = AskTaskService(
+            ask_question=self.ask_question,
+            task_manager=self.task_manager,
+            cache=self.cache,
+            manage_documents=self.manage_docs,
+        )
+        self.ingestion_task_service = IngestionTaskService(
+            ingest_documents=self.ingest,
+        )
+
+    def _get_queue(self) -> QueueRepository:
+        assert self.queue is not None, "queue not initialized"
+        return self.queue
 
     def _on_ingestion_complete(self) -> None:
         if self.retriever is not None:

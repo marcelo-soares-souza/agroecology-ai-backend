@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from src.domain.models.document_suggestion import DocumentSuggestion
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 
 
 class ListMyDocumentSuggestions:

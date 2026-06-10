@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from datetime import datetime, timezone
+from psycopg.rows import dict_row
 
 from src.domain.models.document import Document, DocumentCreate, DocumentUpdate
 from src.domain.ports.document_repository import DocumentRepository
-
-from psycopg.rows import dict_row
+from src.shared.config import utcnow
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -23,12 +22,9 @@ class PostgresDocumentRepository(DocumentRepository):
     async def close(self) -> None:
         pass
 
-    def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
     async def insert(self, doc: DocumentCreate) -> Document:
         doc_id = doc.id
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -68,7 +64,7 @@ class PostgresDocumentRepository(DocumentRepository):
                 return [self._to_domain(dict(r)) for r in rows]
 
     async def update(self, doc_id: str, data: DocumentUpdate) -> Document | None:
-        now = self._now()
+        now = utcnow()
         sets: list[str] = []
         params: list[str | None] = []
 

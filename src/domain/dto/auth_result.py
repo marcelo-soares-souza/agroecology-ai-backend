@@ -7,6 +7,14 @@ from src.domain.dto.user_dto import UserDTO
 
 @dataclass
 class LoginResult:
+    """Result of a successful login.
+
+    Attributes:
+        access_token: The JWT access token.
+        refresh_token: The refresh token.
+        user: The authenticated user's DTO.
+    """
+
     access_token: str
     refresh_token: str
     user: UserDTO
@@ -14,5 +22,12 @@ class LoginResult:
 
 @dataclass(frozen=True)
 class ChallengeResult:
+    """A human-verification challenge.
+
+    Attributes:
+        challenge_id: The challenge's unique identifier.
+        question: The challenge question text.
+    """
+
     challenge_id: str
     question: str

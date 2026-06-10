@@ -5,6 +5,16 @@ from dataclasses import dataclass, field
 
 @dataclass
 class SourceResult:
+    """A single source citation from a retrieval result.
+
+    Attributes:
+        text: The source text excerpt.
+        score: The relevance score.
+        score_type: The type of score (e.g., 'distance', 'rerank').
+        rank: The source's rank position.
+        metadata: Additional metadata about the source.
+    """
+
     text: str
     score: float
     score_type: str
@@ -14,6 +24,13 @@ class SourceResult:
 
 @dataclass
 class AnswerResult:
+    """The final Q&A response with cited sources.
+
+    Attributes:
+        answer: The generated answer text.
+        sources: The list of source citations used in the answer.
+    """
+
     answer: str
     sources: list[SourceResult] = field(default_factory=list)
 
@@ -64,5 +81,12 @@ class AnswerResult:
 
 @dataclass(frozen=True)
 class TaskSubmissionResult:
+    """Result of submitting an async task.
+
+    Attributes:
+        task_id: The assigned task identifier.
+        status: The initial task status.
+    """
+
     task_id: str
     status: str

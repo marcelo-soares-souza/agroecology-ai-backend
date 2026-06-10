@@ -84,7 +84,12 @@ class RegisterUser:
             locale=user.locale,
         )
 
-        return UserDTO.from_user(user)
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
+        return UserDTO.from_user(user, avatar_url=avatar_url)
 
     async def _generate_slug(self, full_name: str) -> str:
         base = (

@@ -12,4 +12,9 @@ class DeleteUser:
         user = await self._repo.delete(user_id)
         if not user:
             return None
-        return UserDTO.minimal(user)
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
+        return UserDTO.minimal(user, avatar_url=avatar_url)

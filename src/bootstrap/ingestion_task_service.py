@@ -6,7 +6,7 @@ import logging
 from src.application.ingest_documents import IngestDocuments
 from src.shared.logging_utils import log_event
 
-logger = logging.getLogger("agroecology.http")
+logger = logging.getLogger("agroecology.bootstrap")
 
 
 class IngestionTaskService:

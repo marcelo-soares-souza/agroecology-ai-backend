@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from src.domain.models.document_suggestion import DocumentSuggestion
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-
-
-_PENDING_DIR = "suggestions"
+from src.shared.config import DATA_DIR_PENDING
 
 
 class DeleteDocumentSuggestion:
@@ -28,7 +24,7 @@ class DeleteDocumentSuggestion:
             raise ValueError("Only pending suggestions can be deleted")
 
         if suggestion.original_filename is not None:
-            await self._storage.delete(_PENDING_DIR, suggestion_id, ".pdf")
+            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
 
         deleted = await self._suggestion_repo.delete(suggestion_id)
         if deleted is None:

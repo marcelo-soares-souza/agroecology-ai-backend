@@ -41,6 +41,17 @@ class GetStatus:
         self._llm_provider = llm_provider
         self._llm_transport = llm_transport
 
+    async def check_readiness(self) -> tuple[bool, str | None]:
+        schema_ok, expected, actual = check_schema_version()
+        if not schema_ok:
+            return False, (
+                f"Index schema is outdated (expected={expected}, found={actual}). "
+                "An administrator must re-ingest documents."
+            )
+        if not self._vector_store.index_exists():
+            return False, "Index not found."
+        return True, None
+
     async def execute(self, active_tasks: int) -> StatusResult:
         last_ingestion = None
         runs = await self._ingestion_repo.list_all()

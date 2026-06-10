@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from typing import Any
@@ -10,31 +9,30 @@ from urllib.parse import urlparse
 import httpx
 
 from src.domain.ports.llm_port import LLMPort
-from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
+from src.shared.config import (
+    LLM_COMPLETION_MAX_TOKENS,
+    LLM_CONTEXT_LENGTH,
+    LLM_MAX_HISTORY_MESSAGE_CHARS,
+    LLM_MAX_HISTORY_TOTAL_CHARS,
+    LLM_MAX_HISTORY_TURNS,
+    LLM_THINK_ENABLE,
+    NO_THINK_PREFIX,
+)
+from src.shared.logging_utils import (
+    log_event,
+    perf_fields,
+    take_perf_snapshot,
+    truncate_for_log,
+)
 
-_MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
-_CTX_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
-_MAX_HISTORY_MESSAGE_CHARS = int(os.getenv("MAX_HISTORY_MESSAGE_CHARS", "1000"))
-_MAX_HISTORY_TOTAL_CHARS = int(os.getenv("MAX_HISTORY_TOTAL_CHARS", "4000"))
-_MAX_COMPLETION_TOKENS = int(os.getenv("LLM_COMPLETION_MAX_TOKENS", "768"))
-_LLM_THINK_ENABLE = os.getenv("LLM_THINK_ENABLE", "true").lower() not in (
-    "0",
-    "false",
-    "no",
-)
-_NO_THINK_PREFIX = (
-    "/no_think\n"
-    "Return only the final answer in message.content. "
-    "Do not include reasoning, analysis, thinking steps, or scratchpad output.\n\n"
-)
+_MAX_COMPLETION_TOKENS = LLM_COMPLETION_MAX_TOKENS
+_CTX_LENGTH = LLM_CONTEXT_LENGTH
+_MAX_HISTORY_MESSAGE_CHARS = LLM_MAX_HISTORY_MESSAGE_CHARS
+_MAX_HISTORY_TOTAL_CHARS = LLM_MAX_HISTORY_TOTAL_CHARS
+_MAX_HISTORY_TURNS = LLM_MAX_HISTORY_TURNS
+_LLM_THINK_ENABLE = LLM_THINK_ENABLE
+_NO_THINK_PREFIX = NO_THINK_PREFIX
 logger = logging.getLogger("agroecology.llm")
-
-
-def _truncate_for_log(value: Any, limit: int = 3000) -> str:
-    text = str(value)
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
 
 
 class OllamaNativeLLM(LLMPort):
@@ -53,6 +51,9 @@ class OllamaNativeLLM(LLMPort):
         self._max_tokens = max_tokens
         self._client = httpx.Client(timeout=httpx.Timeout(300.0))
         self._lock = threading.Lock()
+
+    def close(self) -> None:
+        self._client.close()
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -114,7 +115,7 @@ class OllamaNativeLLM(LLMPort):
             model=self._model,
             history_messages=history_count,
             prompt_chars=len(effective_user_prompt),
-            prompt_preview=_truncate_for_log(effective_user_prompt, 1200),
+            prompt_preview=truncate_for_log(effective_user_prompt, 1200),
             temperature=temperature,
             max_tokens=max_tokens,
             transport="ollama_native",
@@ -156,8 +157,8 @@ class OllamaNativeLLM(LLMPort):
                     duration_ms=duration_ms,
                     prompt_chars=len(effective_user_prompt),
                     history_messages=history_count,
-                    message_payload=_truncate_for_log(message),
-                    response_payload=_truncate_for_log(body),
+                    message_payload=truncate_for_log(message),
+                    response_payload=truncate_for_log(body),
                     transport="ollama_native",
                 )
                 logger.warning(

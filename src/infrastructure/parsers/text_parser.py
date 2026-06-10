@@ -4,8 +4,9 @@ import logging
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
+from src.shared.logging_utils import log_event
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.parsers")
 
 
 class TextDocumentParser(DocumentParserPort):
@@ -39,9 +40,11 @@ class TextDocumentParser(DocumentParserPort):
             )
 
         doc.blocks = blocks
-        logger.info(
-            "txt_parsed document_id=%s blocks=%d",
-            document_id,
-            len(doc.blocks),
+        log_event(
+            logger,
+            logging.INFO,
+            "txt_parsed",
+            document_id=document_id,
+            blocks=len(doc.blocks),
         )
         return doc

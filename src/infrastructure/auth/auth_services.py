@@ -31,6 +31,12 @@ class JwtTokenService(TokenServicePort):
     def create_refresh_token(self, user_id: str) -> str:
         return jwt_handler.create_refresh_token(user_id)
 
+    def decode(self, token: str) -> dict | None:
+        try:
+            return jwt_handler.decode_token(token)
+        except Exception:
+            return None
+
 
 class JwtHumanCheck(HumanCheckPort):
     def create_challenge(self, locale: str = "pt-BR") -> dict[str, str]:

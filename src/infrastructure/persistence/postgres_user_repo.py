@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from datetime import datetime, timezone
+from psycopg.rows import dict_row
 
 from src.domain.models.user import User
 from src.domain.ports.user_repository import UserRepository
+from src.shared.config import utcnow
 from src.shared.uuid7 import uuid7
 
-from psycopg.rows import dict_row
-
 if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
     from psycopg import AsyncConnection
+    from psycopg_pool import AsyncConnectionPool
 
 
 class PostgresUserRepository(UserRepository):
@@ -25,9 +24,6 @@ class PostgresUserRepository(UserRepository):
     async def close(self) -> None:
         pass
 
-    def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
     async def create(
         self,
         email: str,
@@ -38,7 +34,7 @@ class PostgresUserRepository(UserRepository):
         role_key: str,
     ) -> User:
         user_id = uuid7()
-        now = self._now()
+        now = utcnow()
         role_id = (
             "00000000-0000-0000-0000-000000000001"
             if role_key == "admin"
@@ -151,7 +147,7 @@ class PostgresUserRepository(UserRepository):
             return await self.get_by_id(user_id)
 
         sets.append("updated_at = %s")
-        params.append(self._now())
+        params.append(utcnow())
         params.append(user_id)
 
         async with self._pool.connection() as conn:
@@ -177,7 +173,7 @@ class PostgresUserRepository(UserRepository):
                 return user
 
     async def confirm_email(self, user_id: str) -> None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -186,7 +182,7 @@ class PostgresUserRepository(UserRepository):
                 )
 
     async def update_last_login(self, user_id: str) -> None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -221,7 +217,7 @@ class PostgresUserRepository(UserRepository):
                 return dict(row) if row else None
 
     async def mark_confirmation_done(self, confirmation_id: str) -> None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -242,7 +238,7 @@ class PostgresUserRepository(UserRepository):
         return token_id
 
     async def revoke_refresh_token(self, token_hash: str) -> None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -251,7 +247,7 @@ class PostgresUserRepository(UserRepository):
                 )
 
     async def revoke_all_refresh_tokens(self, user_id: str) -> None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(

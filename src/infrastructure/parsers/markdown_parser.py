@@ -5,8 +5,9 @@ import re
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
+from src.shared.logging_utils import log_event
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.parsers")
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)", re.MULTILINE)
 _SECTION_DELIM = re.compile(r"\n(?=#{1,6}\s)")
@@ -87,10 +88,12 @@ class MarkdownDocumentParser(DocumentParserPort):
                 break
 
         doc.blocks = blocks
-        logger.info(
-            "md_parsed document_id=%s blocks=%d sections=%d",
-            document_id,
-            len(doc.blocks),
-            len(doc.sections),
+        log_event(
+            logger,
+            logging.INFO,
+            "md_parsed",
+            document_id=document_id,
+            blocks=len(doc.blocks),
+            sections=len(doc.sections),
         )
         return doc

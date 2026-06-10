@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-
 from dotenv import load_dotenv
+
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
@@ -79,6 +82,24 @@ WORKER_SHUTDOWN_TIMEOUT_SECONDS = int(
 
 QUEUE_MAX_RETRIES_DEFAULT = int(os.getenv("QUEUE_MAX_RETRIES_DEFAULT", "3"))
 
+LLM_MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
+LLM_CONTEXT_LENGTH = int(os.getenv("LLM_CONTEXT_LENGTH", "4096"))
+LLM_MAX_HISTORY_MESSAGE_CHARS = int(os.getenv("MAX_HISTORY_MESSAGE_CHARS", "1000"))
+LLM_MAX_HISTORY_TOTAL_CHARS = int(os.getenv("MAX_HISTORY_TOTAL_CHARS", "4000"))
+LLM_COMPLETION_MAX_TOKENS = int(os.getenv("LLM_COMPLETION_MAX_TOKENS", "768"))
+
+NO_THINK_PREFIX = (
+    "/no_think\n"
+    "Return only the final answer in message.content. "
+    "Do not include reasoning, analysis, thinking steps, or scratchpad output.\n\n"
+)
+
+MAX_FILE_SIZE = 50 * 1024 * 1024
+
+FILE_EXTENSIONS: dict[str, str] = {".pdf": "pdf", ".md": "md", ".txt": "txt"}
+FILE_EXT_TO_TYPE = FILE_EXTENSIONS
+FILE_TYPE_TO_EXT: dict[str, str] = {v: k for k, v in FILE_EXTENSIONS.items()}
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.getenv("DATA_DIR", str(PROJECT_ROOT / "data")))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", str(PROJECT_ROOT / "index")))
@@ -92,6 +113,17 @@ DATA_DIR_PDFS = DATA_DIR / "pdfs"
 DATA_DIR_MARKDOWN = DATA_DIR / "markdown"
 DATA_DIR_WEB = DATA_DIR / "web"
 AVATAR_DIR = DATA_DIR / "profile-avatars"
+DATA_DIR_PENDING = DATA_DIR / "suggestions"
+
+
+def utcnow() -> datetime:
+    """Return the current UTC datetime.
+
+    Returns:
+        A timezone-aware datetime in UTC.
+    """
+    return datetime.now(timezone.utc)
+
 
 LANCEDB_DIR = INDEX_DIR / "lancedb"
 
@@ -101,6 +133,11 @@ _CURRENT_SCHEMA_VERSION = "2"
 
 
 def read_index_version() -> str:
+    """Read the current index version from disk.
+
+    Returns:
+        The version string, or '0' if the version file does not exist.
+    """
     try:
         return INDEX_VERSION_FILE.read_text().strip()
     except (FileNotFoundError, OSError):
@@ -108,11 +145,24 @@ def read_index_version() -> str:
 
 
 def write_index_version(version: str) -> None:
+    """Persist the index version to disk.
+
+    Args:
+        version: The version string to write.
+    """
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     INDEX_VERSION_FILE.write_text(version.strip())
 
 
 def bump_index_version() -> str:
+    """Increment the index version and persist the new value.
+
+    If the current version is an integer it is incremented by 1;
+    otherwise a timestamp-based version is generated.
+
+    Returns:
+        The new version string.
+    """
     current = read_index_version()
     try:
         next_version = str(int(current) + 1)
@@ -125,6 +175,11 @@ def bump_index_version() -> str:
 
 
 def check_schema_version() -> tuple[bool, str, str]:
+    """Check whether the persisted schema version matches the expected version.
+
+    Returns:
+        A tuple of (matches, expected_version, actual_version).
+    """
     expected = _CURRENT_SCHEMA_VERSION
     try:
         actual = SCHEMA_VERSION_FILE.read_text().strip()
@@ -134,6 +189,7 @@ def check_schema_version() -> tuple[bool, str, str]:
 
 
 def write_schema_version() -> None:
+    """Persist the current expected schema version to disk."""
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     SCHEMA_VERSION_FILE.write_text(_CURRENT_SCHEMA_VERSION)
 

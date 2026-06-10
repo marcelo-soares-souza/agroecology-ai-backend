@@ -6,6 +6,28 @@ from typing import Any
 
 @dataclass
 class IndexedChunk:
+    """A chunk stored in the vector index with its embedding.
+
+    Attributes:
+        id: Unique chunk identifier.
+        text: The chunk's visible text content.
+        embedding_text: Enriched text used for embedding generation.
+        source: Source path or identifier of the document.
+        chunk_index: Position of this chunk within the document.
+        page_start: First page number covered by this chunk.
+        page_end: Last page number covered by this chunk.
+        section_title: Section title this chunk belongs to.
+        block_types: Comma-separated block type identifiers.
+        document_id: The parent document's unique identifier.
+        title: The document's title.
+        authors: The document's authors.
+        year: The publication year.
+        language: The document's language code.
+        doi: The document's DOI.
+        journal: The journal name.
+        vector: The chunk's embedding vector (optional, not always loaded).
+    """
+
     id: str
     text: str
     embedding_text: str
@@ -48,6 +70,32 @@ class IndexedChunk:
 
 @dataclass
 class RetrievedChunk:
+    """A chunk returned from a retrieval operation with scoring metadata.
+
+    Attributes:
+        id: Unique chunk identifier.
+        text: The chunk's visible text content.
+        source: Source path or identifier of the document.
+        chunk_index: Position of this chunk within the document.
+        page_start: First page number covered by this chunk.
+        page_end: Last page number covered by this chunk.
+        section_title: Section title this chunk belongs to.
+        block_types: Comma-separated block type identifiers.
+        document_id: The parent document's unique identifier.
+        title: The document's title.
+        authors: The document's authors.
+        year: The publication year.
+        language: The document's language code.
+        doi: The document's DOI.
+        journal: The journal name.
+        search_type: Retrieval method that produced this result ('vector', 'bm25', etc.).
+        distance: Similarity distance from vector search.
+        rerank_score: Relevance score from the reranker.
+        rrf_score: Reciprocal Rank Fusion score.
+        score: Final aggregated score.
+        score_type: Type of score used for ranking.
+    """
+
     id: str
     text: str
     source: str

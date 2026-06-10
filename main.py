@@ -14,6 +14,7 @@ from src.adapters.rest.dependencies import (
     get_ingest,
     get_manage_docs,
     get_vector_store,
+    get_web_scraper,
     init_services,
     shutdown_services,
 )
@@ -86,12 +87,16 @@ def cmd_chat(args):
 
 
 def cmd_scrape(args):
-    from src.infrastructure.scraping.web_scraper import scrape_urls
+    import asyncio
 
     urls = args.urls
     console.print(f"[bold]Scraping {len(urls)} URLs...[/bold]")
-    results = scrape_urls(urls)
-    console.print(f"[green]OK[/green] {len(results)} pages saved to data/web/")
+    try:
+        asyncio.run(init_services())
+        results = get_web_scraper().scrape_urls(urls)
+        console.print(f"[green]OK[/green] {len(results)} pages saved to data/web/")
+    finally:
+        asyncio.run(shutdown_services())
 
 
 def cmd_status(args):
@@ -186,6 +191,7 @@ def cmd_db_seed(args):
 
 def cmd_serve(args):
     import uvicorn
+
     from src.adapters.rest.server import app
 
     console.print("[bold]Starting API server...[/bold]")

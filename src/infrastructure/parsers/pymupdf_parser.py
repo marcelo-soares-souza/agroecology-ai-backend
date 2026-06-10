@@ -5,8 +5,9 @@ import re
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
+from src.shared.logging_utils import log_event
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.parsers")
 
 _ACADEMIC_SECTIONS = {
     "abstract": BlockType.ABSTRACT,
@@ -42,15 +43,6 @@ _HEADING_PATTERNS = [
 
 _DOI_PATTERN = re.compile(r"\b(10\.\d{4,}/[^\s]+)\b")
 _YEAR_PATTERN = re.compile(r"\b(19[7-9]\d|20[0-2]\d)\b")
-_JOURNAL_HINTS = [
-    r"journal of",
-    r"revista",
-    r"proceedings",
-    r"annals",
-    r"boletim",
-    r"acta",
-    r"pesquisa",
-]
 
 
 def _clean_text(text: str) -> str:
@@ -283,13 +275,15 @@ class PyMuPdfDocumentParser(DocumentParserPort):
         finally:
             pdf.close()
 
-        logger.info(
-            "pdf_parsed document_id=%s pages=%d blocks=%d sections=%d title=%s",
-            document_id,
-            doc.total_pages,
-            len(doc.blocks),
-            len(doc.sections),
-            doc.title or "(none)",
+        log_event(
+            logger,
+            logging.INFO,
+            "pdf_parsed",
+            document_id=document_id,
+            pages=doc.total_pages,
+            blocks=len(doc.blocks),
+            sections=len(doc.sections),
+            title=doc.title or "(none)",
         )
         return doc
 

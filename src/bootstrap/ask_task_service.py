@@ -10,7 +10,7 @@ from src.domain.dto.answer_result import TaskSubmissionResult
 from src.domain.ports.cache_port import CachePort
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
-logger = logging.getLogger("agroecology.http")
+logger = logging.getLogger("agroecology.bootstrap")
 
 
 class AskTaskService:

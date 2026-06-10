@@ -6,7 +6,6 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.domain.models.user import User
-from src.infrastructure.auth.jwt_handler import decode_token
 from src.shared.logging_utils import log_event, resolve_client_ip
 
 security = HTTPBearer(auto_error=False)
@@ -14,36 +13,11 @@ logger = logging.getLogger("agroecology.auth")
 
 
 async def _resolve_token(token_str: str, client_ip: str) -> User:
-    try:
-        payload = decode_token(token_str)
-    except Exception:
-        log_event(logger, logging.WARNING, "auth_invalid_token", ip=client_ip)
+    from src.adapters.rest.dependencies import get_validate_session
+
+    user = await get_validate_session().execute(token_str, client_ip)
+    if user is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = payload.get("sub")
-    if not user_id:
-        log_event(logger, logging.WARNING, "auth_missing_subject", ip=client_ip)
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    from src.adapters.rest.dependencies import get_user_repo
-
-    repo = await get_user_repo()
-    user = await repo.get_by_id(user_id)
-    if not user:
-        log_event(
-            logger,
-            logging.WARNING,
-            "auth_user_not_found",
-            user_id=user_id,
-            ip=client_ip,
-        )
-        raise HTTPException(status_code=401, detail="User not found")
-    if user.status != "active":
-        log_event(
-            logger, logging.WARNING, "auth_user_inactive", user_id=user.id, ip=client_ip
-        )
-        raise HTTPException(status_code=401, detail="Account not active")
-
     return user
 
 

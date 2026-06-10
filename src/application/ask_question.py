@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import re
 from typing import Any
@@ -10,26 +12,17 @@ from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
 from src.domain.services.retriever import RetrieverService
 from src.shared.config import (
+    LLM_CHUNK_MAX_CHARS,
     LLM_CONTEXT_CHARS_BUDGET,
     LLM_CONTEXT_MAX_CHUNKS,
     LLM_CONTEXT_RETRY_MAX_CHUNKS,
-    LLM_CHUNK_MAX_CHARS,
     RERANK_TOP_K,
     SYSTEM_PROMPT,
     USER_PROMPT,
 )
+from src.shared.history_utils import find_last_message, is_context_dependent_question
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
-_CONTEXT_DEPENDENT_PATTERNS = (
-    re.compile(r"^\s*(and|also|what about|how about)\b", re.IGNORECASE),
-    re.compile(r"\b(this|that|it|they|them|those|these)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(tell me more|more detail|more details|expand on|go deeper|explain)\b",
-        re.IGNORECASE,
-    ),
-)
-
-_MAX_HISTORY_SNIPPET_CHARS = 500
 _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "Portuguese",
@@ -138,9 +131,7 @@ class AskQuestion:
     ) -> AnswerResult:
         started_at = take_perf_snapshot()
         normalized_history: list[dict[str, Any]] = history or []
-        follow_up = bool(normalized_history) and self._is_context_dependent_question(
-            question
-        )
+        follow_up = bool(normalized_history) and is_context_dependent_question(question)
         (
             expected_language,
             language_confidence,
@@ -356,50 +347,6 @@ class AskQuestion:
 
         return selected or retrieved[:1]
 
-    @classmethod
-    def _build_search_query(cls, question: str, history: list[dict[str, Any]]) -> str:
-        if not history or not cls._is_context_dependent_question(question):
-            return question
-
-        last_user = cls._find_last_message(history, "user")
-        last_assistant = cls._find_last_message(history, "assistant")
-        if not last_user and not last_assistant:
-            return question
-
-        snippets = [f"Current follow-up question: {question.strip()}"]
-        if last_user:
-            snippets.append(
-                f"Previous user question: {cls._normalize_snippet(last_user)}"
-            )
-        if last_assistant:
-            snippets.append(
-                f"Previous assistant answer: {cls._normalize_snippet(last_assistant)}"
-            )
-        return "\n".join(snippets)
-
-    @classmethod
-    def _is_context_dependent_question(cls, question: str) -> bool:
-        compact_question = " ".join(question.strip().split())
-        if not compact_question:
-            return False
-        if len(compact_question.split()) <= 4:
-            return True
-        return any(
-            pattern.search(compact_question) for pattern in _CONTEXT_DEPENDENT_PATTERNS
-        )
-
-    @staticmethod
-    def _find_last_message(history: list[dict[str, Any]], role: str) -> str:
-        for message in reversed(history):
-            if message.get("role") == role and message.get("content"):
-                return str(message["content"])
-        return ""
-
-    @staticmethod
-    def _normalize_snippet(content: str) -> str:
-        compact_content = " ".join(content.split())
-        return compact_content[:_MAX_HISTORY_SNIPPET_CHARS]
-
     @staticmethod
     def _detect_question_language(question: str) -> tuple[str, str]:
         compact_question = " ".join(question.strip().split())
@@ -440,7 +387,7 @@ class AskQuestion:
             return detected_language, confidence, "current_question_lingua"
 
         if follow_up:
-            last_user = cls._find_last_message(history, "user")
+            last_user = find_last_message(history, "user")
             if last_user:
                 previous_language, previous_confidence = cls._detect_question_language(
                     last_user

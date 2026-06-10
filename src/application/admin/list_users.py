@@ -10,4 +10,12 @@ class ListUsers:
 
     async def execute(self) -> list[UserDTO]:
         users = await self._repo.list_all()
-        return [UserDTO.from_user(u) for u in users]
+        return [
+            UserDTO.from_user(
+                u,
+                avatar_url=f"/api/v1/users/{u.slug}/profile/avatar/file"
+                if u.avatar_path
+                else None,
+            )
+            for u in users
+        ]

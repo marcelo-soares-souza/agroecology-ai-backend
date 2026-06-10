@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import psycopg
+
 from src.infrastructure.auth.password_hasher import hash_password
 from src.shared.config import ADMIN_EMAIL, ADMIN_PASSWORD, DATABASE_URL
 from src.shared.uuid7 import uuid7
-
-import psycopg
 
 
 def seed_roles_and_admin() -> tuple[bool, bool]:

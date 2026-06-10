@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import logging
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import aiosmtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
-from src.shared.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM
+from src.shared.config import SMTP_FROM, SMTP_HOST, SMTP_PASSWORD, SMTP_PORT, SMTP_USER
 from src.shared.logging_utils import log_event, mask_email
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.email")
 
 _PREFIX = "[Agroecology Map]"
 

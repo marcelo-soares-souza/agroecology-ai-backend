@@ -6,6 +6,29 @@ from datetime import datetime
 
 @dataclass
 class DocumentSuggestion:
+    """A user-submitted document suggestion with review state.
+
+    Attributes:
+        id: Unique suggestion identifier.
+        user_id: The submitter's user ID.
+        status: Current review status.
+        user_comment: The submitter's comment.
+        created_at: Timestamp of submission.
+        updated_at: Timestamp of last update.
+        title: Suggested document title.
+        authors: Suggested document authors.
+        url: External URL for the suggested document.
+        admin_comment: Admin review comment.
+        original_filename: Uploaded filename, if any.
+        file_type: File type of the upload.
+        file_size: File size in bytes.
+        storage_directory: Where the uploaded file is stored.
+        sha256: SHA-256 hash of the uploaded content.
+        document_id: The document created from this suggestion, if approved.
+        reviewed_by: The reviewer's user ID.
+        reviewed_at: Timestamp of the review.
+    """
+
     id: str
     user_id: str
     status: str
@@ -28,6 +51,22 @@ class DocumentSuggestion:
 
 @dataclass
 class DocumentSuggestionCreate:
+    """Data required to create a new document suggestion.
+
+    Attributes:
+        id: Unique suggestion identifier.
+        user_id: The submitter's user ID.
+        user_comment: The submitter's comment.
+        title: Suggested document title.
+        authors: Suggested document authors.
+        url: External URL for the suggested document.
+        original_filename: Uploaded filename, if any.
+        file_type: File type of the upload.
+        file_size: File size in bytes.
+        storage_directory: Where the uploaded file is stored.
+        sha256: SHA-256 hash of the uploaded content.
+    """
+
     id: str
     user_id: str
     user_comment: str
@@ -43,6 +82,21 @@ class DocumentSuggestionCreate:
 
 @dataclass
 class DocumentSuggestionUpdate:
+    """Fields that can be updated on an existing suggestion.
+
+    Attributes:
+        title: New title (None to leave unchanged).
+        authors: New authors (None to leave unchanged).
+        url: New URL (None to leave unchanged).
+        user_comment: Updated submitter comment.
+        admin_comment: Updated admin comment.
+        original_filename: Updated filename.
+        file_type: Updated file type.
+        file_size: Updated file size.
+        storage_directory: Updated storage path.
+        sha256: Updated SHA-256 hash.
+    """
+
     title: str | None = field(default=None)
     authors: str | None = field(default=None)
     url: str | None = field(default=None)
@@ -53,8 +107,3 @@ class DocumentSuggestionUpdate:
     file_size: int | None = field(default=None)
     storage_directory: str | None = field(default=None)
     sha256: str | None = field(default=None)
-
-
-@dataclass
-class DocumentSuggestionDecision:
-    admin_comment: str | None = None

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import hashlib
 import asyncio
+import hashlib
 from urllib.parse import urlparse
 
 import trafilatura
 
 from src.domain.ports.file_storage_port import FileStoragePort
+from src.domain.ports.web_scraper_port import WebScraperPort
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
 
 
@@ -18,7 +19,7 @@ def url_to_filename(url: str) -> str:
     return f"{slug}_{h}"
 
 
-class WebScraper:
+class WebScraper(WebScraperPort):
     def __init__(self, storage: FileStoragePort | None = None) -> None:
         self._storage = storage or LocalFileStorage()
 

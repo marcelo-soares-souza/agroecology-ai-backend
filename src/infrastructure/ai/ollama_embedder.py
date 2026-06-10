@@ -12,6 +12,9 @@ class OllamaEmbedder(EmbeddingPort):
         self._dim: int | None = None
         self._client = httpx.Client(timeout=httpx.Timeout(60))
 
+    def close(self) -> None:
+        self._client.close()
+
     def _embed(self, texts: list[str]) -> list[list[float]]:
         resp = self._client.post(
             f"{self._base_url}/api/embed",

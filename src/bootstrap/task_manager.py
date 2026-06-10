@@ -4,6 +4,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+from src.domain.dto.task_dto import TaskDTO
+from src.domain.ports.task_manager_port import TaskManagerPort
 from src.shared.config import CLEANUP_INTERVAL, TASK_TTL
 from src.shared.uuid7 import uuid7
 
@@ -21,7 +23,7 @@ class Task:
     completed_at: float | None = None
 
 
-class TaskManager:
+class TaskManager(TaskManagerPort):
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
         self._lock = threading.Lock()
@@ -56,9 +58,22 @@ class TaskManager:
             self._tasks[task_id] = task
         return task_id
 
-    def get(self, task_id: str) -> Task | None:
+    def get(self, task_id: str) -> TaskDTO | None:
         with self._lock:
-            return self._tasks.get(task_id)
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            return TaskDTO(
+                task_id=task.task_id,
+                question=task.question,
+                top_k=task.top_k,
+                status=task.status,
+                answer=task.answer,
+                sources=task.sources,
+                error=task.error,
+                created_at=task.created_at,
+                completed_at=task.completed_at,
+            )
 
     def update(
         self,

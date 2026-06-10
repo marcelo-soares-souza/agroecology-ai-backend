@@ -5,9 +5,10 @@ import hashlib
 from src.domain.models.document import Document, DocumentCreate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
+from src.shared.config import FILE_TYPE_TO_EXT
 from src.shared.uuid7 import uuid7
 
-_FILE_EXTENSIONS = {"pdf": ".pdf", "md": ".md", "txt": ".txt"}
+TitleMap = dict[str, str | None]
 
 
 class ManageDocuments:
@@ -27,7 +28,7 @@ class ManageDocuments:
     ) -> Document:
         sha256_hash = hashlib.sha256(content).hexdigest()
         doc_id = uuid7()
-        ext = _FILE_EXTENSIONS.get(file_type, "")
+        ext = FILE_TYPE_TO_EXT.get(file_type, "")
         await self._storage.save(directory, doc_id, ext, content)
 
         doc = DocumentCreate(
@@ -65,7 +66,7 @@ class ManageDocuments:
     async def delete(self, doc_id: str) -> Document | None:
         doc = await self._repo.delete(doc_id)
         if doc:
-            ext = _FILE_EXTENSIONS.get(doc.file_type, "")
+            ext = FILE_TYPE_TO_EXT.get(doc.file_type, "")
             await self._storage.delete(doc.directory, doc.id, ext)
         return doc
 
@@ -75,5 +76,5 @@ class ManageDocuments:
     async def sha256_exists(self, sha256: str) -> bool:
         return await self._repo.sha256_exists(sha256)
 
-    async def get_title_map(self) -> dict[str, str | None]:
+    async def get_title_map(self) -> TitleMap:
         return await self._repo.get_title_map()

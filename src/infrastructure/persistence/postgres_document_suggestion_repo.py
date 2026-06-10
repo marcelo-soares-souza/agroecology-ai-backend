@@ -2,18 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from datetime import datetime, timezone
+from psycopg.rows import dict_row
 
 from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionCreate,
     DocumentSuggestionUpdate,
 )
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
-
-from psycopg.rows import dict_row
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
+from src.shared.config import utcnow
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -29,11 +26,8 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
     async def close(self) -> None:
         pass
 
-    def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
     async def insert(self, suggestion: DocumentSuggestionCreate) -> DocumentSuggestion:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -177,7 +171,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
     async def update(
         self, suggestion_id: str, data: DocumentSuggestionUpdate
     ) -> DocumentSuggestion | None:
-        now = self._now()
+        now = utcnow()
         sets: list[str] = []
         params: list[str | int | None] = []
 
@@ -241,7 +235,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         reviewed_by: str,
         reviewed_at,
     ) -> DocumentSuggestion | None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -269,7 +263,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
         reviewed_by: str,
         reviewed_at,
     ) -> DocumentSuggestion | None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(

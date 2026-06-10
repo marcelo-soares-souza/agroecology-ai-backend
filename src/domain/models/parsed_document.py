@@ -5,6 +5,8 @@ from enum import Enum
 
 
 class BlockType(str, Enum):
+    """Enumeration of semantic block types found in parsed documents."""
+
     TITLE = "title"
     ABSTRACT = "abstract"
     SECTION_HEADING = "section_heading"
@@ -18,6 +20,22 @@ class BlockType(str, Enum):
 
 @dataclass
 class ParsedBlock:
+    """A single semantic block extracted from a document.
+
+    Attributes:
+        document_id: The parent document's identifier.
+        source: Source path of the document.
+        page_number: The page number this block appears on.
+        block_type: The semantic type of the block.
+        section_title: The section heading this block belongs to.
+        text: The block's text content.
+        order: Sort order of this block within the document.
+        font_name: The font used for this block.
+        font_size: The font size in points.
+        is_bold: Whether the text is bold.
+        bbox: Bounding box coordinates (x0, y0, x1, y1).
+    """
+
     document_id: str
     source: str
     page_number: int
@@ -34,6 +52,24 @@ class ParsedBlock:
 
 @dataclass
 class ParsedDocument:
+    """A fully parsed document with structured blocks and metadata.
+
+    Attributes:
+        document_id: The document's unique identifier.
+        source: The source path or identifier.
+        file_type: The file type (e.g., 'pdf', 'md').
+        blocks: The ordered list of parsed blocks.
+        title: The document's title, if detected.
+        authors: The document's authors, if detected.
+        year: The publication year, if detected.
+        doi: The DOI, if detected.
+        journal: The journal name, if detected.
+        abstract: The abstract text, if detected.
+        keywords: Extracted keywords.
+        language: The document's language code.
+        total_pages: Total number of pages.
+    """
+
     document_id: str
     source: str
     file_type: str

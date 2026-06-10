@@ -6,8 +6,7 @@ from src.domain.models.document import DocumentUpdate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.pdf_text_extractor_port import PdfTextExtractorPort
-
-_FILE_EXTENSIONS = {"pdf": ".pdf"}
+from src.shared.config import FILE_TYPE_TO_EXT
 
 
 class ExtractDocumentMetadata:
@@ -31,7 +30,7 @@ class ExtractDocumentMetadata:
         if doc.file_type != "pdf":
             return None
 
-        ext = _FILE_EXTENSIONS.get(doc.file_type)
+        ext = FILE_TYPE_TO_EXT.get(doc.file_type)
         if not ext:
             return None
 

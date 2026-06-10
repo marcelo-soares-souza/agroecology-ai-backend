@@ -43,8 +43,13 @@ class LoginUser:
         exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
         await self._repo.store_refresh_token(user.id, new_hash, exp)
 
+        avatar_url = (
+            f"/api/v1/users/{user.slug}/profile/avatar/file"
+            if user.avatar_path
+            else None
+        )
         return LoginResult(
             access_token=access_token,
             refresh_token=raw_refresh,
-            user=UserDTO.from_user(user),
+            user=UserDTO.from_user(user, avatar_url=avatar_url),
         )

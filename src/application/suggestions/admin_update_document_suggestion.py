@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from src.application.suggestions._guard import require_pending_suggestion
 from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionUpdate,
 )
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 
 
 class AdminUpdateDocumentSuggestion:
@@ -22,9 +21,7 @@ class AdminUpdateDocumentSuggestion:
         user_comment: str | None = None,
         admin_comment: str | None = None,
     ) -> DocumentSuggestion:
-        suggestion = await self._suggestion_repo.get(suggestion_id)
-        if suggestion is None:
-            raise ValueError("Suggestion not found")
+        await require_pending_suggestion(self._suggestion_repo, suggestion_id)
 
         data = DocumentSuggestionUpdate(
             title=title,

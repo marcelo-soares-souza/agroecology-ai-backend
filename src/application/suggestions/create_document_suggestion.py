@@ -10,17 +10,14 @@ from src.domain.models.document_suggestion import (
 )
 from src.domain.ports.auth_services_port import EmailPort
 from src.domain.ports.document_repository import DocumentRepository
-from src.domain.ports.document_suggestion_repository import (
-    DocumentSuggestionRepository,
-)
+from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
+from src.shared.config import DATA_DIR_PENDING, MAX_FILE_SIZE
+from src.shared.logging_utils import log_event
 from src.shared.uuid7 import uuid7
 
 logger = logging.getLogger("agroecology.suggestions")
-
-_MAX_FILE_SIZE = 50 * 1024 * 1024
-_PENDING_DIR = "suggestions"
 
 
 class CreateDocumentSuggestion:
@@ -77,7 +74,7 @@ class CreateDocumentSuggestion:
             if len(file_content) == 0:
                 raise ValueError("Empty file")
 
-            if len(file_content) > _MAX_FILE_SIZE:
+            if len(file_content) > MAX_FILE_SIZE:
                 raise ValueError(
                     f"File exceeds 50 MB ({len(file_content) / 1024 / 1024:.1f} MB)"
                 )
@@ -103,7 +100,9 @@ class CreateDocumentSuggestion:
         suggestion_id = uuid7()
 
         if file_content is not None:
-            await self._storage.save(_PENDING_DIR, suggestion_id, ".pdf", file_content)
+            await self._storage.save(
+                DATA_DIR_PENDING.name, suggestion_id, ".pdf", file_content
+            )
 
         suggestion = DocumentSuggestionCreate(
             id=suggestion_id,
@@ -115,7 +114,7 @@ class CreateDocumentSuggestion:
             original_filename=original_filename,
             file_type=file_type,
             file_size=file_size,
-            storage_directory=_PENDING_DIR,
+            storage_directory=DATA_DIR_PENDING.name,
             sha256=sha256_hash,
         )
 
@@ -143,10 +142,12 @@ class CreateDocumentSuggestion:
                         title=suggestion.title or "",
                     )
                 except Exception as e:
-                    logger.warning(
-                        "admin_notification_failed admin=%s error=%s",
-                        admin.email,
-                        e,
+                    log_event(
+                        logger,
+                        logging.WARNING,
+                        "admin_notification_failed",
+                        admin=admin.email,
+                        error=e,
                     )
         except Exception as e:
-            logger.warning("admin_notification_error error=%s", e)
+            log_event(logger, logging.WARNING, "admin_notification_error", error=e)

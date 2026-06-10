@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from datetime import datetime, timezone
+from psycopg.rows import dict_row
 
 from src.domain.models.ingestion_run import IngestionRun
 from src.domain.ports.ingestion_repository import IngestionRepository
+from src.shared.config import utcnow
 from src.shared.uuid7 import uuid7
-
-from psycopg.rows import dict_row
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -24,12 +23,9 @@ class PostgresIngestionRepository(IngestionRepository):
     async def close(self) -> None:
         pass
 
-    def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
-
     async def insert(self) -> IngestionRun:
         run_id = uuid7()
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -48,7 +44,7 @@ class PostgresIngestionRepository(IngestionRepository):
         chunks_indexed: int = 0,
         error: str | None = None,
     ) -> IngestionRun | None:
-        now = self._now()
+        now = utcnow()
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(

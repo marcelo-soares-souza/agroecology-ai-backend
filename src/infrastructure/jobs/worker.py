@@ -7,11 +7,10 @@ import threading
 from typing import Callable, Protocol
 
 from src.domain.dto.document_result import MetadataExtractionResult
-
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.shared.logging_utils import log_event
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("agroecology.worker")
 
 
 class MetadataExtractionUseCase(Protocol):
@@ -84,6 +83,7 @@ def start_job_worker(
     metadata_use_case: MetadataExtractionUseCase | None = None,
 ) -> threading.Thread:
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from src.shared.config import (
         WORKER_BATCH_SIZE,
         WORKER_MAX_WORKERS,

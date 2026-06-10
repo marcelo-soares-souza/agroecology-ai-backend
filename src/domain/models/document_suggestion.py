@@ -31,11 +31,11 @@ class DocumentSuggestion:
 
     id: str
     user_id: str
-    user_name: str | None = None
     status: str
     user_comment: str
     created_at: datetime
     updated_at: datetime
+    user_name: str | None = None
     title: str | None = None
     authors: str | None = None
     url: str | None = None

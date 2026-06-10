@@ -24,11 +24,11 @@ from src.adapters.rest.dependencies import (
     get_ingestion_task_service,
     get_ingestion_repo,
     get_manage_docs,
-    get_retriever,
     get_metadata_job_status,
     get_status_service,
     get_task_manager,
     get_upload_document,
+    get_vector_store,
     init_services,
     shutdown_services,
 )
@@ -198,11 +198,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
             ),
         )
 
-    retriever = get_retriever()
-
-    try:
-        retriever.hybrid_search("healthcheck", top_k=1)
-    except FileNotFoundError:
+    if not get_vector_store().index_exists():
         raise HTTPException(
             status_code=503,
             detail="Index not found. Run: python main.py ingest",

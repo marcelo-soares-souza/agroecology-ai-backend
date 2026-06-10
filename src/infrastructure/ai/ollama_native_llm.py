@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Any
 from urllib.parse import urlparse
@@ -50,6 +51,8 @@ class OllamaNativeLLM(LLMPort):
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._client = httpx.Client(timeout=httpx.Timeout(300.0))
+        self._lock = threading.Lock()
 
     def complete(self, system_prompt: str, user_prompt: str, **kwargs: Any) -> str:
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
@@ -119,7 +122,8 @@ class OllamaNativeLLM(LLMPort):
 
         started_at = time.perf_counter()
         try:
-            response = httpx.post(self._api_url, json=payload, timeout=300.0)
+            with self._lock:
+                response = self._client.post(self._api_url, json=payload)
             response.raise_for_status()
             body = response.json()
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)

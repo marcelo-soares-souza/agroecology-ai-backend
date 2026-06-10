@@ -42,6 +42,12 @@ class RetrieverService:
             logger.info("bm25_cache_built chunks=%d", len(self._bm25_texts))
         return self._bm25, self._bm25_all_rows
 
+    def prewarm_bm25(self) -> None:
+        started_at = time.perf_counter()
+        self._get_bm25()
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        logger.info("bm25_cache_prewarmed duration_ms=%s", duration_ms)
+
     def invalidate_bm25_cache(self) -> None:
         self._bm25 = None
         self._bm25_texts = []

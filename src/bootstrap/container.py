@@ -272,6 +272,8 @@ class Container:
             log_event(logger, logging.INFO, "file_storage_initialized")
 
             self._create_use_cases()
+            if self.retriever is not None:
+                self.retriever.prewarm_bm25()
             self._initialized = True
             log_event(logger, logging.INFO, "container_init_completed")
         except Exception:

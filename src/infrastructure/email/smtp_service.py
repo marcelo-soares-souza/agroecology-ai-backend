@@ -169,6 +169,7 @@ async def send_suggestion_approved_email(
             subject = "Sua sugestão foi aprovada"
             body = f"""<h2>Sugestão Aprovada</h2>
 <p>Sua sugestão <strong>{display_title}</strong> foi aprovada e já está disponível na base de conhecimento.</p>
+<p>Em até 48h o artigo será indexado/ingerido e estará disponível para consulta no Chat.</p>
 <p>Obrigado por contribuir!</p>
 <hr>
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
@@ -176,6 +177,7 @@ async def send_suggestion_approved_email(
             subject = "Tu sugerencia fue aprobada"
             body = f"""<h2>Sugerencia Aprobada</h2>
 <p>Tu sugerencia <strong>{display_title}</strong> fue aprobada y ya está disponible en la base de conocimiento.</p>
+<p>En hasta 48h el artículo será indexado/ingerido y estará disponible para consulta en el Chat.</p>
 <p>¡Gracias por contribuir!</p>
 <hr>
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
@@ -183,6 +185,7 @@ async def send_suggestion_approved_email(
         subject = "Votre suggestion a été approuvée"
         body = f"""<h2>Suggestion Approuvée</h2>
 <p>Votre suggestion <strong>{display_title}</strong> a été approuvée et est désormais disponible dans la base de connaissances.</p>
+<p>Dans un délai de 48h, l'article sera indexé/ingéré et disponible dans le Chat.</p>
 <p>Merci d'avoir contribué !</p>
 <hr>
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
@@ -190,6 +193,7 @@ async def send_suggestion_approved_email(
         subject = "Your suggestion was approved"
         body = f"""<h2>Suggestion Approved</h2>
 <p>Your suggestion <strong>{display_title}</strong> has been approved and is now available in the knowledge base.</p>
+<p>Within 48h the article will be indexed/ingested and available in the Chat.</p>
 <p>Thank you for contributing!</p>
 <hr>
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""

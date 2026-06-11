@@ -36,6 +36,7 @@ class DocumentSuggestion:
     created_at: datetime
     updated_at: datetime
     user_name: str | None = None
+    user_slug: str | None = None
     title: str | None = None
     authors: str | None = None
     url: str | None = None

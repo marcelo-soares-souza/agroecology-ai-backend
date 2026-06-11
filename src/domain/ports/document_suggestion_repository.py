@@ -116,6 +116,17 @@ class DocumentSuggestionRepository(ABC):
         """
 
     @abstractmethod
+    async def get_by_document_id(self, document_id: str) -> DocumentSuggestion | None:
+        """Find the suggestion that originated a given document, if any.
+
+        Args:
+            document_id: The document's identifier.
+
+        Returns:
+            The suggestion linked to this document, or None.
+        """
+
+    @abstractmethod
     async def sha256_exists(self, sha256: str) -> bool:
         """Check whether a suggestion with the given SHA-256 hash already exists.
 

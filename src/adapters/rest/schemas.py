@@ -91,6 +91,9 @@ class DocumentRecord(BaseModel):
     ingested: bool = False
     created_at: str
     updated_at: str
+    suggested_by_user_id: str | None = None
+    suggested_by_user_name: str | None = None
+    suggested_by_user_slug: str | None = None
 
 
 class DocumentUploaded(BaseModel):

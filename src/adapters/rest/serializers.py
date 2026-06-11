@@ -36,7 +36,12 @@ def serialize_public_user(user: User | UserDTO) -> dict:
     }
 
 
-def serialize_document(doc: Document) -> dict:
+def serialize_document(
+    doc: Document,
+    suggested_by_user_id: str | None = None,
+    suggested_by_user_name: str | None = None,
+    suggested_by_user_slug: str | None = None,
+) -> dict:
     return {
         "id": doc.id,
         "filename": doc.filename,
@@ -49,6 +54,9 @@ def serialize_document(doc: Document) -> dict:
         "ingested": doc.ingested,
         "created_at": doc.created_at.isoformat(),
         "updated_at": doc.updated_at.isoformat(),
+        "suggested_by_user_id": suggested_by_user_id,
+        "suggested_by_user_name": suggested_by_user_name,
+        "suggested_by_user_slug": suggested_by_user_slug,
     }
 
 

@@ -65,7 +65,8 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
                     "COALESCE(d.authors, ds.authors) AS authors, "
-                    "u.full_name AS user_name "
+                    "u.full_name AS user_name, "
+                    "u.slug AS user_slug "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
                     "LEFT JOIN users u ON ds.user_id = u.id "
@@ -84,7 +85,8 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
                     "COALESCE(d.authors, ds.authors) AS authors, "
-                    "u.full_name AS user_name "
+                    "u.full_name AS user_name, "
+                    "u.slug AS user_slug "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
                     "LEFT JOIN users u ON ds.user_id = u.id "
@@ -101,7 +103,8 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
             "SELECT ds.*, "
             "COALESCE(d.title, ds.title) AS title, "
             "COALESCE(d.authors, ds.authors) AS authors, "
-            "u.full_name AS user_name "
+            "u.full_name AS user_name, "
+            "u.slug AS user_slug "
             "FROM document_suggestions ds "
             "LEFT JOIN documents d ON ds.document_id = d.id "
             "LEFT JOIN users u ON ds.user_id = u.id "
@@ -165,7 +168,8 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                     "SELECT ds.*, "
                     "COALESCE(d.title, ds.title) AS title, "
                     "COALESCE(d.authors, ds.authors) AS authors, "
-                    "u.full_name AS user_name "
+                    "u.full_name AS user_name, "
+                    "u.slug AS user_slug "
                     "FROM document_suggestions ds "
                     "LEFT JOIN documents d ON ds.document_id = d.id "
                     "LEFT JOIN users u ON ds.user_id = u.id "
@@ -222,6 +226,26 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 await cur.execute(
                     "DELETE FROM document_suggestions WHERE id = %s RETURNING *",
                     (suggestion_id,),
+                )
+                row = await cur.fetchone()
+                return self._to_domain(dict(row)) if row else None
+
+    async def get_by_document_id(self, document_id: str) -> DocumentSuggestion | None:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "SELECT ds.*, "
+                    "COALESCE(d.title, ds.title) AS title, "
+                    "COALESCE(d.authors, ds.authors) AS authors, "
+                    "u.full_name AS user_name, "
+                    "u.slug AS user_slug "
+                    "FROM document_suggestions ds "
+                    "LEFT JOIN documents d ON ds.document_id = d.id "
+                    "LEFT JOIN users u ON ds.user_id = u.id "
+                    "WHERE ds.document_id = %s AND ds.status = 'approved' "
+                    "ORDER BY ds.updated_at DESC "
+                    "LIMIT 1",
+                    (document_id,),
                 )
                 row = await cur.fetchone()
                 return self._to_domain(dict(row)) if row else None
@@ -290,6 +314,7 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
             id=row["id"],
             user_id=row["user_id"],
             user_name=row.get("user_name"),
+            user_slug=row.get("user_slug"),
             status=row["status"],
             title=row.get("title"),
             authors=row.get("authors"),

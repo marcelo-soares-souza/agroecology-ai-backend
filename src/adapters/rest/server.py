@@ -27,6 +27,7 @@ from src.adapters.rest.dependencies import (
     get_manage_docs,
     get_metadata_job_status,
     get_status_service,
+    get_suggestion_repo,
     get_task_status,
     get_upload_document,
     init_services,
@@ -356,13 +357,29 @@ async def get_one_document(doc_id: str):
     doc = await manage.get(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    suggested_by_user_id: str | None = None
+    suggested_by_user_name: str | None = None
+    suggested_by_user_slug: str | None = None
+    suggestion_repo = await get_suggestion_repo()
+    suggestion = await suggestion_repo.get_by_document_id(doc_id)
+    if suggestion:
+        suggested_by_user_id = suggestion.user_id
+        suggested_by_user_name = suggestion.user_name
+        suggested_by_user_slug = suggestion.user_slug
+
     log_event(
         logger,
         logging.INFO,
         "document_get_completed",
         document_id=doc_id,
     )
-    return serialize_document(doc)
+    return serialize_document(
+        doc,
+        suggested_by_user_id=suggested_by_user_id,
+        suggested_by_user_name=suggested_by_user_name,
+        suggested_by_user_slug=suggested_by_user_slug,
+    )
 
 
 @app.put("/api/v1/documents/{doc_id}", response_model=DocumentRecord)

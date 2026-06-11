@@ -32,6 +32,8 @@ class PostgresUserRepository(UserRepository):
         slug: str,
         locale: str,
         role_key: str,
+        privacy_policy_accepted: bool = False,
+        tos_accepted: bool = False,
     ) -> User:
         user_id = uuid7()
         now = utcnow()
@@ -44,8 +46,10 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    """INSERT INTO users (id, email, full_name, password_hash, slug, locale, status, created_at, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                    """INSERT INTO users (id, email, full_name, password_hash, slug, locale, status,
+                              privacy_policy_accepted, privacy_policy_accepted_at,
+                              tos_accepted, tos_accepted_at, created_at, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                     (
                         user_id,
                         email,
@@ -54,6 +58,10 @@ class PostgresUserRepository(UserRepository):
                         slug,
                         locale,
                         "pending",
+                        privacy_policy_accepted,
+                        now if privacy_policy_accepted else None,
+                        tos_accepted,
+                        now if tos_accepted else None,
                         now,
                         now,
                     ),
@@ -171,6 +179,40 @@ class PostgresUserRepository(UserRepository):
                 user = await self._enrich_user(dict(row), conn)
                 await cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 return user
+
+    async def anonymize_user(self, user_id: str) -> User | None:
+        now = utcnow()
+        deleted_uid = uuid7()
+        placeholder_email = f"deleted-{deleted_uid}@deleted"
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+                row = await cur.fetchone()
+                if row is None:
+                    return None
+
+                await cur.execute(
+                    """UPDATE users SET
+                         full_name = 'Deleted User',
+                         email = %s,
+                         about = NULL,
+                         link = NULL,
+                         avatar_path = NULL,
+                         status = 'deleted',
+                         updated_at = %s
+                       WHERE id = %s RETURNING *""",
+                    (placeholder_email, now, user_id),
+                )
+                updated = await cur.fetchone()
+
+                await cur.execute(
+                    "UPDATE refresh_tokens SET revoked_at = %s WHERE user_id = %s AND revoked_at IS NULL",
+                    (now, user_id),
+                )
+
+                if updated is not None:
+                    return await self._enrich_user(dict(updated), conn)
+                return None
 
     async def confirm_email(self, user_id: str) -> None:
         now = utcnow()

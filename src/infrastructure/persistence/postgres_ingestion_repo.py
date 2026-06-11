@@ -140,6 +140,21 @@ class PostgresIngestionRepository(IngestionRepository):
                 row = await cur.fetchone()
                 return self._to_domain(dict(row)) if row else None
 
+    async def clear_stale_runs(self) -> int:
+        now = utcnow()
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """UPDATE ingestion_runs
+                       SET phase = 'error',
+                           status = 'error',
+                           error = COALESCE(error, 'stale run cleared by force'),
+                           finished_at = %s
+                       WHERE phase IN ('queued', 'processing')""",
+                    (now,),
+                )
+                return cur.rowcount
+
     async def insert(self) -> IngestionRun:
         run_id = uuid7()
         now = utcnow()

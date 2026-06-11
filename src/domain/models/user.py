@@ -43,3 +43,7 @@ class User:
     link: str | None = None
     avatar_path: str | None = None
     approved_suggestions_count: int = 0
+    privacy_policy_accepted: bool = False
+    privacy_policy_accepted_at: datetime | None = None
+    tos_accepted: bool = False
+    tos_accepted_at: datetime | None = None

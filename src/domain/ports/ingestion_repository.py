@@ -111,6 +111,17 @@ class IngestionRepository(ABC):
         """
 
     @abstractmethod
+    async def clear_stale_runs(self) -> int:
+        """Reset stale active runs to phase='error'.
+
+        Any run with phase 'queued' or 'processing' is considered stale
+        and is marked as an error so it no longer blocks new ingestions.
+
+        Returns:
+            The number of runs that were cleared.
+        """
+
+    @abstractmethod
     async def insert(self) -> IngestionRun:
         """Start a new ingestion run directly as 'processing'.
 

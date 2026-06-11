@@ -77,7 +77,7 @@ logger = logging.getLogger("agroecology.http")
 async def lifespan(app: FastAPI):
     try:
         await init_services()
-        container.start()
+        await container.start()
         yield
     finally:
         await shutdown_services()

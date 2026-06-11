@@ -21,8 +21,12 @@ class IngestionTaskService:
 
     async def enqueue(self, force: bool = False) -> str | None:
         if await self._ingestion_repo.has_active_run():
-            log_event(logger, logging.WARNING, "ingest_enqueue_rejected", force=force)
-            return None
+            if not force:
+                log_event(
+                    logger, logging.WARNING, "ingest_enqueue_rejected", force=force
+                )
+                return None
+            await self._ingestion_repo.clear_stale_runs()
 
         run = await self._ingestion_repo.create_run(force=force)
         job_id = self._get_queue().enqueue(

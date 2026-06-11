@@ -21,6 +21,8 @@ class UserRepository(ABC):
         slug: str,
         locale: str,
         role_key: str,
+        privacy_policy_accepted: bool = False,
+        tos_accepted: bool = False,
     ) -> User:
         """Create a new user account.
 
@@ -31,6 +33,8 @@ class UserRepository(ABC):
             slug: The URL-friendly identifier for the user.
             locale: The user's preferred locale.
             role_key: The initial role to assign.
+            privacy_policy_accepted: Whether the privacy policy was accepted.
+            tos_accepted: Whether the terms of service were accepted.
 
         Returns:
             The newly created user.
@@ -106,6 +110,20 @@ class UserRepository(ABC):
 
         Returns:
             The deleted user, or None if not found.
+        """
+
+    @abstractmethod
+    async def anonymize_user(self, user_id: str) -> User | None:
+        """Anonymize personal data and mark user as deleted.
+
+        Replaces name, email, about, link with placeholder values,
+        deletes avatar, marks status as 'deleted', and revokes all tokens.
+
+        Args:
+            user_id: The user's identifier.
+
+        Returns:
+            The anonymized user, or None if not found.
         """
 
     @abstractmethod

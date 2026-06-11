@@ -143,6 +143,8 @@ class RegisterRequest(BaseModel):
     challenge_id: str
     challenge_answer: str = Field(..., min_length=1, max_length=200)
     locale: str = Field(default="pt-BR")
+    privacy_policy_accepted: bool = Field(..., description="Must be True")
+    tos_accepted: bool = Field(..., description="Must be True")
 
 
 class LoginRequest(BaseModel):
@@ -219,6 +221,15 @@ class UserUpdateRequest(BaseModel):
 class ChallengeResponse(BaseModel):
     challenge_id: str
     question: str
+
+
+class DeleteAccountConfirmRequest(BaseModel):
+    token: str
+
+
+class ExportDataResponse(BaseModel):
+    user: dict
+    suggestions: list[dict]
 
 
 class MessageResponse(BaseModel):

@@ -307,11 +307,21 @@ class Container:
             await self.shutdown()
             raise
 
-    def start(self) -> None:
+    async def start(self) -> None:
         if self._started:
             return
         if not self._initialized:
             raise RuntimeError("Container not initialized. Call init() first.")
+
+        if self.ingestion_repo is not None:
+            cleared = await self.ingestion_repo.clear_stale_runs()
+            if cleared > 0:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "cleared_stale_ingestion_runs",
+                    count=cleared,
+                )
 
         self.queue = QueueRepository()
         self.queue.open()

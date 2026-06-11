@@ -322,6 +322,8 @@ class Container:
             self.queue,
             self._job_worker_stop,
             metadata_use_case=self.extract_document_metadata,
+            ingest_use_case=self.ingest,
+            ingestion_repo=self.ingestion_repo,
         )
         log_event(logger, logging.INFO, "job_worker_started")
 
@@ -803,7 +805,8 @@ class Container:
             manage_documents=self.manage_docs,
         )
         self.ingestion_task_service = IngestionTaskService(
-            ingest_documents=self.ingest,
+            ingestion_repo=self.ingestion_repo,
+            queue=self._get_queue,  # type: ignore[arg-type]
         )
 
     def _get_queue(self) -> QueueRepository:

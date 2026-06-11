@@ -7,6 +7,7 @@ import threading
 from typing import Callable, Protocol
 
 from src.domain.dto.document_result import MetadataExtractionResult
+from src.domain.ports.ingestion_repository import IngestionRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.shared.logging_utils import log_event
 
@@ -18,7 +19,25 @@ class MetadataExtractionUseCase(Protocol):
         pass
 
 
-JobHandler = Callable[[dict, MetadataExtractionUseCase | None], None]
+class IngestionUseCase(Protocol):
+    async def execute(
+        self,
+        force: bool = False,
+        run_id: str | None = None,
+        on_progress: Callable[..., object] | None = None,
+    ) -> int:
+        pass
+
+
+JobHandler = Callable[
+    [
+        dict,
+        MetadataExtractionUseCase | None,
+        IngestionUseCase | None,
+        IngestionRepository | None,
+    ],
+    None,
+]
 
 _HANDLERS: dict[str, JobHandler] = {}
 
@@ -31,9 +50,51 @@ def _register_handler(job_type: str):
     return decorator
 
 
+@_register_handler("documents.ingest")
+def _handle_ingest(
+    payload: dict,
+    _metadata_use_case: MetadataExtractionUseCase | None,
+    ingest_use_case: IngestionUseCase | None,
+    ingestion_repo: IngestionRepository | None,
+) -> None:
+    run_id = payload["run_id"]
+    force = payload.get("force", False)
+    log_event(logger, logging.INFO, "ingestion_job_started", run_id=run_id, force=force)
+
+    try:
+
+        async def _run():
+            if ingest_use_case is None:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "ingestion_job_aborted",
+                    reason="ingest_use_case_not_available",
+                    run_id=run_id,
+                )
+                return
+
+            await ingest_use_case.execute(force=force, run_id=run_id)
+
+        asyncio.run(_run())
+    except Exception as e:
+        error_msg = str(e)
+        log_event(
+            logger,
+            logging.ERROR,
+            "ingestion_job_failed",
+            run_id=run_id,
+            error=error_msg,
+        )
+        raise
+
+
 @_register_handler("document.extract_metadata")
 def _handle_extract_metadata(
-    payload: dict, metadata_use_case: MetadataExtractionUseCase | None
+    payload: dict,
+    metadata_use_case: MetadataExtractionUseCase | None,
+    _ingest_use_case: IngestionUseCase | None = None,
+    _ingestion_repo: IngestionRepository | None = None,
 ) -> None:
     doc_id = payload["document_id"]
     log_event(logger, logging.INFO, "metadata_job_started", document_id=doc_id)
@@ -81,6 +142,8 @@ def start_job_worker(
     queue_repo: QueueRepository,
     stop_event: threading.Event | None = None,
     metadata_use_case: MetadataExtractionUseCase | None = None,
+    ingest_use_case: IngestionUseCase | None = None,
+    ingestion_repo: IngestionRepository | None = None,
 ) -> threading.Thread:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -124,7 +187,7 @@ def start_job_worker(
                 else job["payload"]
             )
             logger.info("Processing job %s: %s", job["id"], job_type)
-            handler(payload, metadata_use_case)
+            handler(payload, metadata_use_case, ingest_use_case, ingestion_repo)
             _safe_complete(job["id"])
             logger.info("Job completed: %s", job["id"])
         except Exception as e:

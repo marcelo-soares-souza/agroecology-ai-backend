@@ -29,10 +29,16 @@ class HealthResponse(BaseModel):
 class IngestionRunSchema(BaseModel):
     id: str
     status: str
-    chunks_indexed: int
+    phase: str = "processing"
+    chunks_indexed: int = 0
+    chunks_generated: int = 0
+    documents_total: int = 0
+    documents_processed: int = 0
+    force: bool = False
     error: str | None = None
     started_at: str
     finished_at: str | None = None
+    queued_at: str | None = None
 
 
 class StatusResponse(BaseModel):
@@ -64,12 +70,17 @@ class StatusResponse(BaseModel):
 
 
 class IngestResponse(BaseModel):
+    run_id: str
     status: str
 
 
 class IngestStatusResponse(BaseModel):
     status: str
+    phase: str | None = None
     chunks_indexed: int | None = None
+    chunks_generated: int | None = None
+    documents_total: int | None = None
+    documents_processed: int | None = None
     error: str | None = None
     run_id: str | None = None
 

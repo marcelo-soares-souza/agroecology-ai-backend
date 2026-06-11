@@ -18,10 +18,16 @@ class IngestionSummary:
 
     id: str
     status: str
+    phase: str
     chunks_indexed: int
+    chunks_generated: int
+    documents_total: int
+    documents_processed: int
+    force: bool
     error: str | None
     started_at: str
     finished_at: str | None
+    queued_at: str | None
 
 
 @dataclass(frozen=True)

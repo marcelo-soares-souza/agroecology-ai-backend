@@ -114,8 +114,14 @@ def serialize_ingestion_run(run: IngestionRun) -> dict:
     return {
         "id": run.id,
         "status": run.status,
+        "phase": run.phase,
         "chunks_indexed": run.chunks_indexed,
+        "chunks_generated": run.chunks_generated,
+        "documents_total": run.documents_total,
+        "documents_processed": run.documents_processed,
+        "force": run.force,
         "error": run.error,
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "queued_at": run.queued_at.isoformat() if run.queued_at else None,
     }

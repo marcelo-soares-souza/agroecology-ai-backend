@@ -60,10 +60,16 @@ class GetStatus:
             last_ingestion = IngestionSummary(
                 id=last.id,
                 status=last.status,
+                phase=last.phase,
                 chunks_indexed=last.chunks_indexed,
+                chunks_generated=last.chunks_generated,
+                documents_total=last.documents_total,
+                documents_processed=last.documents_processed,
+                force=last.force,
                 error=last.error,
                 started_at=last.started_at.isoformat(),
                 finished_at=last.finished_at.isoformat() if last.finished_at else None,
+                queued_at=last.queued_at.isoformat() if last.queued_at else None,
             )
 
         docs = await self._doc_repo.list_all()

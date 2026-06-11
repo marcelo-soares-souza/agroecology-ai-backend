@@ -13,8 +13,108 @@ class IngestionRepository(ABC):
     """
 
     @abstractmethod
+    async def create_run(self, force: bool = False) -> IngestionRun:
+        """Create a new queued ingestion run.
+
+        Args:
+            force: Whether this run forces re-indexing of all documents.
+
+        Returns:
+            The newly created ingestion run with phase='queued'.
+        """
+
+    @abstractmethod
+    async def set_job_id(self, run_id: str, job_id: str) -> IngestionRun | None:
+        """Associate a job queue entry with an ingestion run.
+
+        Args:
+            run_id: The ingestion run's identifier.
+            job_id: The job queue entry ID.
+
+        Returns:
+            The updated ingestion run, or None if not found.
+        """
+
+    @abstractmethod
+    async def mark_started(self, run_id: str) -> IngestionRun | None:
+        """Mark an ingestion run as started (phase='processing').
+
+        Args:
+            run_id: The ingestion run's identifier.
+
+        Returns:
+            The updated ingestion run, or None if not found.
+        """
+
+    @abstractmethod
+    async def update_progress(
+        self,
+        run_id: str,
+        documents_processed: int | None = None,
+        chunks_generated: int | None = None,
+        documents_total: int | None = None,
+    ) -> IngestionRun | None:
+        """Update progress counters during ingestion.
+
+        Args:
+            run_id: The ingestion run's identifier.
+            documents_processed: Number of documents processed so far.
+            chunks_generated: Number of chunks generated so far.
+            documents_total: Total number of documents to process.
+
+        Returns:
+            The updated ingestion run, or None if not found.
+        """
+
+    @abstractmethod
+    async def mark_done(self, run_id: str, chunks_indexed: int) -> IngestionRun | None:
+        """Mark an ingestion run as completed.
+
+        Args:
+            run_id: The ingestion run's identifier.
+            chunks_indexed: Total chunks indexed in this run.
+
+        Returns:
+            The updated ingestion run, or None if not found.
+        """
+
+    @abstractmethod
+    async def mark_error(self, run_id: str, error: str) -> IngestionRun | None:
+        """Mark an ingestion run as failed.
+
+        Args:
+            run_id: The ingestion run's identifier.
+            error: The error message.
+
+        Returns:
+            The updated ingestion run, or None if not found.
+        """
+
+    @abstractmethod
+    async def has_active_run(self) -> bool:
+        """Check whether there is an active ingestion run.
+
+        An active run is one with phase 'queued' or 'processing'.
+
+        Returns:
+            True if an active run exists.
+        """
+
+    @abstractmethod
+    async def get_active_run(self) -> IngestionRun | None:
+        """Get the currently active ingestion run, if any.
+
+        Returns the most recent run with phase 'queued' or 'processing'.
+
+        Returns:
+            The active ingestion run, or None.
+        """
+
+    @abstractmethod
     async def insert(self) -> IngestionRun:
-        """Start a new ingestion run.
+        """Start a new ingestion run directly as 'processing'.
+
+        Deprecated: prefer create_run() + mark_started() for new code.
 
         Returns:
             The newly created ingestion run.

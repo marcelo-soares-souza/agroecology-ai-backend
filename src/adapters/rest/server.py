@@ -21,7 +21,7 @@ from src.adapters.rest.dependencies import (
     get_document_file,
     get_enqueue_pending_metadata,
     get_extract_document_metadata,
-    get_ingest,
+    get_ingestion_repo,
     get_ingestion_task_service,
     get_list_ingestion_runs,
     get_manage_docs,
@@ -237,14 +237,29 @@ async def status(current_user: User = Depends(get_current_user)):
 async def ingest_start(
     force: bool = False, current_user: User = Depends(require_role("admin"))
 ):
-    status = get_ingestion_task_service().start(force=force)
-    return IngestResponse(status=status)
+    run_id = await get_ingestion_task_service().enqueue(force=force)
+    if run_id is None:
+        raise HTTPException(status_code=409, detail="An ingestion is already active")
+    return IngestResponse(run_id=run_id, status="queued")
 
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
 async def ingest_status(current_user: User = Depends(get_current_user)):
-    ingest = get_ingest()
-    return IngestStatusResponse(**asdict(ingest.to_dict()))
+    repo = await get_ingestion_repo()
+    run = await repo.get_active_run()
+    if run is None:
+        return IngestStatusResponse(status="idle")
+
+    return IngestStatusResponse(
+        status=run.status,
+        phase=run.phase,
+        chunks_indexed=run.chunks_indexed,
+        chunks_generated=run.chunks_generated,
+        documents_total=run.documents_total,
+        documents_processed=run.documents_processed,
+        error=run.error,
+        run_id=run.id,
+    )
 
 
 @app.get("/api/v1/ingestion/runs", response_model=list[IngestionRunSchema])

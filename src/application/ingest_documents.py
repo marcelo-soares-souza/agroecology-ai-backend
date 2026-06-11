@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from src.domain.dto.retrieval_result import IndexedChunk
@@ -53,28 +54,36 @@ class IngestDocuments:
             except Exception as e:
                 logger.warning("ingestion_callback_failed error=%s", e)
 
-    async def execute(self, force: bool = False) -> int:
+    async def execute(
+        self,
+        force: bool = False,
+        run_id: str | None = None,
+        on_progress: Callable[..., object] | None = None,
+    ) -> int:
         started_at = time.perf_counter()
         self.status = "processing"
         self.chunks_indexed = 0
         self.error = None
         self.current_run_id = None
 
-        run_id: str | None = None
+        owns_run = run_id is None
         try:
-            run = await self._ingestion_repo.insert()
-            run_id = run.id
+            if owns_run:
+                run = await self._ingestion_repo.insert()
+                run_id = run.id
             self.current_run_id = run_id
 
-            count = await self._ingest_all(force=force)
+            if not owns_run and run_id:
+                await self._ingestion_repo.mark_started(run_id)
+
+            count = await self._ingest_all(force=force, on_progress=on_progress)
 
             from src.shared.config import bump_index_version, write_schema_version
 
             write_schema_version()
             bump_index_version()
-            await self._ingestion_repo.update(
-                run_id, status="done", chunks_indexed=count
-            )
+            if run_id:
+                await self._ingestion_repo.mark_done(run_id, count)
             self.status = "done"
             self.chunks_indexed = count
             self.error = None
@@ -96,9 +105,7 @@ class IngestDocuments:
             self.error = error_msg
             if run_id:
                 try:
-                    await self._ingestion_repo.update(
-                        run_id, status="error", error=error_msg
-                    )
+                    await self._ingestion_repo.mark_error(run_id, error_msg)
                 except Exception:
                     pass
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
@@ -112,7 +119,11 @@ class IngestDocuments:
             )
             raise
 
-    async def _ingest_all(self, force: bool = False) -> int:
+    async def _ingest_all(
+        self,
+        force: bool = False,
+        on_progress: Callable[..., object] | None = None,
+    ) -> int:
         if force:
             await self._mark_all_not_ingested()
 
@@ -141,15 +152,19 @@ class IngestDocuments:
                     )
                     return 0
 
-        batch_size = (
-            INGEST_BATCH_SIZE if INGEST_BATCH_SIZE > 0 else len(docs_to_process)
-        )
+        doc_count = len(docs_to_process)
+        if self.current_run_id:
+            await self._ingestion_repo.update_progress(
+                self.current_run_id, documents_total=doc_count
+            )
+
+        batch_size = INGEST_BATCH_SIZE if INGEST_BATCH_SIZE > 0 else doc_count
         batches = [
-            docs_to_process[i : i + batch_size]
-            for i in range(0, len(docs_to_process), batch_size)
+            docs_to_process[i : i + batch_size] for i in range(0, doc_count, batch_size)
         ]
 
         total_chunks = 0
+        docs_processed = 0
         index_initialized = False
 
         for batch_num, batch in enumerate(batches, 1):
@@ -196,6 +211,12 @@ class IngestDocuments:
 
             if not rows:
                 await self._mark_as_ingested(batch_doc_ids)
+                docs_processed += len(batch)
+                if self.current_run_id and on_progress:
+                    await self._ingestion_repo.update_progress(
+                        self.current_run_id,
+                        documents_processed=docs_processed,
+                    )
                 log_event(
                     logger,
                     logging.INFO,
@@ -224,6 +245,16 @@ class IngestDocuments:
 
             await self._mark_as_ingested(batch_doc_ids)
             total_chunks += len(rows)
+            docs_processed += len(batch_doc_ids)
+
+            if self.current_run_id:
+                await self._ingestion_repo.update_progress(
+                    self.current_run_id,
+                    documents_processed=docs_processed,
+                    chunks_generated=total_chunks,
+                )
+                if on_progress:
+                    on_progress(docs_processed, total_chunks, doc_count)
 
             log_event(
                 logger,
@@ -241,9 +272,16 @@ class IngestDocuments:
             "ingestion_all_documents_processed",
             force=force,
             total_documents=len(all_docs),
-            new_documents=len(docs_to_process),
+            new_documents=doc_count,
             chunks_generated=total_chunks,
         )
+
+        if self.current_run_id:
+            await self._ingestion_repo.update_progress(
+                self.current_run_id,
+                documents_processed=doc_count,
+                chunks_generated=total_chunks,
+            )
 
         return total_chunks
 

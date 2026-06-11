@@ -150,10 +150,10 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 conditions.append("ds.original_filename IS NULL")
         if q is not None:
             conditions.append(
-                "(ds.title ILIKE %s OR ds.authors ILIKE %s OR ds.user_comment ILIKE %s)"
+                "COALESCE(ds.title, '') || E'\\n' || COALESCE(ds.authors, '') || E'\\n' || COALESCE(ds.user_comment, '') ILIKE %s"
             )
             like = f"%{q}%"
-            params.extend([like, like, like])
+            params.append(like)
 
         where_clause = ""
         if conditions:

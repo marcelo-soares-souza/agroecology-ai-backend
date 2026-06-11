@@ -74,62 +74,52 @@ class PostgresUserRepository(UserRepository):
                     (uuid7(), user_id, role_id),
                 )
 
-        return self._to_user(dict(user_row))
+                enriched = await self._select_user_on_connection(conn, user_id)
+                assert enriched is not None
+                return enriched
 
     async def get_by_id(self, user_id: str) -> User | None:
         async with self._pool.connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-                row = await cur.fetchone()
-                if row is not None:
-                    return await self._enrich_user(dict(row), conn)
-                return None
+            return await self._select_user_on_connection(conn, user_id)
 
     async def get_by_email(self, email: str) -> User | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+                await cur.execute(
+                    self._base_select_query("WHERE u.email = %s"),
+                    (email,),
+                )
                 row = await cur.fetchone()
-                if row is not None:
-                    return await self._enrich_user(dict(row), conn)
-                return None
+                return self._to_user(dict(row)) if row else None
 
     async def get_by_slug(self, slug: str) -> User | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users WHERE slug = %s", (slug,))
+                await cur.execute(
+                    self._base_select_query("WHERE u.slug = %s"),
+                    (slug,),
+                )
                 row = await cur.fetchone()
-                if row is not None:
-                    return await self._enrich_user(dict(row), conn)
-                return None
+                return self._to_user(dict(row)) if row else None
 
     async def list_all(self) -> list[User]:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users ORDER BY created_at DESC")
+                await cur.execute(self._base_select_query("ORDER BY u.created_at DESC"))
                 rows = await cur.fetchall()
-                users = []
-                for r in rows:
-                    users.append(await self._enrich_user(dict(r), conn))
-                return users
+                return [self._to_user(dict(r)) for r in rows]
 
     async def list_active(self) -> list[User]:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    """SELECT u.*,
-                              (SELECT COUNT(*) FROM document_suggestions ds
-                               WHERE ds.user_id = u.id AND ds.status = 'approved')
-                              AS approved_suggestions_count
-                       FROM users u
-                       WHERE u.status = 'active'
-                       ORDER BY u.last_login_at DESC NULLS LAST"""
+                    self._base_select_query(
+                        "WHERE u.status = 'active' "
+                        "ORDER BY u.last_login_at DESC NULLS LAST"
+                    )
                 )
                 rows = await cur.fetchall()
-                users = []
-                for r in rows:
-                    users.append(await self._enrich_user(dict(r), conn))
-                return users
+                return [self._to_user(dict(r)) for r in rows]
 
     async def update(self, user_id: str, **kwargs) -> User | None:
         sets = []
@@ -165,18 +155,16 @@ class PostgresUserRepository(UserRepository):
                     params,
                 )
                 row = await cur.fetchone()
-                if row is not None:
-                    return await self._enrich_user(dict(row), conn)
-                return None
+                if row is None:
+                    return None
+                return await self._select_user_on_connection(conn, user_id)
 
     async def delete(self, user_id: str) -> User | None:
         async with self._pool.connection() as conn:
+            user = await self._select_user_on_connection(conn, user_id)
+            if user is None:
+                return None
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-                row = await cur.fetchone()
-                if row is None:
-                    return None
-                user = await self._enrich_user(dict(row), conn)
                 await cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 return user
 
@@ -210,9 +198,9 @@ class PostgresUserRepository(UserRepository):
                     (now, user_id),
                 )
 
-                if updated is not None:
-                    return await self._enrich_user(dict(updated), conn)
-                return None
+                if updated is None:
+                    return None
+                return await self._select_user_on_connection(conn, user_id)
 
     async def confirm_email(self, user_id: str) -> None:
         now = utcnow()
@@ -323,36 +311,38 @@ class PostgresUserRepository(UserRepository):
                     (uuid7(), user_id, role_id),
                 )
 
-    async def _enrich_user(
-        self, row: dict, conn: AsyncConnection | None = None
-    ) -> User:
-        user = self._to_user(row)
+    @staticmethod
+    def _base_select_query(suffix: str = "") -> str:
+        return f"""
+            SELECT u.*,
+                   COALESCE(
+                       (
+                           SELECT ARRAY_AGG(r.role_key ORDER BY r.role_key)
+                           FROM user_roles ur
+                           JOIN roles r ON r.id = ur.role_id
+                           WHERE ur.user_id = u.id
+                       ),
+                       '{{}}'::text[]
+                   ) AS role_keys,
+                   (
+                       SELECT COUNT(*)::int
+                       FROM document_suggestions ds
+                       WHERE ds.user_id = u.id AND ds.status = 'approved'
+                   ) AS approved_suggestions_count
+            FROM users u
+            {suffix}
+        """
 
-        async def _do_enrich(c: AsyncConnection) -> None:
-            async with c.cursor() as cur:
-                await cur.execute(
-                    """SELECT r.role_key FROM user_roles ur
-                       JOIN roles r ON ur.role_id = r.id
-                       WHERE ur.user_id = %s""",
-                    (user.id,),
-                )
-                role_rows = await cur.fetchall()
-                user.roles = [r[0] for r in role_rows]
-
-                if "approved_suggestions_count" not in row:
-                    await cur.execute(
-                        "SELECT COUNT(*) FROM document_suggestions WHERE user_id = %s AND status = 'approved'",
-                        (user.id,),
-                    )
-                    count_row = await cur.fetchone()
-                    user.approved_suggestions_count = count_row[0] if count_row else 0
-
-        if conn is not None:
-            await _do_enrich(conn)
-        else:
-            async with self._pool.connection() as c:
-                await _do_enrich(c)
-        return user
+    async def _select_user_on_connection(
+        self, conn: AsyncConnection, user_id: str
+    ) -> User | None:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                self._base_select_query("WHERE u.id = %s"),
+                (user_id,),
+            )
+            row = await cur.fetchone()
+            return self._to_user(dict(row)) if row else None
 
     @staticmethod
     def _to_user(row: dict) -> User:
@@ -371,6 +361,7 @@ class PostgresUserRepository(UserRepository):
             about=row.get("about"),
             link=row.get("link"),
             avatar_path=row.get("avatar_path"),
+            roles=list(row.get("role_keys", [])),
             approved_suggestions_count=row.get("approved_suggestions_count", 0),
             privacy_policy_accepted=row.get("privacy_policy_accepted", False),
             privacy_policy_accepted_at=row.get("privacy_policy_accepted_at"),

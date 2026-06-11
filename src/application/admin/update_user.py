@@ -33,10 +33,9 @@ class UpdateUser:
 
         if role_key is not None:
             await self._repo.assign_role(user_id, role_key)
-
-        user = await self._repo.get_by_id(user_id)
-        if not user:
-            return None
+            user = await self._repo.get_by_id(user_id)
+            if not user:
+                return None
 
         avatar_url = (
             f"/api/v1/users/{user.slug}/profile/avatar/file"

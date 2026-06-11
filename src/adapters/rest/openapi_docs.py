@@ -227,7 +227,7 @@ indexed. Only one ingestion can run at a time. Requires the `admin` role.
         "summary": "Get current ingestion status",
         "description": """
 Returns the active ingestion state, indexed chunk count, current run id, and any
-last ingestion error. Requires authentication.
+last ingestion error. Requires the `admin` role.
 """,
     },
     ("GET", "/api/v1/ingestion/runs"): {
@@ -235,7 +235,7 @@ last ingestion error. Requires authentication.
         "summary": "List ingestion runs",
         "description": """
 Returns all recorded ingestion runs, including status, chunk count, start time,
-finish time, and error text when present. Requires authentication.
+finish time, and error text when present. Requires the `admin` role.
 """,
     },
     ("GET", "/api/v1/ingestion/runs/{run_id}"): {
@@ -243,7 +243,7 @@ finish time, and error text when present. Requires authentication.
         "summary": "Get ingestion run",
         "description": """
 Returns one ingestion run by id. Use this after `GET /api/v1/ingestion/runs` or
-from the run id returned by ingestion status. Requires authentication.
+from the run id returned by ingestion status. Requires the `admin` role.
 """,
     },
     ("POST", "/api/v1/documents"): {
@@ -356,13 +356,15 @@ Returns one user by UUIDv7 id. Requires the `admin` role.
 Updates user profile fields, account status, locale, or role.
 
 Use `role_key` with `admin` or `user` to replace the user's role assignment.
-Requires the `admin` role.
+Requires the `admin` role. An administrator cannot remove their own admin role,
+change their own status, or remove/disable the last remaining administrator.
 """,
     },
     ("DELETE", "/api/v1/admin/users/{user_id}"): {
         "summary": "Delete user",
         "description": """
 Deletes a user account by id. Requires the `admin` role.
+Administrators cannot delete themselves or delete the last remaining administrator.
 """,
     },
     ("PUT", "/api/v1/auth/me/profile"): {
@@ -449,7 +451,7 @@ Requires authentication.
 Returns the uploaded file for a suggestion inline.
 
 The response is a file response, not JSON. Users can view their own files;
-admins can view any. Supports query-string auth via `?token=` parameter.
+admins can view any. Requires a bearer token in the `Authorization` header.
 """,
     },
     ("PUT", "/api/v1/suggestions/{suggestion_id}"): {

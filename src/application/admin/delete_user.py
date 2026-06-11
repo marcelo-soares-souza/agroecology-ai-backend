@@ -8,7 +8,10 @@ class DeleteUser:
     def __init__(self, repo: UserRepository) -> None:
         self._repo = repo
 
-    async def execute(self, user_id: str) -> UserDTO | None:
+    async def execute(self, actor_user_id: str, user_id: str) -> UserDTO | None:
+        if user_id == actor_user_id:
+            raise ValueError("Cannot delete yourself")
+
         user = await self._repo.delete(user_id)
         if not user:
             return None

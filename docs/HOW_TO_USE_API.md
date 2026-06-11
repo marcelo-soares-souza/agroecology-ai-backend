@@ -9,7 +9,7 @@ python main.py serve --port 8080          # porta customizada
 python main.py serve --reload             # dev: auto-reload
 ```
 
-Swagger: `http://localhost:8000/docs`
+Swagger: `http://localhost:8000/api/v1/docs`
 
 ---
 
@@ -22,9 +22,9 @@ Swagger: `http://localhost:8000/docs`
 | `GET` | `/api/v1/status` | Server health and cache stats |
 | `GET` | `/api/v1/health` | Simple health check |
 | `POST` | `/api/v1/ingest` | Trigger document ingestion (async) |
-| `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
-| `GET` | `/api/v1/ingestion/runs` | List ingestion run history |
-| `GET` | `/api/v1/ingestion/runs/{id}` | Get ingestion run details |
+| `GET` | `/api/v1/ingest/status` | Poll ingestion progress (admin) |
+| `GET` | `/api/v1/ingestion/runs` | List ingestion run history (admin) |
+| `GET` | `/api/v1/ingestion/runs/{id}` | Get ingestion run details (admin) |
 | `POST` | `/api/v1/documents` | Upload files (PDF, MD, TXT) |
 | `GET` | `/api/v1/documents` | List all documents |
 | `GET` | `/api/v1/documents/{id}` | Get document by ID |
@@ -59,7 +59,7 @@ Swagger: `http://localhost:8000/docs`
 | `POST` | `/api/v1/suggestions` | Submit a document suggestion |
 | `GET` | `/api/v1/suggestions` | List my suggestions |
 | `GET` | `/api/v1/suggestions/{id}` | Get suggestion |
-| `GET` | `/api/v1/suggestions/{id}/view` | View suggestion file |
+| `GET` | `/api/v1/suggestions/{id}/view` | View suggestion file (bearer token required) |
 | `PUT` | `/api/v1/suggestions/{id}` | Update my suggestion |
 | `PUT` | `/api/v1/suggestions/{id}/file` | Replace suggestion file |
 | `DELETE` | `/api/v1/suggestions/{id}` | Delete my suggestion |
@@ -265,6 +265,8 @@ curl -X POST "http://localhost:8000/api/v1/ingest?force=true"
 
 ### `GET /api/v1/ingest/status` — Poll ingestion progress
 
+Requires the `admin` role.
+
 **Response `200 OK`**
 
 | Field | Type | Description |
@@ -298,6 +300,8 @@ curl http://localhost:8000/api/v1/ingest/status
 ---
 
 ### `POST /api/v1/documents` — Upload files
+
+Requires the `admin` role.
 
 Envia arquivos que serão salvos no diretório correto conforme a extensão e registrados no banco de dados.
 

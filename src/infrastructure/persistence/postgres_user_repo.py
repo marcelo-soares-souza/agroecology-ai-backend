@@ -149,6 +149,18 @@ class PostgresUserRepository(UserRepository):
         params.append(user_id)
 
         async with self._pool.connection() as conn:
+            current_user = await self._select_user_on_connection(conn, user_id)
+            if current_user is None:
+                return None
+            next_status = kwargs.get("status")
+            if (
+                next_status is not None
+                and next_status != "active"
+                and self._is_admin(current_user)
+            ):
+                admin_ids = await self._lock_admin_users_on_connection(conn)
+                if user_id in admin_ids and len(admin_ids) <= 1:
+                    raise ValueError("Cannot disable the last administrator")
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
                     f"UPDATE users SET {', '.join(sets)} WHERE id = %s RETURNING *",
@@ -164,6 +176,10 @@ class PostgresUserRepository(UserRepository):
             user = await self._select_user_on_connection(conn, user_id)
             if user is None:
                 return None
+            if self._is_admin(user):
+                admin_ids = await self._lock_admin_users_on_connection(conn)
+                if user_id in admin_ids and len(admin_ids) <= 1:
+                    raise ValueError("Cannot delete the last administrator")
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 return user
@@ -302,6 +318,13 @@ class PostgresUserRepository(UserRepository):
             else "00000000-0000-0000-0000-000000000002"
         )
         async with self._pool.connection() as conn:
+            current_user = await self._select_user_on_connection(conn, user_id)
+            if current_user is None:
+                return
+            if self._is_admin(current_user) and role_key != "admin":
+                admin_ids = await self._lock_admin_users_on_connection(conn)
+                if user_id in admin_ids and len(admin_ids) <= 1:
+                    raise ValueError("Cannot remove the last administrator")
             async with conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM user_roles WHERE user_id = %s", (user_id,)
@@ -343,6 +366,25 @@ class PostgresUserRepository(UserRepository):
             )
             row = await cur.fetchone()
             return self._to_user(dict(row)) if row else None
+
+    async def _lock_admin_users_on_connection(self, conn: AsyncConnection) -> list[str]:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT u.id
+                FROM users u
+                JOIN user_roles ur ON ur.user_id = u.id
+                JOIN roles r ON r.id = ur.role_id
+                WHERE r.role_key = 'admin'
+                FOR UPDATE
+                """
+            )
+            rows = await cur.fetchall()
+            return [row[0] for row in rows]
+
+    @staticmethod
+    def _is_admin(user: User) -> bool:
+        return user.roles is not None and "admin" in user.roles
 
     @staticmethod
     def _to_user(row: dict) -> User:

@@ -10,6 +10,7 @@ class UpdateUser:
 
     async def execute(
         self,
+        actor_user_id: str,
         user_id: str,
         full_name: str | None = None,
         email: str | None = None,
@@ -17,6 +18,21 @@ class UpdateUser:
         locale: str | None = None,
         role_key: str | None = None,
     ) -> UserDTO | None:
+        if status is not None and status not in {
+            "pending",
+            "active",
+            "suspended",
+            "deleted",
+        }:
+            raise ValueError(f"Invalid status: {status}")
+        if role_key is not None and role_key not in {"admin", "user"}:
+            raise ValueError(f"Invalid role_key: {role_key}")
+        if user_id == actor_user_id:
+            if role_key is not None and role_key != "admin":
+                raise ValueError("Cannot remove your own administrator role")
+            if status is not None and status != "active":
+                raise ValueError("Cannot change your own account status")
+
         kwargs = {}
         if full_name is not None:
             kwargs["full_name"] = full_name

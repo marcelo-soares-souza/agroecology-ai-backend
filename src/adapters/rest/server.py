@@ -237,6 +237,14 @@ async def status(current_user: User = Depends(get_current_user)):
 async def ingest_start(
     force: bool = False, current_user: User = Depends(require_role("admin"))
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="trigger_ingestion",
+        admin_id=current_user.id,
+        force=force,
+    )
     run_id = await get_ingestion_task_service().enqueue(force=force)
     if run_id is None:
         raise HTTPException(status_code=409, detail="An ingestion is already active")
@@ -244,7 +252,7 @@ async def ingest_start(
 
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
-async def ingest_status(current_user: User = Depends(get_current_user)):
+async def ingest_status(current_user: User = Depends(require_role("admin"))):
     repo = await get_ingestion_repo()
     run = await repo.get_active_run()
     if run is None:
@@ -263,7 +271,14 @@ async def ingest_status(current_user: User = Depends(get_current_user)):
 
 
 @app.get("/api/v1/ingestion/runs", response_model=list[IngestionRunSchema])
-async def list_runs(current_user: User = Depends(get_current_user)):
+async def list_runs(current_user: User = Depends(require_role("admin"))):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="list_ingestion_runs",
+        admin_id=current_user.id,
+    )
     runs = await get_list_ingestion_runs().list_all()
     return [IngestionRunSchema(**serialize_ingestion_run(r)) for r in runs]
 
@@ -272,7 +287,15 @@ async def list_runs(current_user: User = Depends(get_current_user)):
     "/api/v1/ingestion/runs/{run_id}",
     response_model=IngestionRunSchema,
 )
-async def get_run(run_id: str, current_user: User = Depends(get_current_user)):
+async def get_run(run_id: str, current_user: User = Depends(require_role("admin"))):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="read_ingestion_run",
+        admin_id=current_user.id,
+        target_id=run_id,
+    )
     run = await get_list_ingestion_runs().get(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
@@ -290,6 +313,14 @@ async def upload_documents(
     url: str | None = Form(None),
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="upload_documents",
+        admin_id=current_user.id,
+        total_files=len(files),
+    )
     uploaded: list[DocumentUploaded] = []
     skipped: list[DocumentSkipped] = []
 
@@ -348,6 +379,13 @@ async def list_all_documents():
 async def get_metadata_extraction_status(
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="read_metadata_status",
+        admin_id=current_user.id,
+    )
     result = get_metadata_job_status().execute()
     log_event(
         logger,
@@ -403,6 +441,14 @@ async def update_one_document(
     body: DocumentUpdateBody,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="update_document",
+        admin_id=current_user.id,
+        target_id=doc_id,
+    )
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -426,6 +472,14 @@ async def extract_document_metadata(
     doc_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="extract_document_metadata",
+        admin_id=current_user.id,
+        target_id=doc_id,
+    )
     result = await get_extract_document_metadata().execute(doc_id)
     manage = get_manage_docs()
     if manage is None:
@@ -478,6 +532,13 @@ async def download_document(doc_id: str):
 
 @app.post("/api/v1/documents/extract-all-metadata", response_model=MessageResponse)
 async def extract_all_metadata(current_user: User = Depends(require_role("admin"))):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="extract_all_document_metadata",
+        admin_id=current_user.id,
+    )
     result = await get_enqueue_pending_metadata().execute()
     return MessageResponse(
         message=f"{result.enqueued} document(s) enqueued for metadata extraction"
@@ -488,6 +549,14 @@ async def extract_all_metadata(current_user: User = Depends(require_role("admin"
 async def delete_one_document(
     doc_id: str, current_user: User = Depends(require_role("admin"))
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="delete_document",
+        admin_id=current_user.id,
+        target_id=doc_id,
+    )
     doc = await get_delete_document().execute(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")

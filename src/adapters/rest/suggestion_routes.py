@@ -7,7 +7,6 @@ from fastapi.responses import FileResponse
 
 from src.adapters.rest.auth_middleware import (
     get_current_user,
-    get_current_user_from_query_or_header,
     require_role,
 )
 from src.adapters.rest.dependencies import (
@@ -33,6 +32,7 @@ from src.adapters.rest.schemas import (
 )
 from src.adapters.rest.serializers import serialize_document_suggestion
 from src.domain.models.user import User
+from src.shared.logging_utils import log_event
 
 logger = logging.getLogger("agroecology.http")
 
@@ -132,7 +132,7 @@ async def get_suggestion(
 @user_router.get("/{suggestion_id}/view")
 async def view_suggestion_file(
     suggestion_id: str,
-    current_user: User = Depends(get_current_user_from_query_or_header),
+    current_user: User = Depends(get_current_user),
 ):
     is_admin = current_user.roles is not None and "admin" in current_user.roles
 
@@ -289,6 +289,14 @@ async def admin_update_suggestion(
     body: AdminDocumentSuggestionUpdateBody,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="update_suggestion",
+        admin_id=current_user.id,
+        target_id=suggestion_id,
+    )
     try:
         result = await get_admin_update_document_suggestion().execute(
             suggestion_id=suggestion_id,
@@ -312,6 +320,14 @@ async def admin_approve_suggestion(
     body: AdminDocumentSuggestionDecisionBody,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="approve_suggestion",
+        admin_id=current_user.id,
+        target_id=suggestion_id,
+    )
     try:
         result = await get_admin_approve_document_suggestion().execute(
             suggestion_id=suggestion_id,
@@ -330,6 +346,14 @@ async def admin_reject_suggestion(
     body: AdminDocumentSuggestionDecisionBody,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="reject_suggestion",
+        admin_id=current_user.id,
+        target_id=suggestion_id,
+    )
     try:
         result = await get_admin_reject_document_suggestion().execute(
             suggestion_id=suggestion_id,
@@ -347,6 +371,14 @@ async def admin_delete_suggestion(
     suggestion_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="delete_suggestion",
+        admin_id=current_user.id,
+        target_id=suggestion_id,
+    )
     try:
         result = await get_admin_delete_document_suggestion().execute(
             suggestion_id=suggestion_id

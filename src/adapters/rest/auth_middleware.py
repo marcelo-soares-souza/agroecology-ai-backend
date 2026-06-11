@@ -35,26 +35,6 @@ async def get_current_user(
     return await _resolve_token(credentials.credentials, client_ip)
 
 
-async def get_current_user_from_query_or_header(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> User:
-    client_ip = resolve_client_ip(
-        request.headers, request.client.host if request.client else None
-    )
-    token_str: str | None = None
-    if credentials is not None:
-        token_str = credentials.credentials
-    else:
-        token_str = request.query_params.get("token")
-
-    if token_str is None:
-        log_event(logger, logging.WARNING, "auth_missing_credentials", ip=client_ip)
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    return await _resolve_token(token_str, client_ip)
-
-
 def require_role(role: str):
     async def dependency(user: User = Depends(get_current_user)) -> User:
         if user.roles is None or role not in user.roles:

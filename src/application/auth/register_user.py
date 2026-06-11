@@ -38,9 +38,17 @@ class RegisterUser:
         locale: str,
         challenge_id: str,
         challenge_answer: str,
+        privacy_policy_accepted: bool = False,
+        tos_accepted: bool = False,
     ) -> UserDTO:
         if not self._human_check.verify_challenge(challenge_id, challenge_answer):
             raise ValueError("Human verification failed")
+
+        if not privacy_policy_accepted:
+            raise ValueError("Privacy Policy must be accepted")
+
+        if not tos_accepted:
+            raise ValueError("Terms of Service must be accepted")
 
         existing = await self._repo.get_by_email(email)
         if existing:
@@ -55,6 +63,8 @@ class RegisterUser:
             slug=slug,
             locale=locale,
             role_key="user",
+            privacy_policy_accepted=privacy_policy_accepted,
+            tos_accepted=tos_accepted,
         )
 
         token = self._password_hasher.generate_token()

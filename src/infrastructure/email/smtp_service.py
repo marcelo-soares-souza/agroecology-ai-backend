@@ -238,3 +238,34 @@ async def send_suggestion_rejected_email(
 <hr>
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
     return await send_email(user_email, subject, body)
+
+
+async def send_delete_account_confirmation_email(
+    to_email: str, token: str, locale: str = "pt-BR"
+) -> bool:
+    from src.shared.config import APP_URL
+
+    link = f"{APP_URL}/confirm-delete-account?token={token}"
+
+    if locale.startswith("pt"):
+        subject = "Confirme a exclusão da sua conta"
+        body = f"""<h2>Exclusão de Conta</h2>
+<p>Recebemos uma solicitação para excluir sua conta no Agroecology Map AI.</p>
+<p>Clique no link abaixo para confirmar a exclusão:</p>
+<p><a href="{link}">{link}</a></p>
+<p><strong>Atenção:</strong> Esta ação é irreversível. Seus dados pessoais serão anonimizados permanentemente.</p>
+<p>Este link expira em 1 hora.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+    else:
+        subject = "Confirm your account deletion"
+        body = f"""<h2>Account Deletion</h2>
+<p>We received a request to delete your account on Agroecology Map AI.</p>
+<p>Click the link below to confirm the deletion:</p>
+<p><a href="{link}">{link}</a></p>
+<p><strong>Warning:</strong> This action is irreversible. Your personal data will be permanently anonymized.</p>
+<p>This link expires in 1 hour.</p>
+<hr>
+<p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
+
+    return await send_email(to_email, subject, body)

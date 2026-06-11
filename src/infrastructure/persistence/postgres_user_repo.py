@@ -372,4 +372,8 @@ class PostgresUserRepository(UserRepository):
             link=row.get("link"),
             avatar_path=row.get("avatar_path"),
             approved_suggestions_count=row.get("approved_suggestions_count", 0),
+            privacy_policy_accepted=row.get("privacy_policy_accepted", False),
+            privacy_policy_accepted_at=row.get("privacy_policy_accepted_at"),
+            tos_accepted=row.get("tos_accepted", False),
+            tos_accepted_at=row.get("tos_accepted_at"),
         )

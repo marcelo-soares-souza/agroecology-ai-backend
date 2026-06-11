@@ -219,3 +219,18 @@ class EmailPort(ABC):
         Returns:
             True if the email was sent successfully.
         """
+
+    @abstractmethod
+    async def send_delete_account_confirmation(
+        self, to_email: str, token: str, locale: str = "pt-BR"
+    ) -> bool:
+        """Send an account deletion confirmation email.
+
+        Args:
+            to_email: The recipient's email address.
+            token: The deletion confirmation token.
+            locale: The email language locale.
+
+        Returns:
+            True if the email was sent successfully.
+        """

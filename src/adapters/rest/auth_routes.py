@@ -10,6 +10,8 @@ from src.adapters.rest.dependencies import (
     get_human_challenge as get_human_challenge_use_case,
 )
 from src.adapters.rest.dependencies import (
+    get_confirm_delete_account,
+    get_export_my_data,
     get_list_active_users as get_list_active_users_use_case,
 )
 from src.adapters.rest.dependencies import (
@@ -17,6 +19,7 @@ from src.adapters.rest.dependencies import (
     get_logout_user,
     get_refresh_token,
     get_register_user,
+    get_request_delete_account,
     get_request_password_reset,
     get_resend_confirmation_email,
 )
@@ -30,6 +33,8 @@ from src.adapters.rest.dependencies import get_user_by_slug as get_user_by_slug_
 from src.adapters.rest.schemas import (
     ChallengeResponse,
     ConfirmEmailRequest,
+    DeleteAccountConfirmRequest,
+    ExportDataResponse,
     LoginRequest,
     MessageResponse,
     PasswordResetConfirmRequest,
@@ -84,6 +89,8 @@ async def register(body: RegisterRequest, request: Request):
             locale=body.locale,
             challenge_id=body.challenge_id,
             challenge_answer=body.challenge_answer,
+            privacy_policy_accepted=body.privacy_policy_accepted,
+            tos_accepted=body.tos_accepted,
         )
     except ValueError as e:
         log_event(logger, logging.WARNING, "register_failed", reason=str(e))
@@ -298,3 +305,34 @@ async def get_user_by_slug(slug: str):
 async def list_active_users():
     users = await get_list_active_users_use_case().execute()
     return [serialize_public_user(u) for u in users]
+
+
+@router.get("/me/export", response_model=ExportDataResponse)
+async def export_my_data(user: User = Depends(get_current_user)):
+    try:
+        data = await get_export_my_data().execute(user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return ExportDataResponse(**data)
+
+
+@router.post("/me/delete-request", response_model=MessageResponse)
+async def request_delete_account(
+    request: Request, user: User = Depends(get_current_user)
+):
+    try:
+        await get_request_delete_account().execute(user_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return MessageResponse(
+        message="Confirmation email sent. Check your inbox to complete account deletion."
+    )
+
+
+@router.post("/me/delete-confirm", response_model=MessageResponse)
+async def confirm_delete_account(body: DeleteAccountConfirmRequest, request: Request):
+    try:
+        await get_confirm_delete_account().execute(token=body.token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return MessageResponse(message="Account deleted successfully.")

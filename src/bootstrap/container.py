@@ -14,6 +14,11 @@ from src.application.admin.update_user import UpdateUser
 from src.application.ask_question import AskQuestion
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.delete_my_account import (
+    ConfirmDeleteAccount,
+    RequestDeleteAccount,
+)
+from src.application.auth.export_my_data import ExportMyData
 from src.application.auth.get_avatar_file import GetAvatarFile
 from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
@@ -219,6 +224,9 @@ class Container:
         self.update_my_profile: UpdateMyProfile | None = None
         self.upload_my_avatar: UploadMyAvatar | None = None
         self.list_active_users: ListActiveUsers | None = None
+        self.export_my_data: ExportMyData | None = None
+        self.request_delete_account: RequestDeleteAccount | None = None
+        self.confirm_delete_account: ConfirmDeleteAccount | None = None
 
         # Suggestion use cases
         self.create_document_suggestion: CreateDocumentSuggestion | None = None
@@ -489,6 +497,9 @@ class Container:
             "update_my_profile",
             "upload_my_avatar",
             "list_active_users",
+            "export_my_data",
+            "request_delete_account",
+            "confirm_delete_account",
             "list_users",
             "get_user",
             "update_user",
@@ -722,6 +733,16 @@ class Container:
             process_avatar=process_avatar,
         )
         self.list_active_users = ListActiveUsers(user_repo=self.user_repo)
+        self.export_my_data = ExportMyData(user_repo=self.user_repo)
+        self.request_delete_account = RequestDeleteAccount(
+            user_repo=self.user_repo,
+            password_hasher=password_hasher,
+            email_service=email_service,
+        )
+        self.confirm_delete_account = ConfirmDeleteAccount(
+            user_repo=self.user_repo,
+            password_hasher=password_hasher,
+        )
         self.validate_session = ValidateSession(
             token_service=token_service, user_repo=self.user_repo
         )

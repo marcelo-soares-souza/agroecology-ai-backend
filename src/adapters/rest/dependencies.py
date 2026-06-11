@@ -9,6 +9,11 @@ from src.application.admin.update_user import UpdateUser as AdminUpdateUser
 from src.application.ask_question import AskQuestion
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
+from src.application.auth.delete_my_account import (
+    ConfirmDeleteAccount,
+    RequestDeleteAccount,
+)
+from src.application.auth.export_my_data import ExportMyData
 from src.application.auth.get_avatar_file import GetAvatarFile
 from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
@@ -214,6 +219,21 @@ def get_validate_session() -> ValidateSession:
 def get_avatar_file() -> GetAvatarFile:
     assert container.get_avatar_file is not None
     return container.get_avatar_file
+
+
+def get_export_my_data() -> ExportMyData:
+    assert container.export_my_data is not None
+    return container.export_my_data
+
+
+def get_request_delete_account() -> RequestDeleteAccount:
+    assert container.request_delete_account is not None
+    return container.request_delete_account
+
+
+def get_confirm_delete_account() -> ConfirmDeleteAccount:
+    assert container.confirm_delete_account is not None
+    return container.confirm_delete_account
 
 
 # ── Admin use case getters ───────────────────────────────────────────────

@@ -84,3 +84,10 @@ class SmtpEmailService(EmailPort):
         return await smtp_service.send_suggestion_rejected_email(
             user_email, title, admin_comment, locale
         )
+
+    async def send_delete_account_confirmation(
+        self, to_email: str, token: str, locale: str = "pt-BR"
+    ) -> bool:
+        return await smtp_service.send_delete_account_confirmation_email(
+            to_email, token, locale
+        )

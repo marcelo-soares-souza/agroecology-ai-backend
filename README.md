@@ -11,6 +11,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python main.py db:migrate              # create database and run migrations
 python main.py db:seed                 # create admin user
+python main.py db:mobile               # create common mobile user
 python main.py serve                  # http://localhost:8000 (Swagger: /docs)
 ```
 
@@ -310,6 +311,11 @@ See `.env.example` for all variables with comments. Key ones:
 | `PASSWORD_PEPPER` | `agroecology-pepper` | Password hashing pepper |
 | `ADMIN_EMAIL` | `admin@agroecologymap.org` | Default admin email (for seeding) |
 | `ADMIN_PASSWORD` | `""` | Default admin password (for seeding) |
+| `MOBILE_EMAIL` | `mobile@agroecologymap.org` | Default mobile reviewer email |
+| `MOBILE_PASSWORD` | `mobile123` | Default mobile reviewer password |
+| `MOBILE_FULL_NAME` | `Mobile User` | Default mobile reviewer display name |
+| `MOBILE_SLUG` | `mobile-user` | Default mobile reviewer slug |
+| `MOBILE_LOCALE` | `en` | Default mobile reviewer locale |
 
 ### Conversation History
 
@@ -417,6 +423,14 @@ python main.py db:seed
 ```
 
 This creates the admin account using `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` (defaults: `admin@agroecologymap.org` / `admin123`).
+
+### Mobile reviewer seed
+
+```bash
+python main.py db:mobile
+```
+
+This creates or updates a standard user account for app-store review using `MOBILE_EMAIL`, `MOBILE_PASSWORD`, `MOBILE_FULL_NAME`, `MOBILE_SLUG`, and `MOBILE_LOCALE` from `.env` (defaults: `mobile@agroecologymap.org` / `mobile123` / `Mobile User` / `mobile-user` / `en`).
 
 ### Roles
 

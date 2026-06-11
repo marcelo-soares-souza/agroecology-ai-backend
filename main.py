@@ -189,6 +189,27 @@ def cmd_db_seed(args):
         sys.exit(1)
 
 
+def cmd_db_mobile(args):
+    from src.seed import seed_roles_and_mobile_user
+
+    console.print("[bold]Seeding roles and mobile user...[/bold]")
+    try:
+        roles_created, mobile_created = seed_roles_and_mobile_user()
+        if roles_created:
+            console.print("[green]Roles created (admin, user)![/green]")
+        else:
+            console.print("[dim]Roles already exist.[/dim]")
+        if mobile_created:
+            console.print("[green]Mobile user created successfully![/green]")
+        else:
+            console.print(
+                "[yellow]Mobile user already exists. Password updated.[/yellow]"
+            )
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
+
+
 def cmd_serve(args):
     import uvicorn
 
@@ -221,6 +242,8 @@ Examples:
   python main.py serve                          # Start API server
   python main.py db:migrate                     # Create database + run migrations
   python main.py db:create                      # Create database only
+  python main.py db:seed                        # Seed admin user
+  python main.py db:mobile                      # Seed common mobile user
   python main.py scrape https://example.com     # Scrape URLs
   python main.py status                         # View status
         """,
@@ -268,6 +291,11 @@ Examples:
 
     sub_dbseed = subparsers.add_parser("db:seed", help="Seed roles and admin user")
     sub_dbseed.set_defaults(func=cmd_db_seed)
+
+    sub_dbmobile = subparsers.add_parser(
+        "db:mobile", help="Seed roles and a common mobile user"
+    )
+    sub_dbmobile.set_defaults(func=cmd_db_mobile)
 
     args = parser.parse_args()
 

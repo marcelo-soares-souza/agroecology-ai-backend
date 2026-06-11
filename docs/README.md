@@ -162,6 +162,7 @@ python main.py serve               # Start API (port 8000)
 python main.py scrape <url>        # Scrape web page
 python main.py db:migrate          # Run migrations
 python main.py db:seed             # Seed admin user
+python main.py db:mobile           # Seed common mobile user
 ```
 
 ## Endpoints

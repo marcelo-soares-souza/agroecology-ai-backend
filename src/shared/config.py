@@ -45,6 +45,11 @@ PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "agroecology-pepper")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@agroecologymap.org")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+MOBILE_EMAIL = os.getenv("MOBILE_EMAIL", "mobile@agroecologymap.org")
+MOBILE_PASSWORD = os.getenv("MOBILE_PASSWORD", "mobile123")
+MOBILE_FULL_NAME = os.getenv("MOBILE_FULL_NAME", "Mobile User")
+MOBILE_SLUG = os.getenv("MOBILE_SLUG", "mobile-user")
+MOBILE_LOCALE = os.getenv("MOBILE_LOCALE", "en")
 
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

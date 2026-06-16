@@ -18,6 +18,15 @@ async def _resolve_token(token_str: str, client_ip: str) -> User:
     user = await get_validate_session().execute(token_str, client_ip)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user.status == "deleted":
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth_deleted_account_rejected",
+            user_id=user.id,
+            ip=client_ip,
+        )
+        raise HTTPException(status_code=401, detail="Account deleted")
     return user
 
 

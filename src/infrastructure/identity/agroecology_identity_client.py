@@ -34,7 +34,10 @@ class AgroecologyIdentityClient(IdentityServerClient):
                 login_response = await client.post(
                     "/api/v1/auth/login",
                     json={"email": email, "password": password},
-                    headers={"X-CSRF-Token": csrf_token},
+                    headers={
+                        "X-CSRF-Token": csrf_token,
+                        "Cookie": f"csrf_token={csrf_token}",
+                    },
                 )
                 if login_response.status_code == 401:
                     raise IdentityServerInvalidCredentials()

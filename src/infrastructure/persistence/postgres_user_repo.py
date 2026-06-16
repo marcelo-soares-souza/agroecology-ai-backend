@@ -214,6 +214,13 @@ class PostgresUserRepository(UserRepository):
                     (now, user_id),
                 )
 
+                await cur.execute(
+                    """UPDATE user_external_identities
+                       SET deleted_at = %s, updated_at = %s
+                       WHERE user_id = %s AND deleted_at IS NULL""",
+                    (now, now, user_id),
+                )
+
                 if updated is None:
                     return None
                 return await self._select_user_on_connection(conn, user_id)

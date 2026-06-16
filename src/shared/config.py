@@ -42,6 +42,8 @@ JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_TTL_SECONDS = int(os.getenv("JWT_TTL_SECONDS", "900"))
 REFRESH_TOKEN_TTL_DAYS = int(os.getenv("REFRESH_TOKEN_TTL_DAYS", "7"))
 PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "agroecology-pepper")
+IDENTITY_SERVER_URL = os.getenv("IDENTITY_SERVER_URL", "").strip()
+IDENTITY_SERVER_ENABLED = bool(IDENTITY_SERVER_URL)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@agroecologymap.org")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")

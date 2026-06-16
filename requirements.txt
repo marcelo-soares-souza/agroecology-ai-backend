@@ -1,5 +1,5 @@
 openai>=2.40.0
-sentence-transformers>=5.5.0
+sentence-transformers>=5.6.0
 lancedb>=0.33.0
 pymupdf>=1.27.0
 rank-bm25>=0.2.0
@@ -7,7 +7,7 @@ trafilatura>=2.1.0
 python-dotenv>=1.0.0
 rich>=15.0.0
 httpx>=0.28.0
-fastapi>=0.136.3
+fastapi>=0.137.1
 uvicorn>=0.48.0
 redis>=8.0.0
 psycopg>=3.3.0

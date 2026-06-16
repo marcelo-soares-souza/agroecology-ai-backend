@@ -7,15 +7,21 @@ import bcrypt
 
 from src.shared.config import PASSWORD_PEPPER
 
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
+def _bcrypt_password_bytes(password: str) -> bytes:
+    return (password + PASSWORD_PEPPER).encode()[:BCRYPT_MAX_PASSWORD_BYTES]
+
 
 def hash_password(password: str) -> str:
-    peppered = password + PASSWORD_PEPPER
-    return bcrypt.hashpw(peppered.encode(), bcrypt.gensalt(rounds=12)).decode()
+    return bcrypt.hashpw(
+        _bcrypt_password_bytes(password), bcrypt.gensalt(rounds=12)
+    ).decode()
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    peppered = password + PASSWORD_PEPPER
-    return bcrypt.checkpw(peppered.encode(), password_hash.encode())
+    return bcrypt.checkpw(_bcrypt_password_bytes(password), password_hash.encode())
 
 
 def generate_token(length: int = 32) -> str:

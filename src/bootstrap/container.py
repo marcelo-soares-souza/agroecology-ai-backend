@@ -25,6 +25,7 @@ from src.application.auth.get_user_by_slug import GetUserBySlug
 from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
+from src.application.auth.provision_external_user import ProvisionExternalUser
 from src.application.auth.refresh_token import RefreshToken
 from src.application.auth.register_user import RegisterUser
 from src.application.auth.request_password_reset import RequestPasswordReset
@@ -100,6 +101,9 @@ from src.infrastructure.auth.auth_services import (
     SmtpEmailService,
 )
 from src.infrastructure.cache.valkey_cache import ValkeyCache
+from src.infrastructure.identity.agroecology_identity_client import (
+    AgroecologyIdentityClient,
+)
 from src.infrastructure.jobs.worker import start_job_worker
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
 from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
@@ -109,6 +113,9 @@ from src.infrastructure.persistence.postgres_document_repo import (
 )
 from src.infrastructure.persistence.postgres_document_suggestion_repo import (
     PostgresDocumentSuggestionRepository,
+)
+from src.infrastructure.persistence.postgres_external_identity_repo import (
+    PostgresExternalIdentityRepository,
 )
 from src.infrastructure.persistence.postgres_ingestion_repo import (
     PostgresIngestionRepository,
@@ -130,6 +137,8 @@ from src.shared.config import (
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
     HYBRID_TOP_K,
+    IDENTITY_SERVER_ENABLED,
+    IDENTITY_SERVER_URL,
     MMR_LAMBDA,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
@@ -181,6 +190,7 @@ class Container:
         self.doc_repo: PostgresDocumentRepository | None = None
         self.ingestion_repo: PostgresIngestionRepository | None = None
         self.user_repo: PostgresUserRepository | None = None
+        self.external_identity_repo: PostgresExternalIdentityRepository | None = None
         self.suggestion_repo: PostgresDocumentSuggestionRepository | None = None
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
@@ -293,6 +303,11 @@ class Container:
             self.user_repo = PostgresUserRepository(self._db_pool)
             await self.user_repo.initialize()
             log_event(logger, logging.INFO, "user_repo_initialized")
+
+            self.external_identity_repo = PostgresExternalIdentityRepository(
+                self._db_pool
+            )
+            log_event(logger, logging.INFO, "external_identity_repo_initialized")
 
             self.suggestion_repo = PostgresDocumentSuggestionRepository(self._db_pool)
             await self.suggestion_repo.initialize()
@@ -688,6 +703,22 @@ class Container:
         token_service = JwtTokenService()
         human_check = JwtHumanCheck()
         email_service = SmtpEmailService()
+        identity_client = (
+            AgroecologyIdentityClient(IDENTITY_SERVER_URL)
+            if IDENTITY_SERVER_ENABLED
+            else None
+        )
+        provision_external_user = None
+        if identity_client is not None:
+            assert self.external_identity_repo is not None
+            provision_external_user = ProvisionExternalUser(
+                user_repo=self.user_repo,
+                external_identity_repo=self.external_identity_repo,
+                password_hasher=password_hasher,
+            )
+            log_event(logger, logging.INFO, "identity_server_enabled")
+        else:
+            log_event(logger, logging.INFO, "identity_server_disabled")
 
         self.get_human_challenge = GetHumanChallenge(human_check=human_check)
         self.register_user = RegisterUser(
@@ -700,6 +731,8 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
             token_service=token_service,
+            identity_client=identity_client,
+            provision_external_user=provision_external_user,
         )
         self.refresh_token = RefreshToken(
             repo=self.user_repo,

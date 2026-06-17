@@ -63,6 +63,44 @@ class PostgresDocumentRepository(DocumentRepository):
                 rows = await cur.fetchall()
                 return [self._to_domain(dict(r)) for r in rows]
 
+    async def list_paginated(
+        self, q: str | None, limit: int, offset: int
+    ) -> tuple[list[Document], int]:
+        where_clause = ""
+        params: list[str | int] = []
+        search = q.strip() if q else ""
+        if search:
+            where_clause = """
+                WHERE filename ILIKE %s
+                   OR title ILIKE %s
+                   OR authors ILIKE %s
+                   OR url ILIKE %s
+            """
+            pattern = f"%{search}%"
+            params.extend([pattern, pattern, pattern, pattern])
+
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    f"SELECT COUNT(*)::int AS total FROM documents {where_clause}",
+                    params,
+                )
+                total_row = await cur.fetchone()
+                total = int(total_row["total"]) if total_row else 0
+
+                await cur.execute(
+                    f"""
+                    SELECT *
+                    FROM documents
+                    {where_clause}
+                    ORDER BY title ASC NULLS LAST, filename ASC, created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    [*params, limit, offset],
+                )
+                rows = await cur.fetchall()
+                return [self._to_domain(dict(r)) for r in rows], total
+
     async def update(self, doc_id: str, data: DocumentUpdate) -> Document | None:
         now = utcnow()
         sets: list[str] = []

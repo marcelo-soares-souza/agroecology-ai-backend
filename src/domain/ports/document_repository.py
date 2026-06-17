@@ -43,6 +43,21 @@ class DocumentRepository(ABC):
         """
 
     @abstractmethod
+    async def list_paginated(
+        self, q: str | None, limit: int, offset: int
+    ) -> tuple[list[Document], int]:
+        """List documents with optional text search and pagination.
+
+        Args:
+            q: Optional search query.
+            limit: Maximum number of documents to return.
+            offset: Number of documents to skip.
+
+        Returns:
+            A tuple with the page of documents and the total matching count.
+        """
+
+    @abstractmethod
     async def update(self, doc_id: str, data: DocumentUpdate) -> Document | None:
         """Update fields of an existing document.
 

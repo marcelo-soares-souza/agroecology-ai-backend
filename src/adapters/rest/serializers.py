@@ -5,35 +5,36 @@ from src.domain.models.document import Document
 from src.domain.models.document_suggestion import DocumentSuggestion
 from src.domain.models.ingestion_run import IngestionRun
 from src.domain.models.user import User
+from src.adapters.rest.schemas import DocumentRecord, PublicUserResponse
 
 
-def serialize_public_user(user: User | UserDTO) -> dict:
+def serialize_public_user(user: User | UserDTO) -> PublicUserResponse:
     if isinstance(user, User):
         avatar_url = (
             f"/api/v1/users/{user.slug}/profile/avatar/file"
             if user.avatar_path
             else None
         )
-        return {
-            "id": user.id,
-            "full_name": user.full_name,
-            "slug": user.slug,
-            "locale": user.locale,
-            "about": user.about,
-            "link": user.link,
-            "avatar_url": avatar_url,
-            "approved_suggestions_count": user.approved_suggestions_count,
-        }
-    return {
-        "id": user.id,
-        "full_name": user.full_name,
-        "slug": user.slug,
-        "locale": user.locale,
-        "about": user.about,
-        "link": user.link,
-        "avatar_url": user.avatar_url,
-        "approved_suggestions_count": user.approved_suggestions_count,
-    }
+        return PublicUserResponse(
+            id=user.id,
+            full_name=user.full_name,
+            slug=user.slug,
+            locale=user.locale,
+            about=user.about,
+            link=user.link,
+            avatar_url=avatar_url,
+            approved_suggestions_count=user.approved_suggestions_count,
+        )
+    return PublicUserResponse(
+        id=user.id,
+        full_name=user.full_name,
+        slug=user.slug,
+        locale=user.locale,
+        about=user.about,
+        link=user.link,
+        avatar_url=user.avatar_url,
+        approved_suggestions_count=user.approved_suggestions_count,
+    )
 
 
 def serialize_document(
@@ -41,23 +42,23 @@ def serialize_document(
     suggested_by_user_id: str | None = None,
     suggested_by_user_name: str | None = None,
     suggested_by_user_slug: str | None = None,
-) -> dict:
-    return {
-        "id": doc.id,
-        "filename": doc.filename,
-        "title": doc.title,
-        "authors": doc.authors,
-        "url": doc.url,
-        "file_type": doc.file_type,
-        "file_size": doc.file_size,
-        "directory": doc.directory,
-        "ingested": doc.ingested,
-        "created_at": doc.created_at.isoformat(),
-        "updated_at": doc.updated_at.isoformat(),
-        "suggested_by_user_id": suggested_by_user_id,
-        "suggested_by_user_name": suggested_by_user_name,
-        "suggested_by_user_slug": suggested_by_user_slug,
-    }
+) -> DocumentRecord:
+    return DocumentRecord(
+        id=doc.id,
+        filename=doc.filename,
+        title=doc.title,
+        authors=doc.authors,
+        url=doc.url,
+        file_type=doc.file_type,
+        file_size=doc.file_size,
+        directory=doc.directory,
+        ingested=doc.ingested,
+        created_at=doc.created_at.isoformat(),
+        updated_at=doc.updated_at.isoformat(),
+        suggested_by_user_id=suggested_by_user_id,
+        suggested_by_user_name=suggested_by_user_name,
+        suggested_by_user_slug=suggested_by_user_slug,
+    )
 
 
 def serialize_user(user: User | UserDTO) -> dict:

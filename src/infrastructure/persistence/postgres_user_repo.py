@@ -121,6 +121,37 @@ class PostgresUserRepository(UserRepository):
                 rows = await cur.fetchall()
                 return [self._to_user(dict(r)) for r in rows]
 
+    async def list_active_paginated(
+        self, q: str | None, limit: int, offset: int
+    ) -> tuple[list[User], int]:
+        where_clause = "WHERE u.status = 'active'"
+        params: list[str | int] = []
+        search = q.strip() if q else ""
+        if search:
+            where_clause += " AND (u.full_name ILIKE %s OR u.slug ILIKE %s)"
+            pattern = f"%{search}%"
+            params.extend([pattern, pattern])
+
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    f"SELECT COUNT(*)::int AS total FROM users u {where_clause}",
+                    params,
+                )
+                total_row = await cur.fetchone()
+                total = int(total_row["total"]) if total_row else 0
+
+                await cur.execute(
+                    self._base_select_query(
+                        f"{where_clause} "
+                        "ORDER BY u.updated_at DESC, u.full_name ASC "
+                        "LIMIT %s OFFSET %s"
+                    ),
+                    [*params, limit, offset],
+                )
+                rows = await cur.fetchall()
+                return [self._to_user(dict(r)) for r in rows], total
+
     async def update(self, user_id: str, **kwargs) -> User | None:
         sets = []
         params = []

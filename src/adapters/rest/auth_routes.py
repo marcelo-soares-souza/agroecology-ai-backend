@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 
 from src.adapters.rest.auth_middleware import get_current_user
 from src.adapters.rest.dependencies import get_confirm_email, get_confirm_password_reset
@@ -39,7 +39,7 @@ from src.adapters.rest.schemas import (
     MessageResponse,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
-    PublicUserResponse,
+    PublicUserListResponse,
     RefreshRequest,
     RegisterRequest,
     ResendConfirmationRequest,
@@ -301,10 +301,21 @@ async def get_user_by_slug(slug: str):
     return serialize_user(user)
 
 
-@router.get("/users", response_model=list[PublicUserResponse])
-async def list_active_users():
-    users = await get_list_active_users_use_case().execute()
-    return [serialize_public_user(u) for u in users]
+@router.get("/users", response_model=PublicUserListResponse)
+async def list_active_users(
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    users, total = await get_list_active_users_use_case().execute_paginated(
+        q, limit, offset
+    )
+    return PublicUserListResponse(
+        data=[serialize_public_user(u) for u in users],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/me/export", response_model=ExportDataResponse)

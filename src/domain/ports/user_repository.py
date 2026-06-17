@@ -90,6 +90,21 @@ class UserRepository(ABC):
         """
 
     @abstractmethod
+    async def list_active_paginated(
+        self, q: str | None, limit: int, offset: int
+    ) -> tuple[list[User], int]:
+        """List active users with optional text search and pagination.
+
+        Args:
+            q: Optional search query.
+            limit: Maximum number of users to return.
+            offset: Number of users to skip.
+
+        Returns:
+            A tuple with the page of users and the total matching count.
+        """
+
+    @abstractmethod
     async def update(self, user_id: str, **kwargs) -> User | None:
         """Update arbitrary fields on a user.
 

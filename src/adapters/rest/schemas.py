@@ -107,6 +107,13 @@ class DocumentRecord(BaseModel):
     suggested_by_user_slug: str | None = None
 
 
+class DocumentListResponse(BaseModel):
+    data: list[DocumentRecord]
+    total: int
+    limit: int
+    offset: int
+
+
 class DocumentUploaded(BaseModel):
     id: str
     filename: str
@@ -206,6 +213,13 @@ class PublicUserResponse(BaseModel):
     link: str | None = None
     avatar_url: str | None = None
     approved_suggestions_count: int = 0
+
+
+class PublicUserListResponse(BaseModel):
+    data: list[PublicUserResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class UserUpdateRequest(BaseModel):

@@ -47,6 +47,11 @@ class ManageDocuments:
     async def list_all(self) -> list[Document]:
         return await self._repo.list_all()
 
+    async def list_paginated(
+        self, q: str | None, limit: int, offset: int
+    ) -> tuple[list[Document], int]:
+        return await self._repo.list_paginated(q, limit, offset)
+
     async def get(self, doc_id: str) -> Document | None:
         return await self._repo.get(doc_id)
 

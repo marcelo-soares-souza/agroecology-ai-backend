@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
@@ -42,6 +42,7 @@ from src.adapters.rest.schemas import (
     AnswerResponse,
     AskRequest,
     AskResponse,
+    DocumentListResponse,
     DocumentRecord,
     DocumentSkipped,
     DocumentUpdateBody,
@@ -357,19 +358,31 @@ async def upload_documents(
     return DocumentUploadResponse(uploaded=uploaded, skipped=skipped)
 
 
-@app.get("/api/v1/documents", response_model=list[DocumentRecord])
-async def list_all_documents():
+@app.get("/api/v1/documents", response_model=DocumentListResponse)
+async def list_all_documents(
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
-    docs = await manage.list_all()
+    docs, total = await manage.list_paginated(q, limit, offset)
     log_event(
         logger,
         logging.INFO,
         "documents_list_completed",
-        total_documents=len(docs),
+        returned_documents=len(docs),
+        total_documents=total,
+        limit=limit,
+        offset=offset,
     )
-    return [serialize_document(d) for d in docs]
+    return DocumentListResponse(
+        data=[serialize_document(d) for d in docs],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @app.get(

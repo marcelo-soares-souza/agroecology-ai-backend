@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
-from src.domain.models.document import Document, DocumentCreate
+from src.domain.models.document import Document, DocumentCreate, DocumentStats
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.shared.config import FILE_TYPE_TO_EXT
@@ -51,6 +51,9 @@ class ManageDocuments:
         self, q: str | None, limit: int, offset: int
     ) -> tuple[list[Document], int]:
         return await self._repo.list_paginated(q, limit, offset)
+
+    async def get_stats(self) -> DocumentStats:
+        return await self._repo.get_stats()
 
     async def get(self, doc_id: str) -> Document | None:
         return await self._repo.get(doc_id)

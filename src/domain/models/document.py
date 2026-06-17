@@ -77,3 +77,13 @@ class DocumentUpdate:
     title: str | None = None
     authors: str | None = None
     url: str | None = None
+
+
+@dataclass
+class DocumentStats:
+    """Aggregated document counts used by list summary cards."""
+
+    total: int
+    indexed: int
+    metadata_total: int
+    metadata_extracted: int

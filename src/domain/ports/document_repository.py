@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from src.domain.models.document import Document, DocumentCreate, DocumentUpdate
+from src.domain.models.document import (
+    Document,
+    DocumentCreate,
+    DocumentStats,
+    DocumentUpdate,
+)
 
 
 class DocumentRepository(ABC):
@@ -55,6 +60,14 @@ class DocumentRepository(ABC):
 
         Returns:
             A tuple with the page of documents and the total matching count.
+        """
+
+    @abstractmethod
+    async def get_stats(self) -> DocumentStats:
+        """Return global aggregate document statistics.
+
+        Returns:
+            Counts for total documents, indexed documents, and extracted PDF metadata.
         """
 
     @abstractmethod

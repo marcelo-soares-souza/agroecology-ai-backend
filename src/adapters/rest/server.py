@@ -45,6 +45,7 @@ from src.adapters.rest.schemas import (
     DocumentListResponse,
     DocumentRecord,
     DocumentSkipped,
+    DocumentStatsResponse,
     DocumentUpdateBody,
     DocumentUploaded,
     DocumentUploadResponse,
@@ -382,6 +383,29 @@ async def list_all_documents(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@app.get("/api/v1/documents/stats", response_model=DocumentStatsResponse)
+async def get_document_stats():
+    manage = get_manage_docs()
+    if manage is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    stats = await manage.get_stats()
+    log_event(
+        logger,
+        logging.INFO,
+        "documents_stats_completed",
+        total_documents=stats.total,
+        indexed_documents=stats.indexed,
+        metadata_total=stats.metadata_total,
+        metadata_extracted=stats.metadata_extracted,
+    )
+    return DocumentStatsResponse(
+        total=stats.total,
+        indexed=stats.indexed,
+        metadata_total=stats.metadata_total,
+        metadata_extracted=stats.metadata_extracted,
     )
 
 

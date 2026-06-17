@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING
 
 from psycopg.rows import dict_row
 
-from src.domain.models.document import Document, DocumentCreate, DocumentUpdate
+from src.domain.models.document import (
+    Document,
+    DocumentCreate,
+    DocumentStats,
+    DocumentUpdate,
+)
 from src.domain.ports.document_repository import DocumentRepository
 from src.shared.config import utcnow
 
@@ -100,6 +105,38 @@ class PostgresDocumentRepository(DocumentRepository):
                 )
                 rows = await cur.fetchall()
                 return [self._to_domain(dict(r)) for r in rows], total
+
+    async def get_stats(self) -> DocumentStats:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        COUNT(*)::int AS total,
+                        COUNT(*) FILTER (WHERE ingested)::int AS indexed,
+                        COUNT(*) FILTER (WHERE file_type = 'pdf')::int AS metadata_total,
+                        COUNT(*) FILTER (
+                            WHERE file_type = 'pdf'
+                              AND NULLIF(BTRIM(COALESCE(title, '')), '') IS NOT NULL
+                              AND NULLIF(BTRIM(COALESCE(authors, '')), '') IS NOT NULL
+                        )::int AS metadata_extracted
+                    FROM documents
+                    """
+                )
+                row = await cur.fetchone()
+                if not row:
+                    return DocumentStats(
+                        total=0,
+                        indexed=0,
+                        metadata_total=0,
+                        metadata_extracted=0,
+                    )
+                return DocumentStats(
+                    total=int(row["total"]),
+                    indexed=int(row["indexed"]),
+                    metadata_total=int(row["metadata_total"]),
+                    metadata_extracted=int(row["metadata_extracted"]),
+                )
 
     async def update(self, doc_id: str, data: DocumentUpdate) -> Document | None:
         now = utcnow()

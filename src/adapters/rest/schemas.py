@@ -114,6 +114,13 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class DocumentStatsResponse(BaseModel):
+    total: int
+    indexed: int
+    metadata_total: int
+    metadata_extracted: int
+
+
 class DocumentUploaded(BaseModel):
     id: str
     filename: str

@@ -10,6 +10,7 @@ from src.adapters.rest.dependencies import (
     get_human_challenge as get_human_challenge_use_case,
 )
 from src.adapters.rest.dependencies import (
+    get_auth_rate_limiter,
     get_confirm_delete_account,
     get_export_my_data,
     get_list_active_users as get_list_active_users_use_case,
@@ -48,11 +49,41 @@ from src.adapters.rest.schemas import (
     UserUpdateRequest,
 )
 from src.adapters.rest.serializers import serialize_public_user, serialize_user
+from src.domain.dto.auth_rate_limit import AuthRateLimitBlock
 from src.domain.models.user import User
 from src.shared.logging_utils import log_event, mask_email, resolve_client_ip
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger("agroecology.auth")
+_PUBLIC_AUTH_RATE_LIMIT_ACTION = "public-auth"
+
+
+def _client_ip(request: Request) -> str:
+    return resolve_client_ip(
+        request.headers, request.client.host if request.client else None
+    )
+
+
+def _email_identifier(email: str) -> str:
+    return f"email:{email.strip().lower()}"
+
+
+def _auth_rate_limit_identifiers(email: str, request: Request) -> list[str]:
+    return [_email_identifier(email), f"ip:{_client_ip(request)}"]
+
+
+def _raise_auth_rate_limited(block: AuthRateLimitBlock) -> None:
+    blocked_until = block.blocked_until.isoformat().replace("+00:00", "Z")
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "code": "auth_rate_limited",
+            "message": "Too many failed attempts. Try again later.",
+            "retry_after_seconds": block.retry_after_seconds,
+            "blocked_until": blocked_until,
+        },
+        headers={"Retry-After": str(block.retry_after_seconds)},
+    )
 
 
 @router.get("/human-challenge", response_model=ChallengeResponse)
@@ -61,9 +92,7 @@ async def human_challenge(request: Request, locale: str = "pt-BR"):
         logger,
         logging.INFO,
         "human_challenge_requested",
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        ip=_client_ip(request),
         locale=locale,
     )
     return get_human_challenge_use_case().execute(locale)
@@ -71,13 +100,27 @@ async def human_challenge(request: Request, locale: str = "pt-BR"):
 
 @router.post("/register", response_model=MessageResponse)
 async def register(body: RegisterRequest, request: Request):
+    rate_limit_identifiers = _auth_rate_limit_identifiers(body.email, request)
+    rate_limiter = get_auth_rate_limiter()
+    block = rate_limiter.get_block(
+        _PUBLIC_AUTH_RATE_LIMIT_ACTION, rate_limit_identifiers
+    )
+    if block is not None:
+        log_event(
+            logger,
+            logging.WARNING,
+            "register_rate_limited",
+            ip=_client_ip(request),
+            email=mask_email(body.email),
+            retry_after_seconds=block.retry_after_seconds,
+        )
+        _raise_auth_rate_limited(block)
+
     log_event(
         logger,
         logging.INFO,
         "register_attempted",
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        ip=_client_ip(request),
         email=mask_email(body.email),
         locale=body.locale,
     )
@@ -94,8 +137,22 @@ async def register(body: RegisterRequest, request: Request):
         )
     except ValueError as e:
         log_event(logger, logging.WARNING, "register_failed", reason=str(e))
+        block = rate_limiter.record_failure(
+            _PUBLIC_AUTH_RATE_LIMIT_ACTION, rate_limit_identifiers
+        )
+        if block is not None:
+            log_event(
+                logger,
+                logging.WARNING,
+                "register_rate_limit_blocked",
+                ip=_client_ip(request),
+                email=mask_email(body.email),
+                retry_after_seconds=block.retry_after_seconds,
+            )
+            _raise_auth_rate_limited(block)
         raise HTTPException(status_code=400, detail="Registration failed")
 
+    rate_limiter.reset(_PUBLIC_AUTH_RATE_LIMIT_ACTION, [_email_identifier(body.email)])
     log_event(
         logger,
         logging.INFO,
@@ -115,9 +172,7 @@ async def resend_confirmation(body: ResendConfirmationRequest, request: Request)
         logger,
         logging.INFO,
         "confirm_email_resend_requested",
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        ip=_client_ip(request),
         email=mask_email(body.email),
     )
     try:
@@ -141,9 +196,7 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
             logging.WARNING,
             "confirm_email_failed",
             reason=str(e),
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
+            ip=_client_ip(request),
         )
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -152,6 +205,22 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, request: Request):
+    rate_limit_identifiers = _auth_rate_limit_identifiers(body.email, request)
+    rate_limiter = get_auth_rate_limiter()
+    block = rate_limiter.get_block(
+        _PUBLIC_AUTH_RATE_LIMIT_ACTION, rate_limit_identifiers
+    )
+    if block is not None:
+        log_event(
+            logger,
+            logging.WARNING,
+            "login_rate_limited",
+            ip=_client_ip(request),
+            email=mask_email(body.email),
+            retry_after_seconds=block.retry_after_seconds,
+        )
+        _raise_auth_rate_limited(block)
+
     try:
         result = await get_login_user().execute(
             email=body.email, password=body.password
@@ -162,20 +231,30 @@ async def login(body: LoginRequest, request: Request):
             logging.WARNING,
             "login_failed",
             reason=str(e),
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
+            ip=_client_ip(request),
         )
+        block = rate_limiter.record_failure(
+            _PUBLIC_AUTH_RATE_LIMIT_ACTION, rate_limit_identifiers
+        )
+        if block is not None:
+            log_event(
+                logger,
+                logging.WARNING,
+                "login_rate_limit_blocked",
+                ip=_client_ip(request),
+                email=mask_email(body.email),
+                retry_after_seconds=block.retry_after_seconds,
+            )
+            _raise_auth_rate_limited(block)
         raise HTTPException(status_code=401, detail=str(e))
 
+    rate_limiter.reset(_PUBLIC_AUTH_RATE_LIMIT_ACTION, [_email_identifier(body.email)])
     log_event(
         logger,
         logging.INFO,
         "login_completed",
         user_id=result.user.id,
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        ip=_client_ip(request),
     )
     return TokenResponse(
         access_token=result.access_token, refresh_token=result.refresh_token
@@ -192,9 +271,7 @@ async def refresh(body: RefreshRequest, request: Request):
             logging.WARNING,
             "refresh_failed",
             reason=str(e),
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
+            ip=_client_ip(request),
         )
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -211,9 +288,7 @@ async def logout(request: Request, user: User = Depends(get_current_user)):
         logging.INFO,
         "logout_completed",
         user_id=user.id,
-        ip=resolve_client_ip(
-            request.headers, request.client.host if request.client else None
-        ),
+        ip=_client_ip(request),
     )
     return MessageResponse(message="Logged out successfully")
 
@@ -240,9 +315,7 @@ async def confirm_password_reset(body: PasswordResetConfirmRequest, request: Req
             logging.WARNING,
             "password_reset_confirm_failed",
             reason=str(e),
-            ip=resolve_client_ip(
-                request.headers, request.client.host if request.client else None
-            ),
+            ip=_client_ip(request),
         )
         raise HTTPException(status_code=400, detail=str(e))
 

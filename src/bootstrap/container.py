@@ -122,10 +122,18 @@ from src.infrastructure.persistence.postgres_ingestion_repo import (
 )
 from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
+from src.infrastructure.rate_limit.in_memory_auth_rate_limiter import (
+    InMemoryAuthRateLimiter,
+)
+from src.infrastructure.rate_limit.valkey_auth_rate_limiter import (
+    ValkeyAuthRateLimiter,
+)
 from src.infrastructure.scraping.web_scraper import WebScraper
 from src.infrastructure.storage.avatar_processor import process_avatar
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
 from src.shared.config import (
+    AUTH_RATE_LIMIT_BLOCK_SECONDS,
+    AUTH_RATE_LIMIT_MAX_FAILURES,
     AUTO_EXTRACT_METADATA,
     AVATAR_DIR,
     BM25_TOP_K,
@@ -152,6 +160,7 @@ from src.shared.config import (
 from src.shared.logging_utils import log_event
 
 if TYPE_CHECKING:
+    from src.domain.ports.auth_rate_limiter_port import AuthRateLimiterPort
     from src.domain.ports.cache_port import CachePort
     from src.domain.ports.embedding_port import EmbeddingPort
     from src.domain.ports.llm_port import LLMPort
@@ -186,6 +195,7 @@ class Container:
         self.llm_provider: str = "unknown"
         self.llm_transport: str = "unknown"
         self.cache: CachePort | None = None
+        self.auth_rate_limiter: AuthRateLimiterPort | None = None
         self.reranker: RerankerPort | None = None
         self.doc_repo: PostgresDocumentRepository | None = None
         self.ingestion_repo: PostgresIngestionRepository | None = None
@@ -290,6 +300,7 @@ class Container:
             self._create_embedder()
             self._create_llm()
             self._create_cache()
+            self._create_auth_rate_limiter()
             self._create_reranker()
 
             self.doc_repo = PostgresDocumentRepository(self._db_pool)
@@ -429,6 +440,14 @@ class Container:
                 except Exception as e:
                     logger.warning("cache_close_failed error=%s", e)
 
+            if self.auth_rate_limiter is not None and hasattr(
+                self.auth_rate_limiter, "close"
+            ):
+                try:
+                    self.auth_rate_limiter.close()  # type: ignore[attr-defined]
+                except Exception as e:
+                    logger.warning("auth_rate_limiter_close_failed error=%s", e)
+
             if self.embedder is not None:
                 try:
                     self.embedder.close()
@@ -463,6 +482,7 @@ class Container:
             "vector_store",
             "llm",
             "cache",
+            "auth_rate_limiter",
             "reranker",
             "doc_repo",
             "ingestion_repo",
@@ -608,6 +628,28 @@ class Container:
             embedding_model=EMBEDDING_MODEL,
             reranker_model=RERANK_MODEL,
             top_k=HYBRID_TOP_K,
+        )
+
+    def _create_auth_rate_limiter(self) -> None:
+        valkey_rate_limiter = ValkeyAuthRateLimiter(
+            VALKEY_URL,
+            max_failures=AUTH_RATE_LIMIT_MAX_FAILURES,
+            block_seconds=AUTH_RATE_LIMIT_BLOCK_SECONDS,
+        )
+        if valkey_rate_limiter.enabled:
+            self.auth_rate_limiter = valkey_rate_limiter
+            return
+
+        self.auth_rate_limiter = InMemoryAuthRateLimiter(
+            max_failures=AUTH_RATE_LIMIT_MAX_FAILURES,
+            block_seconds=AUTH_RATE_LIMIT_BLOCK_SECONDS,
+        )
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth_rate_limiter_using_memory_fallback",
+            max_failures=AUTH_RATE_LIMIT_MAX_FAILURES,
+            block_seconds=AUTH_RATE_LIMIT_BLOCK_SECONDS,
         )
 
     def _create_reranker(self) -> None:

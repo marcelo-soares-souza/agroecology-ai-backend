@@ -76,6 +76,7 @@ from src.application.upload_document import UploadDocument
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.container import container
 from src.bootstrap.ingestion_task_service import IngestionTaskService
+from src.domain.ports.auth_rate_limiter_port import AuthRateLimiterPort
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.user_repository import UserRepository
@@ -154,6 +155,11 @@ def get_register_user() -> RegisterUser:
 def get_human_challenge() -> GetHumanChallenge:
     assert container.get_human_challenge is not None
     return container.get_human_challenge
+
+
+def get_auth_rate_limiter() -> AuthRateLimiterPort:
+    assert container.auth_rate_limiter is not None
+    return container.auth_rate_limiter
 
 
 def get_login_user() -> LoginUser:

@@ -309,6 +309,8 @@ See `.env.example` for all variables with comments. Key ones:
 | `JWT_TTL_SECONDS` | `900` | Access token lifetime (seconds) |
 | `REFRESH_TOKEN_TTL_DAYS` | `7` | Refresh token lifetime (days) |
 | `PASSWORD_PEPPER` | `agroecology-pepper` | Password hashing pepper |
+| `AUTH_RATE_LIMIT_MAX_FAILURES` | `5` | Failed sign-in/sign-up attempts allowed before blocking the email/IP |
+| `AUTH_RATE_LIMIT_BLOCK_SECONDS` | `600` | Sign-in/sign-up block duration in seconds |
 | `IDENTITY_SERVER_URL` | empty | External identity server URL; empty disables remote identity integration |
 | `ADMIN_EMAIL` | `admin@agroecologymap.org` | Default admin email (for seeding) |
 | `ADMIN_PASSWORD` | `""` | Default admin password (for seeding) |

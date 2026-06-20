@@ -552,6 +552,19 @@ curl http://localhost:8000/api/v1/health
 
 All auth endpoints are under `/api/v1/auth/`. Most require Bearer token authentication (except register, login, confirm-email, and password-reset).
 
+Failed `register` and `login` attempts are rate-limited by normalized email and client IP. Defaults are 5 failed attempts and a 10-minute block, configurable with `AUTH_RATE_LIMIT_MAX_FAILURES` and `AUTH_RATE_LIMIT_BLOCK_SECONDS`. Blocked requests return `429 Too Many Requests` with `Retry-After`:
+
+```json
+{
+  "detail": {
+    "code": "auth_rate_limited",
+    "message": "Too many failed attempts. Try again later.",
+    "retry_after_seconds": 600,
+    "blocked_until": "2026-06-20T15:30:00Z"
+  }
+}
+```
+
 ### `POST /api/v1/auth/register` — Register new user
 
 ```bash

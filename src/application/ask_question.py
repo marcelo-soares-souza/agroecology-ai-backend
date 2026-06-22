@@ -9,6 +9,7 @@ from typing import Any
 from lingua import Language, LanguageDetectorBuilder
 
 from src.domain.dto.answer_result import AnswerResult, SourceResult
+from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
@@ -105,6 +106,35 @@ _QUESTION_INTENT_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"\b(o que e|o que sao|what is|what are|que es)\b"),
         re.compile(r"\b(defina|definir|define|definition|definicao)\b"),
         re.compile(r"\b(conceito|concepto|concept)\b"),
+    ),
+}
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+_INSUFFICIENT_EVIDENCE_PATTERNS = (
+    re.compile(r"\b(insufficient|not enough|do(?:es)? not provide|cannot determine)\b"),
+    re.compile(r"\b(n[aã]o h[aá]|insuficiente|fontes? n[aã]o|contexto n[aã]o)\b"),
+    re.compile(r"\b(no hay suficiente|no permite determinar|las fuentes no)\b"),
+    re.compile(r"\b(pas assez|ne permet pas|les sources ne)\b"),
+)
+_CONCEPT_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "sistemas agroflorestais": (
+        "saf",
+        "sistema agroflorestal",
+        "sistemas agroflorestais",
+        "agroforestry",
+        "agroforestry system",
+        "agroforestry systems",
+    ),
+    "agricultura organica": (
+        "agricultura organica",
+        "organic agriculture",
+        "organic farming",
+        "agricultura ecologica",
+    ),
+    "seguranca alimentar": (
+        "seguranca alimentar",
+        "soberania alimentar",
+        "food security",
+        "food sovereignty",
     ),
 }
 _INTENT_SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
@@ -224,8 +254,11 @@ logger = logging.getLogger("agroecology.rag")
 
 @dataclass(frozen=True)
 class QuestionProfile:
+    language: str
+    is_follow_up: bool
     intent: str
     concepts: tuple[str, ...]
+    requested_scope: str
     max_context_chunks: int
 
 
@@ -283,7 +316,7 @@ class AskQuestion:
         self,
         question: str,
         top_k: int | None = None,
-        title_map: dict[str, str | None] | None = None,
+        document_metadata_map: DocumentMetadataMap | None = None,
         history: list[dict[str, Any]] | None = None,
     ) -> AnswerResult:
         started_at = take_perf_snapshot()
@@ -296,7 +329,11 @@ class AskQuestion:
         ) = self._resolve_answer_language(question, normalized_history, follow_up)
         requested_top_k = top_k or RERANK_TOP_K
         retrieval_top_k = self._resolve_retrieval_top_k()
-        question_profile = self._profile_question(search_text=question)
+        question_profile = self._profile_question(
+            search_text=question,
+            language=expected_language,
+            is_follow_up=follow_up,
+        )
         log_event(
             logger,
             logging.INFO,
@@ -322,16 +359,15 @@ class AskQuestion:
             top_k=retrieval_top_k,
         )
 
-        # Enrich chunks with document metadata from title_map
-        if title_map:
-            for chunk in retrieved:
-                doc_title = title_map.get(chunk.source)
-                if doc_title:
-                    chunk.title = doc_title
+        self._apply_document_metadata(retrieved, document_metadata_map)
 
         answer_history: list[dict[str, Any]] = normalized_history if follow_up else []
         context_started_at = take_perf_snapshot()
         context_chunks = self._select_context_chunks(retrieved, question_profile)
+        covered_concepts = self._covered_concepts(question_profile, context_chunks)
+        missing_concept_count = max(
+            0, len(question_profile.concepts) - len(covered_concepts)
+        )
         log_event(
             logger,
             logging.INFO,
@@ -343,8 +379,22 @@ class AskQuestion:
             retrieval_top_k=retrieval_top_k,
             question_intent=question_profile.intent,
             question_concepts=len(question_profile.concepts),
+            covered_concepts=len(covered_concepts),
+            missing_concepts=missing_concept_count,
             context_chunk_limit=question_profile.max_context_chunks,
             **perf_fields(context_started_at, "context_select"),
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_context_coverage",
+            question_intent=question_profile.intent,
+            question_concepts=len(question_profile.concepts),
+            covered_concepts=len(covered_concepts),
+            missing_concepts=missing_concept_count,
+            selected_count=len(context_chunks),
+            requested_scope=question_profile.requested_scope,
+            follow_up=question_profile.is_follow_up,
         )
         answer_started_at = take_perf_snapshot()
         answer = self._generate_answer(
@@ -385,37 +435,20 @@ class AskQuestion:
                 answer = retry_answer
                 context_chunks = retry_chunks
 
+        cited_source_ids: list[int] = []
+        if answer.strip():
+            answer, cited_source_ids = self._validate_answer_citations(
+                answer=answer,
+                question=question,
+                context_chunks=context_chunks,
+                answer_history=answer_history,
+                expected_language=expected_language,
+                question_profile=question_profile,
+            )
+
         _normalize_scores(context_chunks)
 
-        sources = []
-        for rank, chunk in enumerate(context_chunks, 1):
-            source = chunk.source or "unknown"
-            meta = {
-                "source": source,
-                "chunk_index": chunk.chunk_index,
-                "search_type": chunk.search_type,
-            }
-            source_name = chunk.source.rsplit("/", 1)[-1]
-            doc_id = source_name.rsplit(".", 1)[0]
-            if doc_id:
-                meta["document_id"] = doc_id
-            if title_map:
-                title = title_map.get(source)
-                if title:
-                    meta["title"] = title
-            for field in ("page_start", "page_end", "section_title", "block_types"):
-                val = getattr(chunk, field)
-                if val:
-                    meta[field] = val
-            sources.append(
-                SourceResult(
-                    text=chunk.text[:300],
-                    score=chunk.score,
-                    score_type=chunk.score_type,
-                    rank=rank,
-                    metadata=meta,
-                )
-            )
+        sources = self._build_source_results(context_chunks, cited_source_ids)
 
         log_event(
             logger,
@@ -435,6 +468,83 @@ class AskQuestion:
             **perf_fields(started_at, "total"),
         )
         return AnswerResult(answer=answer, sources=sources)
+
+    @staticmethod
+    def _apply_document_metadata(
+        retrieved: list[RetrievedChunk],
+        document_metadata_map: DocumentMetadataMap | None,
+    ) -> None:
+        if not document_metadata_map:
+            return
+
+        for chunk in retrieved:
+            metadata = document_metadata_map.get(chunk.source)
+            if not metadata:
+                continue
+
+            if metadata.title:
+                chunk.title = metadata.title
+            if metadata.authors:
+                chunk.authors = metadata.authors
+            if metadata.year:
+                chunk.year = metadata.year
+            if metadata.doi:
+                chunk.doi = metadata.doi
+            if metadata.journal:
+                chunk.journal = metadata.journal
+            if metadata.language:
+                chunk.language = metadata.language
+
+    @staticmethod
+    def _build_source_results(
+        context_chunks: list[RetrievedChunk],
+        cited_source_ids: list[int],
+    ) -> list[SourceResult]:
+        sources: list[SourceResult] = []
+
+        for citation_id in cited_source_ids:
+            if citation_id < 1 or citation_id > len(context_chunks):
+                continue
+
+            chunk = context_chunks[citation_id - 1]
+            source = chunk.source or "unknown"
+            meta = {
+                "source": source,
+                "chunk_index": chunk.chunk_index,
+                "search_type": chunk.search_type,
+            }
+            doc_id = chunk.document_id
+            if not doc_id:
+                source_name = source.rsplit("/", 1)[-1]
+                doc_id = source_name.rsplit(".", 1)[0]
+            if doc_id:
+                meta["document_id"] = doc_id
+            for field in (
+                "title",
+                "authors",
+                "year",
+                "doi",
+                "journal",
+                "language",
+                "page_start",
+                "page_end",
+                "section_title",
+                "block_types",
+            ):
+                val = getattr(chunk, field)
+                if val:
+                    meta[field] = val
+            sources.append(
+                SourceResult(
+                    text=chunk.text[:300],
+                    score=chunk.score,
+                    score_type=chunk.score_type,
+                    rank=citation_id,
+                    metadata=meta,
+                )
+            )
+
+        return sources
 
     @staticmethod
     def _resolve_retrieval_top_k() -> int:
@@ -459,6 +569,8 @@ class AskQuestion:
                 attrs.append(f'doi="{cls._escape_context_attr(chunk.doi)}"')
             if chunk.journal:
                 attrs.append(f'journal="{cls._escape_context_attr(chunk.journal)}"')
+            if chunk.language:
+                attrs.append(f'language="{cls._escape_context_attr(chunk.language)}"')
             if chunk.section_title:
                 attrs.append(
                     f'section="{cls._escape_context_attr(chunk.section_title)}"'
@@ -504,12 +616,16 @@ class AskQuestion:
         user_prompt = USER_PROMPT.replace("{context}", context)
         user_prompt = user_prompt.replace("{question}", question)
         user_prompt = user_prompt.replace("{expected_language}", expected_language)
+        intent_guidance = _INTENT_GUIDANCE.get(
+            question_profile.intent,
+            _INTENT_GUIDANCE["overview"],
+        )
+        coverage_guidance = self._coverage_guidance(question_profile, context_chunks)
+        if coverage_guidance:
+            intent_guidance = f"{intent_guidance} {coverage_guidance}"
         user_prompt = user_prompt.replace(
             "{intent_guidance}",
-            _INTENT_GUIDANCE.get(
-                question_profile.intent,
-                _INTENT_GUIDANCE["overview"],
-            ),
+            intent_guidance,
         )
         if answer_history:
             user_prompt = (
@@ -525,13 +641,199 @@ class AskQuestion:
         )
 
     @classmethod
-    def _profile_question(cls, search_text: str) -> QuestionProfile:
+    def _coverage_guidance(
+        cls,
+        profile: QuestionProfile,
+        context_chunks: list[RetrievedChunk],
+    ) -> str:
+        if not profile.concepts:
+            return ""
+        covered = cls._covered_concepts(profile, context_chunks)
+        if len(covered) >= len(profile.concepts):
+            return ""
+        return (
+            "If any requested concept or comparison side is not directly supported "
+            "by the supplied sources, state that limitation clearly instead of "
+            "filling the gap from outside knowledge."
+        )
+
+    def _validate_answer_citations(
+        self,
+        answer: str,
+        question: str,
+        context_chunks: list[RetrievedChunk],
+        answer_history: list[dict[str, Any]],
+        expected_language: str,
+        question_profile: QuestionProfile,
+    ) -> tuple[str, list[int]]:
+        valid_source_count = len(context_chunks)
+        cited_source_ids = self._extract_citation_ids(answer)
+        invalid_citation_count = self._invalid_citation_count(
+            cited_source_ids,
+            valid_source_count,
+        )
+        missing_citations = (
+            valid_source_count > 0
+            and not cited_source_ids
+            and not self._declares_insufficient_evidence(answer)
+        )
+        repair_attempted = False
+
+        if invalid_citation_count or missing_citations:
+            repaired = self._repair_citations(
+                answer=answer,
+                question=question,
+                context_chunks=context_chunks,
+                answer_history=answer_history,
+                expected_language=expected_language,
+                question_profile=question_profile,
+            )
+            repair_attempted = bool(repaired)
+            if repaired:
+                answer = repaired
+                cited_source_ids = self._extract_citation_ids(answer)
+                invalid_citation_count = self._invalid_citation_count(
+                    cited_source_ids,
+                    valid_source_count,
+                )
+
+        if invalid_citation_count:
+            answer = self._remove_invalid_citations(answer, valid_source_count)
+            cited_source_ids = self._extract_citation_ids(answer)
+            invalid_citation_count = self._invalid_citation_count(
+                cited_source_ids,
+                valid_source_count,
+            )
+
+        valid_citations = [
+            citation_id
+            for citation_id in cited_source_ids
+            if 1 <= citation_id <= valid_source_count
+        ]
+        if not valid_citations and self._declares_insufficient_evidence(answer):
+            valid_citations = []
+        final_missing_citations = (
+            valid_source_count > 0
+            and not valid_citations
+            and not self._declares_insufficient_evidence(answer)
+        )
+
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_citation_validation",
+            selected_source_count=valid_source_count,
+            cited_source_count=len(valid_citations),
+            invalid_citation_count=invalid_citation_count,
+            missing_citations=final_missing_citations,
+            repair_attempted=repair_attempted,
+            question_intent=question_profile.intent,
+        )
+        return answer, valid_citations
+
+    def _repair_citations(
+        self,
+        answer: str,
+        question: str,
+        context_chunks: list[RetrievedChunk],
+        answer_history: list[dict[str, Any]],
+        expected_language: str,
+        question_profile: QuestionProfile,
+    ) -> str:
+        if not context_chunks:
+            return ""
+
+        context = self._build_context(context_chunks)
+        guidance = _INTENT_GUIDANCE.get(
+            question_profile.intent,
+            _INTENT_GUIDANCE["overview"],
+        )
+        repair_prompt = (
+            f"MANDATORY OUTPUT LANGUAGE: {expected_language}\n"
+            f"Answer only in {expected_language}.\n\n"
+            "Correct only citation problems in the draft answer. Use only source "
+            f"IDs [1] through [{len(context_chunks)}]. Do not add new factual claims. "
+            "If a claim is not directly supported by the sources, remove it or say "
+            "the supplied sources are insufficient. Return only the corrected "
+            "answer, with no explanation of the correction.\n\n"
+            f"Question-specific guidance:\n{guidance}\n\n"
+            f"Current user question:\n{question}\n\n"
+            f"Retrieved context:\n---\n{context}\n---\n\n"
+            f"Draft answer:\n{answer}"
+        )
+        try:
+            return self._llm.complete(
+                SYSTEM_PROMPT,
+                repair_prompt,
+                history=answer_history,
+            ).strip()
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "rag_citation_repair_failed",
+                error=exc,
+                selected_source_count=len(context_chunks),
+            )
+            return ""
+
+    @staticmethod
+    def _extract_citation_ids(answer: str) -> list[int]:
+        citation_ids: list[int] = []
+        for match in _CITATION_RE.finditer(answer):
+            citation_id = int(match.group(1))
+            if citation_id not in citation_ids:
+                citation_ids.append(citation_id)
+        return citation_ids
+
+    @staticmethod
+    def _invalid_citation_count(
+        cited_source_ids: list[int],
+        valid_source_count: int,
+    ) -> int:
+        return sum(
+            1
+            for citation_id in cited_source_ids
+            if citation_id < 1 or citation_id > valid_source_count
+        )
+
+    @staticmethod
+    def _remove_invalid_citations(answer: str, valid_source_count: int) -> str:
+        def replacement(match: re.Match[str]) -> str:
+            citation_id = int(match.group(1))
+            if 1 <= citation_id <= valid_source_count:
+                return match.group(0)
+            return ""
+
+        cleaned = _CITATION_RE.sub(replacement, answer)
+        cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+        return cleaned.strip()
+
+    @staticmethod
+    def _declares_insufficient_evidence(answer: str) -> bool:
+        normalized = AskQuestion._normalize_for_matching(answer)
+        return any(
+            pattern.search(normalized) for pattern in _INSUFFICIENT_EVIDENCE_PATTERNS
+        )
+
+    @classmethod
+    def _profile_question(
+        cls,
+        search_text: str,
+        language: str,
+        is_follow_up: bool,
+    ) -> QuestionProfile:
         normalized = cls._normalize_for_matching(search_text)
         intent = cls._detect_question_intent(normalized)
         concepts = cls._extract_question_concepts(normalized)
+        requested_scope = cls._detect_requested_scope(normalized)
         return QuestionProfile(
+            language=language,
+            is_follow_up=is_follow_up,
             intent=intent,
             concepts=concepts,
+            requested_scope=requested_scope,
             max_context_chunks=cls._context_chunk_limit(intent, concepts),
         )
 
@@ -554,13 +856,21 @@ class AskQuestion:
     def _extract_question_concepts(normalized_question: str) -> tuple[str, ...]:
         cleaned = re.sub(
             r"\b(o que e|o que sao|what is|what are|que es|qual a diferenca entre|"
-            r"qual e a diferenca entre|compare|comparar|defina|definir|em termos de)\b",
+            r"qual e a diferenca entre|compare|comparar|defina|definir|em termos de|"
+            r"quais sao|quais os|what about|tell me about)\b",
             " ",
             normalized_question,
         )
-        phrases = re.split(r"\b(?:versus|vs\.?|entre|com|e|and|y)\b|[,;:/]", cleaned)
         concepts: list[str] = []
 
+        for canonical, terms in _CONCEPT_SYNONYMS.items():
+            if any(term in cleaned for term in terms):
+                concepts.append(canonical)
+
+        phrases = re.split(
+            r"\b(?:versus|vs\.?|entre|with|com|e|and|y|et|ou|or)\b|[,;:/]",
+            cleaned,
+        )
         for phrase in phrases:
             words = [
                 word
@@ -574,7 +884,7 @@ class AskQuestion:
             ]
             if not words:
                 continue
-            concept = " ".join(words[:3])
+            concept = " ".join(words[:5])
             if concept not in concepts:
                 concepts.append(concept)
             if len(concepts) >= 5:
@@ -583,12 +893,24 @@ class AskQuestion:
         return tuple(concepts)
 
     @staticmethod
+    def _detect_requested_scope(normalized_question: str) -> str:
+        if re.search(
+            r"\b(este artigo|esse artigo|neste estudo|nesse estudo|this paper|"
+            r"this study|el estudio|este estudio|cet article|cette etude)\b",
+            normalized_question,
+        ):
+            return "single_study"
+        if re.search(r"\b(compare|comparar|versus|vs\.?|entre)\b", normalized_question):
+            return "comparison"
+        return "general"
+
+    @staticmethod
     def _context_chunk_limit(intent: str, concepts: tuple[str, ...]) -> int:
-        if intent == "comparison" and len(concepts) >= 2:
-            desired = 6
+        if intent == "comparison" or len(concepts) >= 2:
+            desired = min(6, max(4, len(concepts) * 2))
         else:
             desired = 4
-        return max(1, min(LLM_CONTEXT_MAX_CHUNKS, desired))
+        return max(1, desired)
 
     @classmethod
     def _select_context_chunks(
@@ -604,7 +926,8 @@ class AskQuestion:
 
         def add_candidate(candidate: _ContextCandidate) -> bool:
             nonlocal used_chars
-            if candidate.chunk.id in selected_ids:
+            candidate_key = cls._candidate_key(candidate)
+            if candidate_key in selected_ids:
                 return False
             if len(selected) >= profile.max_context_chunks:
                 return False
@@ -614,14 +937,16 @@ class AskQuestion:
             ):
                 return False
             selected.append(candidate)
-            selected_ids.add(candidate.chunk.id)
+            selected_ids.add(candidate_key)
             used_chars += candidate.estimated_chars
             return True
 
         ranked_by_context = sorted(candidates, key=lambda c: (-c.priority, c.rank))
         ranked_by_relevance = sorted(candidates, key=lambda c: c.rank)
 
-        if profile.intent == "comparison" and profile.concepts:
+        if profile.concepts and (
+            profile.intent == "comparison" or len(profile.concepts) >= 2
+        ):
             for concept in profile.concepts:
                 for candidate in ranked_by_context:
                     if concept in candidate.concept_hits and add_candidate(candidate):
@@ -633,8 +958,16 @@ class AskQuestion:
 
         elif profile.intent in {"definition", "methodology", "results"}:
             for candidate in ranked_by_context:
-                if candidate.priority > 0:
-                    add_candidate(candidate)
+                if candidate.priority > 0 and add_candidate(candidate):
+                    if (
+                        profile.intent in {"methodology", "results"}
+                        and profile.requested_scope == "single_study"
+                    ):
+                        for adjacent in cls._adjacent_candidates(
+                            candidate,
+                            ranked_by_relevance,
+                        ):
+                            add_candidate(adjacent)
 
         else:
             for candidate in ranked_by_relevance:
@@ -646,6 +979,29 @@ class AskQuestion:
 
         return [candidate.chunk for candidate in selected] or [candidates[0].chunk]
 
+    @staticmethod
+    def _candidate_key(candidate: _ContextCandidate) -> str:
+        chunk = candidate.chunk
+        return chunk.id or f"{chunk.source}:{chunk.chunk_index}"
+
+    @classmethod
+    def _adjacent_candidates(
+        cls,
+        base: _ContextCandidate,
+        candidates: list[_ContextCandidate],
+    ) -> list[_ContextCandidate]:
+        base_chunk = base.chunk
+        adjacent = [
+            candidate
+            for candidate in candidates
+            if (
+                cls._candidate_key(candidate) != cls._candidate_key(base)
+                and candidate.chunk.source == base_chunk.source
+                and abs(candidate.chunk.chunk_index - base_chunk.chunk_index) == 1
+            )
+        ]
+        return sorted(adjacent, key=lambda candidate: candidate.rank)
+
     @classmethod
     def _prepare_context_candidates(
         cls, retrieved: list[RetrievedChunk], profile: QuestionProfile
@@ -653,7 +1009,7 @@ class AskQuestion:
         candidates: list[_ContextCandidate] = []
 
         for rank, chunk in enumerate(retrieved, 1):
-            trimmed_text = chunk.text.strip()[:LLM_CHUNK_MAX_CHARS].strip()
+            trimmed_text = cls._prepare_context_text(chunk)
             if not trimmed_text:
                 continue
 
@@ -671,6 +1027,27 @@ class AskQuestion:
             )
 
         return candidates
+
+    @staticmethod
+    def _prepare_context_text(chunk: RetrievedChunk) -> str:
+        text = chunk.text.strip()
+        if len(text) <= LLM_CHUNK_MAX_CHARS:
+            return text
+
+        log_event(
+            logger,
+            logging.WARNING,
+            "rag_legacy_chunk_truncated",
+            chunk_id=chunk.id,
+            source=chunk.source,
+            chunk_index=chunk.chunk_index,
+            text_chars=len(text),
+            limit_chars=LLM_CHUNK_MAX_CHARS,
+        )
+        split_at = text.rfind(" ", 0, LLM_CHUNK_MAX_CHARS)
+        if split_at < int(LLM_CHUNK_MAX_CHARS * 0.6):
+            split_at = LLM_CHUNK_MAX_CHARS
+        return text[:split_at].strip()
 
     @classmethod
     def _context_priority(
@@ -721,8 +1098,30 @@ class AskQuestion:
                 )
             )
         )
-        matches = [concept for concept in concepts if concept in searchable]
+        matches = [
+            concept
+            for concept in concepts
+            if any(term in searchable for term in cls._concept_terms(concept))
+        ]
         return tuple(matches)
+
+    @staticmethod
+    def _concept_terms(concept: str) -> tuple[str, ...]:
+        terms = _CONCEPT_SYNONYMS.get(concept, ())
+        return (concept, *terms)
+
+    @classmethod
+    def _covered_concepts(
+        cls,
+        profile: QuestionProfile,
+        chunks: list[RetrievedChunk],
+    ) -> tuple[str, ...]:
+        covered: list[str] = []
+        for chunk in chunks:
+            for concept in cls._matching_concepts(profile.concepts, chunk):
+                if concept not in covered:
+                    covered.append(concept)
+        return tuple(covered)
 
     @staticmethod
     def _section_matches_intent(section_title: str, intent: str) -> bool:

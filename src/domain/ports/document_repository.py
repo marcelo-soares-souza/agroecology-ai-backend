@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.models.document import (
     Document,
     DocumentCreate,
@@ -133,3 +134,7 @@ class DocumentRepository(ABC):
         Returns:
             A dict mapping document IDs to titles (or None if untitled).
         """
+
+    @abstractmethod
+    async def get_metadata_map(self) -> DocumentMetadataMap:
+        """Retrieve document-level metadata keyed by vector source path."""

@@ -35,7 +35,9 @@ def chat() -> None:
         use_case = container.ask_question
         assert use_case is not None, "ask_question not initialized"
         manage_docs = container.manage_docs
-        title_map = asyncio.run(manage_docs.get_title_map()) if manage_docs else {}
+        document_metadata_map = (
+            asyncio.run(manage_docs.get_metadata_map()) if manage_docs else {}
+        )
 
         while True:
             try:
@@ -65,7 +67,7 @@ def chat() -> None:
                 result = use_case.execute(
                     question,
                     top_k=top_k,
-                    title_map=title_map,
+                    document_metadata_map=document_metadata_map,
                     history=history,
                 )
                 elapsed = time.time() - start

@@ -4,10 +4,12 @@ import re
 from dataclasses import dataclass, field
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock
+from src.shared.config import CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS
 
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\u00c0-\u00da\u00c7])")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _SHORT_BODY_FRAGMENT_CHARS = 120
 _CHARS_PER_TOKEN = 4
+_MIN_SPLIT_RATIO = 0.55
 _EXCLUDED_BLOCK_TYPES = {
     BlockType.REFERENCE,
     BlockType.FOOTNOTE,
@@ -180,6 +182,118 @@ def _to_part(block: ParsedBlock) -> _BlockPart:
     )
 
 
+def _find_split_position(text: str, max_chars: int) -> int:
+    if len(text) <= max_chars:
+        return len(text)
+
+    lower_bound = max(1, int(max_chars * _MIN_SPLIT_RATIO))
+    window = text[: max_chars + 1]
+    boundary_patterns = (
+        re.compile(r"(?<=[.!?])\s+"),
+        re.compile(r"(?<=[;:])\s+"),
+        re.compile(r"(?<=,)\s+"),
+    )
+
+    for pattern in boundary_patterns:
+        matches = list(pattern.finditer(window))
+        for match in reversed(matches):
+            if match.end() >= lower_bound:
+                return match.end()
+
+    whitespace = window.rfind(" ")
+    if whitespace >= lower_bound:
+        return whitespace
+
+    return max_chars
+
+
+def _build_overlap(text: str, overlap_chars: int) -> str:
+    if overlap_chars <= 0:
+        return ""
+
+    overlap = text[-overlap_chars:].strip()
+    first_space = overlap.find(" ")
+    if first_space > 0:
+        overlap = overlap[first_space + 1 :].strip()
+    return overlap
+
+
+def _split_text_by_char_limit(
+    text: str,
+    max_chars: int = CHUNK_MAX_CHARS,
+    overlap_chars: int = CHUNK_OVERLAP_CHARS,
+) -> list[str]:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return []
+    if len(normalized) <= max_chars:
+        return [normalized]
+
+    effective_overlap = min(overlap_chars, max(0, max_chars // 2))
+    chunks: list[str] = []
+    remaining = normalized
+
+    while len(remaining) > max_chars:
+        split_pos = _find_split_position(remaining, max_chars)
+        piece = remaining[:split_pos].strip()
+        if not piece:
+            piece = remaining[:max_chars].strip()
+            split_pos = max_chars
+
+        chunks.append(piece)
+        rest = remaining[split_pos:].strip()
+        if not rest:
+            remaining = ""
+            break
+
+        overlap = _build_overlap(piece, effective_overlap)
+        remaining = f"{overlap} {rest}".strip() if overlap else rest
+
+    if remaining:
+        chunks.append(remaining)
+
+    return chunks
+
+
+def _split_table_text(text: str) -> list[str]:
+    normalized = _normalize_text(text)
+    if len(normalized) <= CHUNK_MAX_CHARS:
+        return [normalized] if normalized else []
+
+    rows = [
+        row.strip()
+        for row in re.split(r"\s*(?:\n|\|)\s*|(?<=;)\s+", text)
+        if row.strip()
+    ]
+    if len(rows) < 3:
+        return _split_text_by_char_limit(normalized)
+
+    header = _normalize_text(rows[0])
+    repeat_header = bool(header and len(header) <= 300)
+    chunks: list[str] = []
+    current: list[str] = [header] if repeat_header else []
+
+    for raw_row in rows[1:] if repeat_header else rows:
+        row = _normalize_text(raw_row)
+        if not row:
+            continue
+
+        candidate = " ".join([*current, row]).strip()
+        if len(candidate) > CHUNK_MAX_CHARS and current:
+            chunks.append(" ".join(current).strip())
+            current = [header, row] if repeat_header else [row]
+        else:
+            current.append(row)
+
+    if current:
+        chunks.append(" ".join(current).strip())
+
+    split_chunks: list[str] = []
+    for chunk in chunks:
+        split_chunks.extend(_split_text_by_char_limit(chunk))
+    return split_chunks
+
+
 def _can_merge_short_part(left: _BlockPart, right: _BlockPart) -> bool:
     return left.page_end == right.page_start
 
@@ -212,13 +326,18 @@ def _merge_short_body_parts(parts: list[_BlockPart]) -> list[_BlockPart]:
 def _split_long_part(
     part: _BlockPart, chunk_size: int, overlap: int
 ) -> list[_BlockPart]:
-    if (
-        estimate_tokens(part.text) <= chunk_size
-        or BlockType.TABLE.value in part.block_types
-    ):
+    if len(part.text) <= CHUNK_MAX_CHARS:
         return [part]
 
-    split_texts = chunk_text(part.text, chunk_size=chunk_size, overlap=overlap)
+    if BlockType.TABLE.value in part.block_types:
+        split_texts = _split_table_text(part.text)
+    else:
+        split_texts = _split_text_by_char_limit(
+            part.text,
+            max_chars=CHUNK_MAX_CHARS,
+            overlap_chars=CHUNK_OVERLAP_CHARS,
+        )
+
     return [
         _BlockPart(
             text=text,
@@ -318,42 +437,13 @@ def chunk_text(
     Returns:
         A list of chunk text strings.
     """
-    sentences = split_sentences(text)
-    if not sentences:
-        return []
-
-    chunk_size_chars = chunk_size * _CHARS_PER_TOKEN
-    overlap_chars = overlap * _CHARS_PER_TOKEN
-
-    chunks: list[str] = []
-    current: list[str] = []
-    current_len = 0
-
-    for sent in sentences:
-        sent_len = len(sent)
-
-        if current_len + sent_len > chunk_size_chars and current:
-            chunks.append(" ".join(current))
-
-            overlap_parts: list[str] = []
-            overlap_len = 0
-            for s in reversed(current):
-                if overlap_len + len(s) <= overlap_chars:
-                    overlap_parts.insert(0, s)
-                    overlap_len += len(s)
-                else:
-                    break
-
-            current = overlap_parts
-            current_len = overlap_len
-
-        current.append(sent)
-        current_len += sent_len
-
-    if current:
-        chunks.append(" ".join(current))
-
-    return chunks or [text]
+    chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, CHUNK_MAX_CHARS)
+    overlap_chars = min(overlap * _CHARS_PER_TOKEN, CHUNK_OVERLAP_CHARS)
+    return _split_text_by_char_limit(
+        text,
+        max_chars=chunk_size_chars,
+        overlap_chars=overlap_chars,
+    )
 
 
 def chunk_blocks(
@@ -450,8 +540,8 @@ def chunk_blocks(
         for part in _merge_short_body_parts(body_parts):
             split_parts.extend(_split_long_part(part, chunk_size, overlap))
 
-        chunk_size_chars = chunk_size * _CHARS_PER_TOKEN
-        overlap_chars = overlap * _CHARS_PER_TOKEN
+        chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, CHUNK_MAX_CHARS)
+        overlap_chars = min(overlap * _CHARS_PER_TOKEN, CHUNK_OVERLAP_CHARS)
 
         current: list[_BlockPart] = []
         current_len = 0
@@ -460,7 +550,8 @@ def chunk_blocks(
             if not part.text:
                 continue
 
-            if current_len + len(part.text) > chunk_size_chars and current:
+            part_len = len(part.text) + (1 if current else 0)
+            if current_len + part_len > chunk_size_chars and current:
                 chunk = _build_chunk(
                     parts=current,
                     document_id=document_id,
@@ -477,17 +568,22 @@ def chunk_blocks(
                 overlap_parts: list[_BlockPart] = []
                 overlap_len = 0
                 for s in reversed(current):
-                    if overlap_len + len(s.text) <= overlap_chars:
+                    candidate_len = len(s.text) + (1 if overlap_parts else 0)
+                    if overlap_len + candidate_len <= overlap_chars:
                         overlap_parts.insert(0, s)
-                        overlap_len += len(s.text)
+                        overlap_len += candidate_len
                     else:
                         break
 
                 current = overlap_parts
                 current_len = overlap_len
 
+            if current and current_len + len(part.text) + 1 > chunk_size_chars:
+                current = []
+                current_len = 0
+
             current.append(part)
-            current_len += len(part.text)
+            current_len += len(part.text) + (1 if len(current) > 1 else 0)
 
         # Last chunk in section
         if current:

@@ -7,6 +7,7 @@ from src.application.ask_question import AskQuestion
 from src.application.manage_documents import ManageDocuments
 from src.bootstrap.task_manager import TaskManager
 from src.domain.dto.answer_result import TaskSubmissionResult
+from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.ports.cache_port import CachePort
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
@@ -62,7 +63,7 @@ class AskTaskService:
             history_messages=len(history),
         )
 
-        title_map = await self._manage_documents.get_title_map()
+        document_metadata_map = await self._manage_documents.get_metadata_map()
         loop = asyncio.get_running_loop()
         loop.run_in_executor(
             None,
@@ -70,7 +71,7 @@ class AskTaskService:
             task_id,
             question,
             top_k,
-            title_map,
+            document_metadata_map,
             history,
             should_use_cache,
         )
@@ -81,7 +82,7 @@ class AskTaskService:
         task_id: str,
         question: str,
         top_k: int,
-        title_map: dict[str, str | None],
+        document_metadata_map: DocumentMetadataMap,
         history: list[dict],
         should_cache: bool,
     ) -> None:
@@ -90,7 +91,7 @@ class AskTaskService:
             result = self._ask_question.execute(
                 question,
                 top_k,
-                title_map,
+                document_metadata_map,
                 history=history,
             )
             self._task_manager.update(

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from psycopg.rows import dict_row
 
+from src.domain.dto.document_metadata import DocumentMetadata, DocumentMetadataMap
 from src.domain.models.document import (
     Document,
     DocumentCreate,
@@ -218,6 +219,26 @@ class PostgresDocumentRepository(DocumentRepository):
                 )
                 rows = await cur.fetchall()
                 return {f"{r[2]}/{r[0]}.{r[1]}": r[3] for r in rows}
+
+    async def get_metadata_map(self) -> DocumentMetadataMap:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    SELECT id, file_type, directory, title, authors
+                    FROM documents
+                    """
+                )
+                rows = await cur.fetchall()
+                return {
+                    f"{row['directory']}/{row['id']}.{row['file_type']}": (
+                        DocumentMetadata(
+                            title=row.get("title"),
+                            authors=row.get("authors"),
+                        )
+                    )
+                    for row in rows
+                }
 
     @staticmethod
     def _to_domain(row: dict) -> Document:

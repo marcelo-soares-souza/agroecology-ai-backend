@@ -28,23 +28,39 @@ _ACADEMIC_SECTIONS = {
     "métodos": BlockType.SECTION_HEADING,
     "metodos": BlockType.SECTION_HEADING,
     "metodologia": BlockType.SECTION_HEADING,
+    "methodology": BlockType.SECTION_HEADING,
     "results": BlockType.SECTION_HEADING,
     "resultados": BlockType.SECTION_HEADING,
+    "results and discussion": BlockType.SECTION_HEADING,
+    "resultados e discussão": BlockType.SECTION_HEADING,
+    "resultados e discussao": BlockType.SECTION_HEADING,
+    "resultados y discusión": BlockType.SECTION_HEADING,
+    "resultados y discusion": BlockType.SECTION_HEADING,
     "discussion": BlockType.SECTION_HEADING,
     "discussão": BlockType.SECTION_HEADING,
     "discussao": BlockType.SECTION_HEADING,
     "discusión": BlockType.SECTION_HEADING,
     "discusion": BlockType.SECTION_HEADING,
+    "discussion and conclusions": BlockType.SECTION_HEADING,
+    "discussão e conclusões": BlockType.SECTION_HEADING,
+    "discussao e conclusoes": BlockType.SECTION_HEADING,
     "conclusion": BlockType.SECTION_HEADING,
     "conclusions": BlockType.SECTION_HEADING,
     "conclusão": BlockType.SECTION_HEADING,
     "conclusao": BlockType.SECTION_HEADING,
+    "conclusões": BlockType.SECTION_HEADING,
+    "conclusoes": BlockType.SECTION_HEADING,
     "conclusiones": BlockType.SECTION_HEADING,
+    "final considerations": BlockType.SECTION_HEADING,
+    "considerações finais": BlockType.SECTION_HEADING,
+    "consideracoes finais": BlockType.SECTION_HEADING,
+    "consideraciones finales": BlockType.SECTION_HEADING,
     "references": BlockType.REFERENCE,
     "referências": BlockType.REFERENCE,
     "referencias": BlockType.REFERENCE,
     "bibliography": BlockType.REFERENCE,
     "bibliografia": BlockType.REFERENCE,
+    "literature cited": BlockType.REFERENCE,
 }
 
 _HEADING_PATTERNS = [
@@ -54,6 +70,9 @@ _HEADING_PATTERNS = [
 
 _DOI_PATTERN = re.compile(r"\b(10\.\d{4,}/[^\s]+)\b")
 _YEAR_PATTERN = re.compile(r"\b(19[7-9]\d|20[0-2]\d)\b")
+_TABLE_START_RE = re.compile(r"^(table|tabela|tabla)\s+\d+", re.IGNORECASE)
+_FIGURE_START_RE = re.compile(r"^(fig(?:ure)?|figura)\s+\d+", re.IGNORECASE)
+_NUMERIC_VALUE_RE = re.compile(r"\d+(?:[.,]\d+)?")
 
 
 def _clean_text(text: str) -> str:
@@ -76,6 +95,8 @@ def _is_heading(text: str, font_size: float, base_size: float, is_bold: bool) ->
 
 def _detect_section(text: str) -> str | None:
     clean = _clean_text(text).lower().rstrip(".")
+    clean = re.sub(r"^\d+(?:\.\d+)*\s+", "", clean)
+    clean = re.sub(r"^[ivxlcdm]+\.\s+", "", clean)
     if clean in _ACADEMIC_SECTIONS:
         return text.strip()
     for key in _ACADEMIC_SECTIONS:
@@ -110,18 +131,12 @@ def _classify_block(
     if _ACADEMIC_SECTIONS.get(clean) == BlockType.ABSTRACT:
         return BlockType.ABSTRACT
 
-    if (
-        clean.startswith("fig")
-        or clean.startswith("figure")
-        or clean.startswith("figura")
-    ):
+    if _FIGURE_START_RE.match(clean):
         return BlockType.FIGURE_CAPTION
 
-    if (
-        clean.startswith("table")
-        or clean.startswith("tabela")
-        or clean.startswith("tabla")
-    ) and len(clean) < 80:
+    if _TABLE_START_RE.match(clean) and (
+        len(clean) < 400 or len(_NUMERIC_VALUE_RE.findall(clean)) >= 3
+    ):
         return BlockType.TABLE
 
     if len(clean) < 30 and (
@@ -235,8 +250,8 @@ class PyMuPdfDocumentParser(DocumentParserPort):
 
                 if section_name:
                     current_section = section_name
-                if block_type == BlockType.SECTION_HEADING and not section_name:
-                    pass
+                elif block_type == BlockType.SECTION_HEADING and order >= 5:
+                    current_section = text.strip()
 
                 if (
                     order < 5

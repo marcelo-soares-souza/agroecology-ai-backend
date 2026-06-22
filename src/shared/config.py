@@ -65,19 +65,21 @@ APP_URL = os.getenv("APP_URL", "http://localhost:5173")
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
-SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "5"))
-BM25_TOP_K = int(os.getenv("BM25_TOP_K", "5"))
+CHUNK_MAX_CHARS = int(os.getenv("CHUNK_MAX_CHARS", "1200"))
+CHUNK_OVERLAP_CHARS = int(os.getenv("CHUNK_OVERLAP_CHARS", "180"))
+SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "80"))
+BM25_TOP_K = int(os.getenv("BM25_TOP_K", "80"))
 RERANK_MODEL = os.getenv("RERANK_MODEL", "")
 RERANK_DEVICE = os.getenv("RERANK_DEVICE", "cpu")
-RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "6"))
-HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "10"))
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "12"))
+HYBRID_TOP_K = int(os.getenv("HYBRID_TOP_K", "25"))
 RAG_RETRIEVAL_TOP_K = int(os.getenv("RAG_RETRIEVAL_TOP_K", "12"))
 MMR_LAMBDA = float(os.getenv("MMR_LAMBDA", "0.7"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 LLM_CONTEXT_MAX_CHUNKS = int(os.getenv("LLM_CONTEXT_MAX_CHUNKS", "4"))
 LLM_CONTEXT_RETRY_MAX_CHUNKS = int(os.getenv("LLM_CONTEXT_RETRY_MAX_CHUNKS", "2"))
-LLM_CHUNK_MAX_CHARS = int(os.getenv("LLM_CHUNK_MAX_CHARS", "1600"))
+LLM_CHUNK_MAX_CHARS = int(os.getenv("LLM_CHUNK_MAX_CHARS", "1300"))
 LLM_CONTEXT_CHARS_BUDGET = int(os.getenv("LLM_CONTEXT_CHARS_BUDGET", "9000"))
 
 INGEST_BATCH_SIZE = int(os.getenv("INGEST_BATCH_SIZE", "0"))
@@ -139,7 +141,7 @@ LANCEDB_DIR = INDEX_DIR / "lancedb"
 
 INDEX_VERSION_FILE = INDEX_DIR / "index_version.txt"
 SCHEMA_VERSION_FILE = INDEX_DIR / "schema_version.txt"
-_CURRENT_SCHEMA_VERSION = "2"
+_CURRENT_SCHEMA_VERSION = "3"
 
 
 def read_index_version() -> str:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.models.document import Document, DocumentCreate, DocumentStats
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
@@ -86,3 +87,6 @@ class ManageDocuments:
 
     async def get_title_map(self) -> TitleMap:
         return await self._repo.get_title_map()
+
+    async def get_metadata_map(self) -> DocumentMetadataMap:
+        return await self._repo.get_metadata_map()

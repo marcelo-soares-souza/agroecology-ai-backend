@@ -70,7 +70,7 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text    # 768-dim
 
 Pull the model first: `ollama pull nomic-embed-text`
 
-**Important**: changing the embedding backend or model may change the vector dimension, requiring re-ingestion of all documents (`python main.py ingest`).
+**Important**: changing the embedding backend, embedding model, or chunking rules requires re-ingestion of all documents (`python main.py ingest`).
 
 ### Hybrid mode
 
@@ -240,9 +240,9 @@ See `.env.example` for all variables with comments. Key ones:
 | `LLM_CONTEXT_LENGTH` | `4096` | Ollama context window (num_ctx). Cloud providers ignore this |
 | `LLM_THINK_ENABLE` | `true` | Enable chain-of-thought thinking tokens (Qwen, DeepSeek-R1) |
 | `LLM_COMPLETION_MAX_TOKENS` | `768` | Hard cap for generated answer tokens |
-| `LLM_CONTEXT_MAX_CHUNKS` | `4` | Max reranked chunks sent to the LLM prompt |
+| `LLM_CONTEXT_MAX_CHUNKS` | `4` | Baseline context chunks for simple questions; multi-concept questions may use up to 6 |
 | `LLM_CONTEXT_RETRY_MAX_CHUNKS` | `2` | Fallback chunk count on empty answer retry |
-| `LLM_CHUNK_MAX_CHARS` | `1600` | Per-chunk character cap before prompt assembly |
+| `LLM_CHUNK_MAX_CHARS` | `1300` | Defensive per-chunk character cap before prompt assembly |
 | `LLM_CONTEXT_CHARS_BUDGET` | `9000` | Total character budget for retrieved context |
 | `OLLAMA_LLM_HOSTS` | `localhost,127.0.0.1,...` | Hosts that use Ollama native `/api/chat` endpoint |
 
@@ -263,6 +263,8 @@ See `.env.example` for all variables with comments. Key ones:
 |----------|---------|-------------|
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
 | `CHUNK_OVERLAP` | `50` | Overlap between chunks |
+| `CHUNK_MAX_CHARS` | `1200` | Physical max characters per indexed chunk |
+| `CHUNK_OVERLAP_CHARS` | `180` | Character overlap for physical chunk splits |
 | `INGEST_BATCH_SIZE` | `0` | Documents per batch (0 = all at once) |
 | `EMBEDDING_BATCH_SIZE` | `0` | Chunks per embed batch (0 = auto-detect) |
 
@@ -270,14 +272,15 @@ See `.env.example` for all variables with comments. Key ones:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SIMILARITY_TOP_K` | `5` | Vector candidates retrieved before fusion |
-| `BM25_TOP_K` | `5` | BM25 candidates retrieved before fusion |
-| `HYBRID_TOP_K` | `10` | Fused candidates sent to reranker (or returned directly when reranker disabled) |
+| `SIMILARITY_TOP_K` | `80` | Vector candidates retrieved before fusion |
+| `BM25_TOP_K` | `80` | BM25 candidates retrieved before fusion |
+| `HYBRID_TOP_K` | `25` | Fused candidates sent to reranker (or returned directly when reranker disabled) |
+| `RAG_RETRIEVAL_TOP_K` | `12` | Internal result count requested by the answer pipeline |
 | `RERANK_MODEL` | `""` | Cross-encoder model for reranking. Empty = disabled |
 | `RERANK_DEVICE` | `cpu` | Reranker device. Keep CPU on small GPUs |
-| `RERANK_TOP_K` | `6` | Final chunks sent to the LLM after cross-encoder reranking |
+| `RERANK_TOP_K` | `12` | Internal chunks kept after cross-encoder reranking |
 | `MMR_LAMBDA` | `0.7` | MMR diversity weight (0 = relevance only, 1 = diversity only) |
-| API `top_k` default | `6` | Fallback final chunks when API doesn't specify `top_k` |
+| API `top_k` default | `12` | Compatibility request value; internal retrieval uses backend RAG settings |
 
 ### Storage
 
@@ -379,32 +382,29 @@ The retrieval defaults listed above are the hard-coded fallbacks from `config.py
 - The higher overlap reduces the chance that a key sentence is isolated without the qualifier, limitation, or definition that gives it proper meaning.
 - This is especially useful for results, caveats, and terminology-heavy sections.
 
-### Why `SIMILARITY_TOP_K=20` and `BM25_TOP_K=20`
+### Why `SIMILARITY_TOP_K=80` and `BM25_TOP_K=80`
 
-- The code default is `5` per retriever, which is too narrow for the fusion stage. `.env.example` recommends `20`.
+- The default is intentionally broad so the fusion stage has enough recall for multi-concept questions.
 - Widens the retrieval funnel to capture semantic nuances and terminology-heavy passages alike.
 - Vector search helps recover semantically related passages that cosine distance alone might rank lower.
 - BM25 helps recover terminology-heavy passages, exact species names, concepts, and uncommon technical expressions.
-- `20` per retriever gives the fusion stage useful recall while keeping CPU reranking practical on local machines.
+- `80` per retriever gives the fusion stage stronger recall before the later RRF, reranking, and context selection steps prune aggressively.
 
-### Why `HYBRID_TOP_K=10`
+### Why `HYBRID_TOP_K=25`
 
 - The RRF-fused candidate pool fed into the cross-encoder reranker.
-- `10` keeps the CPU cross-encoder cost bounded. In local testing, 30 candidates can add tens of seconds per question.
+- `25` keeps enough fused candidates for the reranker while bounding CPU cost.
 - When the reranker is disabled, this value becomes the final output sent to the LLM.
 
-### Why `RERANK_TOP_K=6`
+### Why `RERANK_TOP_K=12`
 
-- The code default is `6`. `.env.example` recommends `5`.
-- Controls the final context precision: only the top reranked chunks reach the LLM.
-- `5-6` is a practical balance for scientific question answering:
-  - enough room for complementary evidence;
-  - low enough to avoid flooding the prompt with marginal chunks;
-  - tighter focus improves factual synthesis and reduces hallucination.
+- Keeps a strong internal pool after reranking.
+- The answer prompt does not blindly include all 12 chunks: an adaptive selector sends roughly 4 chunks for simple questions and up to 6 for multi-concept comparisons.
+- This separates retrieval recall from final prompt precision.
 
 ### Reranker (cross-encoder)
 
-When `RERANK_MODEL` is set, the cross-encoder re-ranks the top `HYBRID_TOP_K` fused candidates and returns the best `RERANK_TOP_K` chunks for the LLM. Unlike the bi-encoder (embeddings), which processes query and document separately, the cross-encoder reads them jointly with cross-attention, yielding better relevance ordering.
+When `RERANK_MODEL` is set, the cross-encoder re-ranks the top `HYBRID_TOP_K` fused candidates and returns the best `RERANK_TOP_K` internal chunks. The adaptive context selector then chooses the final evidence chunks for the LLM prompt. Unlike the bi-encoder (embeddings), which processes query and document separately, the cross-encoder reads them jointly with cross-attention, yielding better relevance ordering.
 
 - **Enabled**: higher precision, better ordering, ~100-300ms extra per query.
 - **Disabled** (`RERANK_MODEL=""` — the default): falls back to simple RRF fusion, returning top `HYBRID_TOP_K` directly.

@@ -12,23 +12,34 @@ logger = logging.getLogger("agroecology.parsers")
 _ACADEMIC_SECTIONS = {
     "abstract": BlockType.ABSTRACT,
     "resumo": BlockType.ABSTRACT,
+    "resumen": BlockType.ABSTRACT,
     "introduction": BlockType.SECTION_HEADING,
     "introdução": BlockType.SECTION_HEADING,
     "introducao": BlockType.SECTION_HEADING,
+    "introducción": BlockType.SECTION_HEADING,
+    "introduccion": BlockType.SECTION_HEADING,
     "materials and methods": BlockType.SECTION_HEADING,
     "materiais e métodos": BlockType.SECTION_HEADING,
     "materiais e metodos": BlockType.SECTION_HEADING,
+    "materiales y métodos": BlockType.SECTION_HEADING,
+    "materiales y metodos": BlockType.SECTION_HEADING,
     "material and methods": BlockType.SECTION_HEADING,
     "methods": BlockType.SECTION_HEADING,
+    "métodos": BlockType.SECTION_HEADING,
+    "metodos": BlockType.SECTION_HEADING,
     "metodologia": BlockType.SECTION_HEADING,
     "results": BlockType.SECTION_HEADING,
     "resultados": BlockType.SECTION_HEADING,
     "discussion": BlockType.SECTION_HEADING,
     "discussão": BlockType.SECTION_HEADING,
     "discussao": BlockType.SECTION_HEADING,
+    "discusión": BlockType.SECTION_HEADING,
+    "discusion": BlockType.SECTION_HEADING,
     "conclusion": BlockType.SECTION_HEADING,
+    "conclusions": BlockType.SECTION_HEADING,
     "conclusão": BlockType.SECTION_HEADING,
     "conclusao": BlockType.SECTION_HEADING,
+    "conclusiones": BlockType.SECTION_HEADING,
     "references": BlockType.REFERENCE,
     "referências": BlockType.REFERENCE,
     "referencias": BlockType.REFERENCE,
@@ -99,10 +110,18 @@ def _classify_block(
     if _ACADEMIC_SECTIONS.get(clean) == BlockType.ABSTRACT:
         return BlockType.ABSTRACT
 
-    if clean.startswith("fig") or clean.startswith("figure"):
+    if (
+        clean.startswith("fig")
+        or clean.startswith("figure")
+        or clean.startswith("figura")
+    ):
         return BlockType.FIGURE_CAPTION
 
-    if clean.startswith("table") and len(clean) < 80:
+    if (
+        clean.startswith("table")
+        or clean.startswith("tabela")
+        or clean.startswith("tabla")
+    ) and len(clean) < 80:
         return BlockType.TABLE
 
     if len(clean) < 30 and (

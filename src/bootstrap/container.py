@@ -622,12 +622,32 @@ class Container:
     def _create_cache(self) -> None:
         self.cache = ValkeyCache(VALKEY_URL, ttl=CACHE_TTL)
         self.cache.set_index_version(read_index_version())
-        from src.shared.config import EMBEDDING_MODEL, HYBRID_TOP_K, RERANK_MODEL
+        from src.shared.config import (
+            BM25_TOP_K,
+            EMBEDDING_MODEL,
+            HYBRID_TOP_K,
+            LLM_CHUNK_MAX_CHARS,
+            LLM_CONTEXT_MAX_CHUNKS,
+            MMR_LAMBDA,
+            RAG_RETRIEVAL_TOP_K,
+            RERANK_MODEL,
+            RERANK_TOP_K,
+            SIMILARITY_TOP_K,
+        )
+
+        retrieval_signature = (
+            f"sim={SIMILARITY_TOP_K}|bm25={BM25_TOP_K}|hybrid={HYBRID_TOP_K}|"
+            f"rag_k={RAG_RETRIEVAL_TOP_K}|rerank_k={RERANK_TOP_K}|"
+            f"mmr={MMR_LAMBDA}|ctx={LLM_CONTEXT_MAX_CHUNKS}|"
+            f"chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v1|"
+            f"prompt=evidence_chat_v1"
+        )
 
         self.cache.configure(
             embedding_model=EMBEDDING_MODEL,
             reranker_model=RERANK_MODEL,
             top_k=HYBRID_TOP_K,
+            retrieval_signature=retrieval_signature,
         )
 
     def _create_auth_rate_limiter(self) -> None:

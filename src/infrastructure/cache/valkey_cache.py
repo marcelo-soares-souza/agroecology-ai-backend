@@ -33,6 +33,7 @@ class ValkeyCache(CachePort):  # noqa: F811
         self._embedding_model = ""
         self._reranker_model = ""
         self._top_k = 0
+        self._retrieval_signature = ""
 
         if redis is None:
             log_event(logger, logging.WARNING, "cache_disabled", reason="redis_missing")
@@ -90,10 +91,12 @@ class ValkeyCache(CachePort):  # noqa: F811
         embedding_model: str,
         reranker_model: str,
         top_k: int,
+        retrieval_signature: str = "",
     ) -> None:
         self._embedding_model = embedding_model
         self._reranker_model = reranker_model
         self._top_k = top_k
+        self._retrieval_signature = retrieval_signature
 
     def _key(self, question: str, top_k: int = 0) -> str:
         normalized = unicodedata.normalize("NFKD", question.lower().strip())
@@ -101,7 +104,11 @@ class ValkeyCache(CachePort):  # noqa: F811
         normalized = re.sub(r"[^\w\s]", "", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
         effective_top_k = top_k if top_k > 0 else self._top_k
-        payload = f"{normalized}|v{self._index_version}|emb={self._embedding_model}|rerank={self._reranker_model}|k={effective_top_k}"
+        payload = (
+            f"{normalized}|v{self._index_version}|emb={self._embedding_model}|"
+            f"rerank={self._reranker_model}|k={effective_top_k}|"
+            f"retrieval={self._retrieval_signature}"
+        )
         h = hashlib.md5(payload.encode()).hexdigest()
         return f"{_KEY_PREFIX}:{self._index_version}:{h}"
 

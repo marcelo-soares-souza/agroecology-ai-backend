@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
+from dataclasses import dataclass
 from typing import Any
 
 from lingua import Language, LanguageDetectorBuilder
@@ -17,6 +19,7 @@ from src.shared.config import (
     LLM_CONTEXT_MAX_CHUNKS,
     LLM_CONTEXT_RETRY_MAX_CHUNKS,
     RERANK_TOP_K,
+    RAG_RETRIEVAL_TOP_K,
     SYSTEM_PROMPT,
     USER_PROMPT,
 )
@@ -78,7 +81,161 @@ _LINGUA_LANGUAGE_NAMES = {
     Language.FRENCH: "French",
 }
 _LINGUA_DETECTOR = LanguageDetectorBuilder.from_languages(*_LINGUA_LANGUAGES).build()
+_QUESTION_INTENT_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "comparison": (
+        re.compile(r"\b(compare|comparar|comparacao|comparison)\b"),
+        re.compile(r"\b(diferenca|distincao|distinction|difference)\b"),
+        re.compile(r"\b(versus|vs\.?)\b"),
+        re.compile(r"\bentre\b.+\be\b"),
+    ),
+    "methodology": (
+        re.compile(r"\b(metodologia|metodo|metodos|methodology|methods?)\b"),
+        re.compile(r"\b(materials? and methods?|materiais e metodos)\b"),
+        re.compile(r"\b(experimento|experimental|delineamento|amostra|sample)\b"),
+        re.compile(r"\b(mediu|medir|medida|measurement|measured|avaliou)\b"),
+        re.compile(r"\bcomo foi feito\b"),
+    ),
+    "results": (
+        re.compile(r"\b(resultado|resultados|results?|findings?|achados)\b"),
+        re.compile(r"\b(encontrou|observou|found|observed|efeito|impacto)\b"),
+        re.compile(r"\b(conclusao|conclusoes|conclusion|conclusions)\b"),
+        re.compile(r"\b(produtividade|yield|significancia|beneficios?)\b"),
+    ),
+    "definition": (
+        re.compile(r"\b(o que e|o que sao|what is|what are|que es)\b"),
+        re.compile(r"\b(defina|definir|define|definition|definicao)\b"),
+        re.compile(r"\b(conceito|concepto|concept)\b"),
+    ),
+}
+_INTENT_SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "definition": (
+        re.compile(r"\b(abstract|resumo|resumen)\b"),
+        re.compile(r"\b(introduction|introducao|introduccion|background)\b"),
+        re.compile(r"\b(definition|definicao|conceito|concept)\b"),
+    ),
+    "methodology": (
+        re.compile(r"\b(method|methods|metodo|metodos|metodologia)\b"),
+        re.compile(r"\b(materials?|materiais|materiales)\b"),
+        re.compile(r"\b(experiment|experimental|study design)\b"),
+    ),
+    "results": (
+        re.compile(r"\b(results?|resultados?)\b"),
+        re.compile(r"\b(discussion|discussao|discusion)\b"),
+        re.compile(r"\b(conclusion|conclusions|conclusao|conclusoes)\b"),
+    ),
+    "comparison": (
+        re.compile(r"\b(results?|resultados?)\b"),
+        re.compile(r"\b(discussion|discussao|discusion)\b"),
+        re.compile(r"\b(conclusion|conclusions|conclusao|conclusoes)\b"),
+        re.compile(r"\b(abstract|resumo|resumen|introduction|introducao)\b"),
+    ),
+    "overview": (
+        re.compile(r"\b(abstract|resumo|resumen)\b"),
+        re.compile(r"\b(introduction|introducao|introduccion)\b"),
+        re.compile(r"\b(discussion|discussao|discusion)\b"),
+        re.compile(r"\b(conclusion|conclusions|conclusao|conclusoes)\b"),
+    ),
+}
+_QUESTION_STOPWORDS = {
+    "a",
+    "about",
+    "as",
+    "com",
+    "como",
+    "da",
+    "das",
+    "de",
+    "defina",
+    "do",
+    "dos",
+    "e",
+    "el",
+    "em",
+    "en",
+    "entre",
+    "es",
+    "foi",
+    "for",
+    "is",
+    "la",
+    "le",
+    "les",
+    "los",
+    "no",
+    "nos",
+    "o",
+    "os",
+    "para",
+    "por",
+    "qual",
+    "quais",
+    "que",
+    "sao",
+    "the",
+    "what",
+    "with",
+}
+_QUESTION_GENERIC_TERMS = {
+    "achados",
+    "beneficios",
+    "comparacao",
+    "compare",
+    "conclusoes",
+    "diferenca",
+    "efeito",
+    "experimento",
+    "impacto",
+    "metodologia",
+    "metodo",
+    "paper",
+    "resultado",
+    "resultados",
+    "study",
+}
+_INTENT_GUIDANCE: dict[str, str] = {
+    "definition": (
+        "Give a direct, friendly definition first. Then add scope, conditions, "
+        "or caveats only when the sources support them. Avoid broad claims that "
+        "go beyond the cited material."
+    ),
+    "methodology": (
+        "Focus on how the study or practice was done: design, sample/context, "
+        "variables, measurements, and limits. If the sources do not describe the "
+        "method, say the retrieved sources do not provide enough methodological detail."
+    ),
+    "results": (
+        "Separate findings from interpretation. Mention quantities, direction of "
+        "effect, context, and uncertainty only when present in the sources. Do not "
+        "infer statistical significance unless it is stated."
+    ),
+    "comparison": (
+        "Compare only criteria supported by the sources. A short table is welcome "
+        "when it makes the answer clearer. If one side lacks evidence, say that "
+        "instead of forcing a balanced comparison."
+    ),
+    "overview": (
+        "Give the most useful direct answer first, then summarize the evidence and "
+        "important limitations. Keep the tone conversational and cite the supporting "
+        "sources."
+    ),
+}
 logger = logging.getLogger("agroecology.rag")
+
+
+@dataclass(frozen=True)
+class QuestionProfile:
+    intent: str
+    concepts: tuple[str, ...]
+    max_context_chunks: int
+
+
+@dataclass
+class _ContextCandidate:
+    chunk: RetrievedChunk
+    rank: int
+    estimated_chars: int
+    priority: int
+    concept_hits: tuple[str, ...]
 
 
 def _normalize_scores(retrieved: list[RetrievedChunk]) -> None:
@@ -137,12 +294,18 @@ class AskQuestion:
             language_confidence,
             language_source,
         ) = self._resolve_answer_language(question, normalized_history, follow_up)
+        requested_top_k = top_k or RERANK_TOP_K
+        retrieval_top_k = self._resolve_retrieval_top_k()
+        question_profile = self._profile_question(search_text=question)
         log_event(
             logger,
             logging.INFO,
             "rag_question_started",
             question_chars=len(question),
-            top_k=top_k or RERANK_TOP_K,
+            top_k=requested_top_k,
+            retrieval_top_k=retrieval_top_k,
+            question_intent=question_profile.intent,
+            question_concepts=len(question_profile.concepts),
             history_messages=len(normalized_history),
             follow_up_detected=follow_up,
             expected_language=expected_language,
@@ -156,7 +319,7 @@ class AskQuestion:
         rewrite_metrics = perf_fields(rewrite_started_at, "rewrite")
         retrieved = self._retriever.hybrid_search(
             search_query,
-            top_k=top_k or RERANK_TOP_K,
+            top_k=retrieval_top_k,
         )
 
         # Enrich chunks with document metadata from title_map
@@ -168,7 +331,7 @@ class AskQuestion:
 
         answer_history: list[dict[str, Any]] = normalized_history if follow_up else []
         context_started_at = take_perf_snapshot()
-        context_chunks = self._select_context_chunks(retrieved)
+        context_chunks = self._select_context_chunks(retrieved, question_profile)
         log_event(
             logger,
             logging.INFO,
@@ -177,6 +340,10 @@ class AskQuestion:
             selected_count=len(context_chunks),
             selected_chars=sum(len(chunk.text) for chunk in context_chunks),
             history_messages=len(answer_history),
+            retrieval_top_k=retrieval_top_k,
+            question_intent=question_profile.intent,
+            question_concepts=len(question_profile.concepts),
+            context_chunk_limit=question_profile.max_context_chunks,
             **perf_fields(context_started_at, "context_select"),
         )
         answer_started_at = take_perf_snapshot()
@@ -185,6 +352,7 @@ class AskQuestion:
             context_chunks,
             answer_history,
             expected_language,
+            question_profile,
         )
         if not answer and len(context_chunks) > 1:
             retry_chunks = context_chunks[:LLM_CONTEXT_RETRY_MAX_CHUNKS]
@@ -203,6 +371,7 @@ class AskQuestion:
                 retry_chunks,
                 answer_history,
                 expected_language,
+                question_profile,
             )
             if retry_answer:
                 log_event(
@@ -255,6 +424,8 @@ class AskQuestion:
             question_chars=len(question),
             retrieved_sources=len(sources),
             answer_chars=len(answer),
+            requested_top_k=requested_top_k,
+            retrieval_top_k=retrieval_top_k,
             search_query_rewritten=search_query != question,
             expected_language=expected_language,
             language_confidence=language_confidence,
@@ -266,35 +437,60 @@ class AskQuestion:
         return AnswerResult(answer=answer, sources=sources)
 
     @staticmethod
-    def _build_context(retrieved: list[RetrievedChunk]) -> str:
+    def _resolve_retrieval_top_k() -> int:
+        return max(RAG_RETRIEVAL_TOP_K, RERANK_TOP_K, LLM_CONTEXT_MAX_CHUNKS)
+
+    @classmethod
+    def _build_context(cls, retrieved: list[RetrievedChunk]) -> str:
         parts = []
         for i, chunk in enumerate(retrieved, 1):
             source = chunk.source or "unknown"
             source_name = source.rsplit("/", 1)[-1]
             text = chunk.text.strip()
 
-            lines = [f"[{i}]"]
-            title = chunk.title
-            page_start = chunk.page_start or 0
-            page_end = chunk.page_end or 0
+            attrs = [f'id="{i}"']
+            if chunk.title:
+                attrs.append(f'title="{cls._escape_context_attr(chunk.title)}"')
+            if chunk.authors:
+                attrs.append(f'authors="{cls._escape_context_attr(chunk.authors)}"')
+            if chunk.year:
+                attrs.append(f'year="{chunk.year}"')
+            if chunk.doi:
+                attrs.append(f'doi="{cls._escape_context_attr(chunk.doi)}"')
+            if chunk.journal:
+                attrs.append(f'journal="{cls._escape_context_attr(chunk.journal)}"')
+            if chunk.section_title:
+                attrs.append(
+                    f'section="{cls._escape_context_attr(chunk.section_title)}"'
+                )
 
-            if title:
-                lines.append(f"Title: {title}")
+            pages = cls._format_pages(chunk.page_start, chunk.page_end)
+            if pages:
+                attrs.append(f'pages="{pages}"')
+            elif not chunk.title:
+                attrs.append(f'source="{cls._escape_context_attr(source_name)}"')
 
-            page_info = ""
-            if page_start and page_end and page_start != page_end:
-                page_info = f", pp. {page_start}-{page_end}"
-            elif page_start:
-                page_info = f", p. {page_start}"
-
-            if page_info:
-                lines.append(f"Pages{page_info}")
-
-            lines.append(f"Source: {source_name}")
-            lines.append(f"Text:\n{text}")
+            lines = [f"<source {' '.join(attrs)}>", text, "</source>"]
             parts.append("\n".join(lines))
 
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _escape_context_attr(value: str) -> str:
+        return (
+            value.replace("&", "&amp;")
+            .replace('"', "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    @staticmethod
+    def _format_pages(page_start: int | None, page_end: int | None) -> str:
+        if page_start and page_end and page_start != page_end:
+            return f"{page_start}-{page_end}"
+        if page_start:
+            return str(page_start)
+        return ""
 
     def _generate_answer(
         self,
@@ -302,19 +498,25 @@ class AskQuestion:
         context_chunks: list[RetrievedChunk],
         answer_history: list[dict[str, Any]],
         expected_language: str,
+        question_profile: QuestionProfile,
     ) -> str:
         context = self._build_context(context_chunks)
         user_prompt = USER_PROMPT.replace("{context}", context)
         user_prompt = user_prompt.replace("{question}", question)
         user_prompt = user_prompt.replace("{expected_language}", expected_language)
+        user_prompt = user_prompt.replace(
+            "{intent_guidance}",
+            _INTENT_GUIDANCE.get(
+                question_profile.intent,
+                _INTENT_GUIDANCE["overview"],
+            ),
+        )
         if answer_history:
             user_prompt = (
-                "FOLLOW-UP QUESTION. Use the conversation history to avoid repeating "
-                "what was already explained. Add only new details supported by the "
-                "retrieved context. If the context adds nothing new, say: "
-                "'I have already covered the available information on this topic. "
-                "Could you specify which aspect you'd like me to explore further?'\n\n"
-                + user_prompt
+                "FOLLOW-UP QUESTION. Use the conversation history only to understand "
+                "what the user is asking next and to avoid unnecessary repetition. "
+                "Do not treat conversation history as factual evidence; factual "
+                "support must come from the supplied sources below.\n\n" + user_prompt
             )
         return self._llm.complete(
             SYSTEM_PROMPT,
@@ -322,30 +524,233 @@ class AskQuestion:
             history=answer_history,
         )
 
-    @staticmethod
-    def _select_context_chunks(retrieved: list[RetrievedChunk]) -> list[RetrievedChunk]:
-        selected: list[RetrievedChunk] = []
-        used_chars = 0
+    @classmethod
+    def _profile_question(cls, search_text: str) -> QuestionProfile:
+        normalized = cls._normalize_for_matching(search_text)
+        intent = cls._detect_question_intent(normalized)
+        concepts = cls._extract_question_concepts(normalized)
+        return QuestionProfile(
+            intent=intent,
+            concepts=concepts,
+            max_context_chunks=cls._context_chunk_limit(intent, concepts),
+        )
 
-        for chunk in retrieved:
-            if len(selected) >= LLM_CONTEXT_MAX_CHUNKS:
+    @staticmethod
+    def _normalize_for_matching(text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text.lower())
+        normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+        normalized = re.sub(r"[^\w\s.-]", " ", normalized)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized
+
+    @staticmethod
+    def _detect_question_intent(normalized_question: str) -> str:
+        for intent, patterns in _QUESTION_INTENT_PATTERNS.items():
+            if any(pattern.search(normalized_question) for pattern in patterns):
+                return intent
+        return "overview"
+
+    @staticmethod
+    def _extract_question_concepts(normalized_question: str) -> tuple[str, ...]:
+        cleaned = re.sub(
+            r"\b(o que e|o que sao|what is|what are|que es|qual a diferenca entre|"
+            r"qual e a diferenca entre|compare|comparar|defina|definir|em termos de)\b",
+            " ",
+            normalized_question,
+        )
+        phrases = re.split(r"\b(?:versus|vs\.?|entre|com|e|and|y)\b|[,;:/]", cleaned)
+        concepts: list[str] = []
+
+        for phrase in phrases:
+            words = [
+                word
+                for word in phrase.split()
+                if (
+                    len(word) >= 4
+                    and word not in _QUESTION_STOPWORDS
+                    and word not in _QUESTION_GENERIC_TERMS
+                    and not word.isdigit()
+                )
+            ]
+            if not words:
+                continue
+            concept = " ".join(words[:3])
+            if concept not in concepts:
+                concepts.append(concept)
+            if len(concepts) >= 5:
                 break
 
+        return tuple(concepts)
+
+    @staticmethod
+    def _context_chunk_limit(intent: str, concepts: tuple[str, ...]) -> int:
+        if intent == "comparison" and len(concepts) >= 2:
+            desired = 6
+        else:
+            desired = 4
+        return max(1, min(LLM_CONTEXT_MAX_CHUNKS, desired))
+
+    @classmethod
+    def _select_context_chunks(
+        cls, retrieved: list[RetrievedChunk], profile: QuestionProfile
+    ) -> list[RetrievedChunk]:
+        candidates = cls._prepare_context_candidates(retrieved, profile)
+        if not candidates:
+            return retrieved[:1]
+
+        selected: list[_ContextCandidate] = []
+        used_chars = 0
+        selected_ids: set[str] = set()
+
+        def add_candidate(candidate: _ContextCandidate) -> bool:
+            nonlocal used_chars
+            if candidate.chunk.id in selected_ids:
+                return False
+            if len(selected) >= profile.max_context_chunks:
+                return False
+            if (
+                selected
+                and used_chars + candidate.estimated_chars > LLM_CONTEXT_CHARS_BUDGET
+            ):
+                return False
+            selected.append(candidate)
+            selected_ids.add(candidate.chunk.id)
+            used_chars += candidate.estimated_chars
+            return True
+
+        ranked_by_context = sorted(candidates, key=lambda c: (-c.priority, c.rank))
+        ranked_by_relevance = sorted(candidates, key=lambda c: c.rank)
+
+        if profile.intent == "comparison" and profile.concepts:
+            for concept in profile.concepts:
+                for candidate in ranked_by_context:
+                    if concept in candidate.concept_hits and add_candidate(candidate):
+                        break
+
+            for candidate in ranked_by_context:
+                if cls._adds_context_diversity(candidate, selected):
+                    add_candidate(candidate)
+
+        elif profile.intent in {"definition", "methodology", "results"}:
+            for candidate in ranked_by_context:
+                if candidate.priority > 0:
+                    add_candidate(candidate)
+
+        else:
+            for candidate in ranked_by_relevance:
+                if cls._adds_context_diversity(candidate, selected):
+                    add_candidate(candidate)
+
+        for candidate in ranked_by_relevance:
+            add_candidate(candidate)
+
+        return [candidate.chunk for candidate in selected] or [candidates[0].chunk]
+
+    @classmethod
+    def _prepare_context_candidates(
+        cls, retrieved: list[RetrievedChunk], profile: QuestionProfile
+    ) -> list[_ContextCandidate]:
+        candidates: list[_ContextCandidate] = []
+
+        for rank, chunk in enumerate(retrieved, 1):
             trimmed_text = chunk.text.strip()[:LLM_CHUNK_MAX_CHARS].strip()
             if not trimmed_text:
                 continue
 
             chunk_copy = RetrievedChunk.from_dict(chunk.to_dict())
             chunk_copy.text = trimmed_text
+            concept_hits = cls._matching_concepts(profile.concepts, chunk_copy)
+            candidates.append(
+                _ContextCandidate(
+                    chunk=chunk_copy,
+                    rank=rank,
+                    estimated_chars=len(trimmed_text) + 300,
+                    priority=cls._context_priority(chunk_copy, profile, concept_hits),
+                    concept_hits=concept_hits,
+                )
+            )
 
-            estimated_chars = len(trimmed_text) + 300
-            if selected and used_chars + estimated_chars > LLM_CONTEXT_CHARS_BUDGET:
-                break
+        return candidates
 
-            selected.append(chunk_copy)
-            used_chars += estimated_chars
+    @classmethod
+    def _context_priority(
+        cls,
+        chunk: RetrievedChunk,
+        profile: QuestionProfile,
+        concept_hits: tuple[str, ...],
+    ) -> int:
+        priority = len(concept_hits) * 20
 
-        return selected or retrieved[:1]
+        if cls._section_matches_intent(chunk.section_title, profile.intent):
+            priority += 80
+
+        block_types = {item.strip() for item in chunk.block_types.split(",")}
+        if profile.intent == "definition" and "abstract" in block_types:
+            priority += 30
+        if profile.intent == "results" and "table" in block_types:
+            priority += 20
+        if (
+            profile.intent in {"results", "comparison"}
+            and "figure_caption" in block_types
+        ):
+            priority += 10
+
+        chunk_text = cls._normalize_for_matching(chunk.text[:1200])
+        if any(
+            pattern.search(chunk_text)
+            for pattern in _QUESTION_INTENT_PATTERNS.get(profile.intent, ())
+        ):
+            priority += 10
+
+        return priority
+
+    @classmethod
+    def _matching_concepts(
+        cls, concepts: tuple[str, ...], chunk: RetrievedChunk
+    ) -> tuple[str, ...]:
+        if not concepts:
+            return ()
+
+        searchable = cls._normalize_for_matching(
+            " ".join(
+                (
+                    chunk.title,
+                    chunk.section_title,
+                    chunk.block_types,
+                    chunk.text[:1600],
+                )
+            )
+        )
+        matches = [concept for concept in concepts if concept in searchable]
+        return tuple(matches)
+
+    @staticmethod
+    def _section_matches_intent(section_title: str, intent: str) -> bool:
+        if not section_title:
+            return False
+        normalized_section = AskQuestion._normalize_for_matching(section_title)
+        return any(
+            pattern.search(normalized_section)
+            for pattern in _INTENT_SECTION_PATTERNS.get(intent, ())
+        )
+
+    @staticmethod
+    def _adds_context_diversity(
+        candidate: _ContextCandidate, selected: list[_ContextCandidate]
+    ) -> bool:
+        if not selected:
+            return True
+
+        candidate_doc = candidate.chunk.document_id or candidate.chunk.source
+        candidate_section = candidate.chunk.section_title
+        selected_docs = {
+            item.chunk.document_id or item.chunk.source for item in selected
+        }
+        selected_sections = {item.chunk.section_title for item in selected}
+        return (
+            candidate_doc not in selected_docs
+            or candidate_section not in selected_sections
+        )
 
     @staticmethod
     def _detect_question_language(question: str) -> tuple[str, str]:

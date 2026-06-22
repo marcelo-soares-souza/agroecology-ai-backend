@@ -78,7 +78,7 @@ class RetrieverService:
 
         Args:
             query: The search query.
-            top_k: Desired number of final results.
+            top_k: Desired number of internal reranked results.
             filters: Optional metadata filters applied to both search paths.
 
         Returns:
@@ -113,7 +113,7 @@ class RetrieverService:
 
         if self._reranker is not None:
             t4 = time.perf_counter()
-            candidate_count = max(self._hybrid_top_k, top_k)
+            candidate_count = max(self._hybrid_top_k, top_k * 2)
             candidates = fused[:candidate_count]
             results = self._reranker.rerank(query, candidates, top_k)
             t_rerank = round((time.perf_counter() - t4) * 1000, 2)

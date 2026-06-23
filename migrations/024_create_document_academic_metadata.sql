@@ -47,9 +47,8 @@ CREATE TABLE IF NOT EXISTS academic_metadata_runs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CHECK (status IN ('queued', 'processing', 'done', 'error')),
-    CHECK (delay_seconds >= 60)
+    CHECK (delay_seconds >= 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_academic_metadata_runs_status
     ON academic_metadata_runs (status, created_at DESC);
-

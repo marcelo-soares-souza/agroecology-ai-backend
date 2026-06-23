@@ -849,8 +849,10 @@ class Container:
         log_event(
             logger,
             logging.INFO,
-            "openalex_provider_configured",
-            api_key_configured=bool(OPENALEX_API_KEY),
+            "academic_metadata_providers_configured",
+            openalex_api_key_configured=bool(OPENALEX_API_KEY),
+            openalex_mailto_configured=bool(OPENALEX_MAILTO),
+            crossref_mailto_configured=bool(CROSSREF_MAILTO),
         )
         self.extract_document_academic_metadata = ExtractDocumentAcademicMetadata(
             repo=self.doc_repo,

@@ -285,10 +285,9 @@ metadata from OpenAlex and Crossref. Existing `title` and `authors` fields are
 only used for matching and are never changed.
 
 The request may omit `delay_seconds` to use the configured backend default.
-When provided, `delay_seconds` must respect the configured minimum, currently
-60 seconds between documents. Documents already attempted by this feature are
-skipped on future runs, including documents with no external match. Requires
-the `admin` role.
+When provided, `delay_seconds` must respect the configured backend minimum.
+Documents already attempted by this feature are skipped on future runs,
+including documents with no external match. Requires the `admin` role.
 """,
     },
     ("GET", "/api/v1/admin/documents/academic-metadata/status"): {

@@ -172,7 +172,7 @@ class DocumentUpdateBody(BaseModel):
 
 
 class AcademicMetadataExtractBody(BaseModel):
-    delay_seconds: int | None = Field(default=None, ge=60)
+    delay_seconds: int | None = None
 
 
 class AcademicMetadataRunStatusResponse(BaseModel):

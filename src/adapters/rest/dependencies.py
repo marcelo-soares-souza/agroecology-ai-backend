@@ -28,8 +28,14 @@ from src.application.auth.update_my_profile import UpdateMyProfile
 from src.application.auth.upload_my_avatar import UploadMyAvatar
 from src.application.auth.validate_session import ValidateSession
 from src.application.delete_document import DeleteDocument
+from src.application.enqueue_academic_metadata_extraction import (
+    EnqueueAcademicMetadataExtraction,
+)
 from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
+from src.application.get_academic_metadata_run_status import (
+    GetAcademicMetadataRunStatus,
+)
 from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
 from src.application.get_document_file import GetDocumentFile
@@ -78,6 +84,9 @@ from src.bootstrap.container import container
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.ports.auth_rate_limiter_port import AuthRateLimiterPort
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
+from src.domain.ports.document_academic_metadata_repository import (
+    DocumentAcademicMetadataRepository,
+)
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.user_repository import UserRepository
 from src.domain.ports.vector_store_port import VectorStorePort
@@ -103,6 +112,13 @@ async def get_user_repo() -> UserRepository:
 async def get_suggestion_repo() -> DocumentSuggestionRepository:
     assert container.suggestion_repo is not None, "suggestion_repo not initialized"
     return container.suggestion_repo
+
+
+async def get_document_academic_metadata_repo() -> DocumentAcademicMetadataRepository:
+    assert container.academic_metadata_repo is not None, (
+        "academic_metadata_repo not initialized"
+    )
+    return container.academic_metadata_repo
 
 
 def get_ingest() -> IngestDocuments:
@@ -316,6 +332,16 @@ def get_enqueue_pending_metadata() -> EnqueuePendingMetadata:
 def get_metadata_job_status() -> GetMetadataJobStatus:
     assert container.get_metadata_job_status is not None
     return container.get_metadata_job_status
+
+
+def get_enqueue_academic_metadata_extraction() -> EnqueueAcademicMetadataExtraction:
+    assert container.enqueue_academic_metadata_extraction is not None
+    return container.enqueue_academic_metadata_extraction
+
+
+def get_academic_metadata_run_status() -> GetAcademicMetadataRunStatus:
+    assert container.get_academic_metadata_run_status is not None
+    return container.get_academic_metadata_run_status
 
 
 # ── Suggestion use case getters ──────────────────────────────────────────

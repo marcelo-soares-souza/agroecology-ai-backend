@@ -276,6 +276,28 @@ Returns pending, running, and active counts for queued PDF metadata extraction
 jobs. Requires the `admin` role.
 """,
     },
+    ("POST", "/api/v1/admin/documents/academic-metadata/extract"): {
+        "tags": ["documents"],
+        "summary": "Queue academic metadata extraction",
+        "description": """
+Queues a background run that enriches document records with external academic
+metadata from OpenAlex and Crossref. Existing `title` and `authors` fields are
+only used for matching and are never changed.
+
+The request accepts `delay_seconds` with a minimum of 60 seconds between
+documents. Documents already attempted by this feature are skipped on future
+runs, including documents with no external match. Requires the `admin` role.
+""",
+    },
+    ("GET", "/api/v1/admin/documents/academic-metadata/status"): {
+        "tags": ["documents"],
+        "summary": "Get academic metadata extraction status",
+        "description": """
+Returns progress for the active or latest academic metadata extraction run,
+including processed, enriched, skipped, and failed document counts. Requires the
+`admin` role.
+""",
+    },
     ("GET", "/api/v1/documents/{doc_id}"): {
         "tags": ["documents"],
         "summary": "Get document",

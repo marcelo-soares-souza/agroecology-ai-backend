@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from src.domain.dto.user_dto import UserDTO
 from src.domain.models.document import Document
+from src.domain.models.document_academic_metadata import (
+    AcademicMetadataRun,
+    DocumentAcademicMetadata,
+)
 from src.domain.models.document_suggestion import DocumentSuggestion
 from src.domain.models.ingestion_run import IngestionRun
 from src.domain.models.user import User
-from src.adapters.rest.schemas import DocumentRecord, PublicUserResponse
+from src.adapters.rest.schemas import (
+    AcademicMetadataSchema,
+    DocumentRecord,
+    PublicUserResponse,
+)
 
 
 def serialize_public_user(user: User | UserDTO) -> PublicUserResponse:
@@ -42,6 +50,7 @@ def serialize_document(
     suggested_by_user_id: str | None = None,
     suggested_by_user_name: str | None = None,
     suggested_by_user_slug: str | None = None,
+    academic_metadata: DocumentAcademicMetadata | None = None,
 ) -> DocumentRecord:
     return DocumentRecord(
         id=doc.id,
@@ -58,7 +67,59 @@ def serialize_document(
         suggested_by_user_id=suggested_by_user_id,
         suggested_by_user_name=suggested_by_user_name,
         suggested_by_user_slug=suggested_by_user_slug,
+        academic_metadata=(
+            serialize_academic_metadata(academic_metadata)
+            if academic_metadata is not None
+            else None
+        ),
     )
+
+
+def serialize_academic_metadata(
+    metadata: DocumentAcademicMetadata,
+) -> AcademicMetadataSchema:
+    return AcademicMetadataSchema(
+        provider=metadata.provider,
+        external_id=metadata.external_id,
+        doi=metadata.doi,
+        publication_year=metadata.publication_year,
+        venue=metadata.venue,
+        publisher=metadata.publisher,
+        citation_count=metadata.citation_count,
+        reference_count=metadata.reference_count,
+        abstract=metadata.abstract,
+        source_url=metadata.source_url,
+        open_access_url=metadata.open_access_url,
+        topics=metadata.topics,
+        keywords=metadata.keywords,
+        license=metadata.license,
+        funder=metadata.funder,
+        match_confidence=metadata.match_confidence,
+        title_score=metadata.title_score,
+        author_score=metadata.author_score,
+        extracted_at=metadata.extracted_at.isoformat(),
+        updated_at=metadata.updated_at.isoformat(),
+    )
+
+
+def serialize_academic_metadata_run(run: AcademicMetadataRun) -> dict:
+    return {
+        "status": run.status,
+        "run_id": run.id,
+        "documents_total": run.documents_total,
+        "documents_processed": run.documents_processed,
+        "documents_enriched": run.documents_enriched,
+        "documents_skipped": run.documents_skipped,
+        "documents_failed": run.documents_failed,
+        "delay_seconds": run.delay_seconds,
+        "current_document_id": run.current_document_id,
+        "error": run.error,
+        "job_id": run.job_id,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "created_at": run.created_at.isoformat(),
+        "updated_at": run.updated_at.isoformat(),
+    }
 
 
 def serialize_user(user: User | UserDTO) -> dict:

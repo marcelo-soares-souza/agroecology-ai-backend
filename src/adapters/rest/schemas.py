@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -85,6 +87,29 @@ class IngestStatusResponse(BaseModel):
     run_id: str | None = None
 
 
+class AcademicMetadataSchema(BaseModel):
+    provider: str
+    external_id: str | None = None
+    doi: str | None = None
+    publication_year: int | None = None
+    venue: str | None = None
+    publisher: str | None = None
+    citation_count: int | None = None
+    reference_count: int | None = None
+    abstract: str | None = None
+    source_url: str | None = None
+    open_access_url: str | None = None
+    topics: list[dict[str, Any]] | None = None
+    keywords: list[dict[str, Any]] | None = None
+    license: list[dict[str, Any]] | dict[str, Any] | None = None
+    funder: list[dict[str, Any]] | dict[str, Any] | None = None
+    match_confidence: float | None = None
+    title_score: float | None = None
+    author_score: float | None = None
+    extracted_at: str
+    updated_at: str
+
+
 class DocumentSkipped(BaseModel):
     filename: str
     reason: str
@@ -105,6 +130,7 @@ class DocumentRecord(BaseModel):
     suggested_by_user_id: str | None = None
     suggested_by_user_name: str | None = None
     suggested_by_user_slug: str | None = None
+    academic_metadata: AcademicMetadataSchema | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -143,6 +169,34 @@ class DocumentUpdateBody(BaseModel):
     title: str | None = None
     authors: str | None = None
     url: str | None = None
+
+
+class AcademicMetadataExtractBody(BaseModel):
+    delay_seconds: int = Field(default=60, ge=60)
+
+
+class AcademicMetadataRunStatusResponse(BaseModel):
+    status: str
+    run_id: str | None = None
+    documents_total: int = 0
+    documents_processed: int = 0
+    documents_enriched: int = 0
+    documents_skipped: int = 0
+    documents_failed: int = 0
+    delay_seconds: int = 60
+    current_document_id: str | None = None
+    error: str | None = None
+    job_id: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AcademicMetadataExtractResponse(BaseModel):
+    run_id: str
+    status: str
+    delay_seconds: int
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────

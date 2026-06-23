@@ -34,10 +34,19 @@ from src.application.auth.update_my_profile import UpdateMyProfile
 from src.application.auth.upload_my_avatar import UploadMyAvatar
 from src.application.auth.validate_session import ValidateSession
 from src.application.delete_document import DeleteDocument
+from src.application.enqueue_academic_metadata_extraction import (
+    EnqueueAcademicMetadataExtraction,
+)
 from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
+from src.application.extract_document_academic_metadata import (
+    ExtractDocumentAcademicMetadata,
+)
 from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.extract_metadata import ExtractMetadata
+from src.application.get_academic_metadata_run_status import (
+    GetAcademicMetadataRunStatus,
+)
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_metadata_job_status import GetMetadataJobStatus
 from src.application.get_schema_status import GetSchemaStatus
@@ -46,6 +55,9 @@ from src.application.get_task_status import GetTaskStatus
 from src.application.ingest_documents import IngestDocuments
 from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
+from src.application.run_academic_metadata_extraction import (
+    RunAcademicMetadataExtraction,
+)
 from src.application.scrape_urls import ScrapeUrls
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
@@ -105,11 +117,19 @@ from src.infrastructure.identity.agroecology_identity_client import (
     AgroecologyIdentityClient,
 )
 from src.infrastructure.jobs.worker import start_job_worker
+from src.infrastructure.academic_metadata.crossref_provider import CrossrefProvider
+from src.infrastructure.academic_metadata.openalex_provider import OpenAlexProvider
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
 from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
 from src.infrastructure.persistence.lancedb_vector_store import LanceDBVectorStore
 from src.infrastructure.persistence.postgres_document_repo import (
     PostgresDocumentRepository,
+)
+from src.infrastructure.persistence.postgres_document_academic_metadata_repo import (
+    PostgresDocumentAcademicMetadataRepository,
+)
+from src.infrastructure.persistence.postgres_document_academic_metadata_attempt_repo import (
+    PostgresDocumentAcademicMetadataAttemptRepository,
 )
 from src.infrastructure.persistence.postgres_document_suggestion_repo import (
     PostgresDocumentSuggestionRepository,
@@ -119,6 +139,9 @@ from src.infrastructure.persistence.postgres_external_identity_repo import (
 )
 from src.infrastructure.persistence.postgres_ingestion_repo import (
     PostgresIngestionRepository,
+)
+from src.infrastructure.persistence.postgres_academic_metadata_run_repo import (
+    PostgresAcademicMetadataRunRepository,
 )
 from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
@@ -132,6 +155,11 @@ from src.infrastructure.scraping.web_scraper import WebScraper
 from src.infrastructure.storage.avatar_processor import process_avatar
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
 from src.shared.config import (
+    ACADEMIC_METADATA_CANDIDATES_PER_PROVIDER,
+    ACADEMIC_METADATA_DEFAULT_DELAY_SECONDS,
+    ACADEMIC_METADATA_MIN_AUTHOR_CONFIDENCE,
+    ACADEMIC_METADATA_MIN_CONFIDENCE,
+    ACADEMIC_METADATA_MIN_DELAY_SECONDS,
     AUTH_RATE_LIMIT_BLOCK_SECONDS,
     AUTH_RATE_LIMIT_MAX_FAILURES,
     AUTO_EXTRACT_METADATA,
@@ -151,6 +179,9 @@ from src.shared.config import (
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     OLLAMA_LLM_HOSTS,
+    OPENALEX_API_KEY,
+    OPENALEX_MAILTO,
+    CROSSREF_MAILTO,
     RERANK_DEVICE,
     RERANK_MODEL,
     SIMILARITY_TOP_K,
@@ -198,6 +229,15 @@ class Container:
         self.auth_rate_limiter: AuthRateLimiterPort | None = None
         self.reranker: RerankerPort | None = None
         self.doc_repo: PostgresDocumentRepository | None = None
+        self.academic_metadata_repo: (
+            PostgresDocumentAcademicMetadataRepository | None
+        ) = None
+        self.academic_metadata_attempt_repo: (
+            PostgresDocumentAcademicMetadataAttemptRepository | None
+        ) = None
+        self.academic_metadata_run_repo: (
+            PostgresAcademicMetadataRunRepository | None
+        ) = None
         self.ingestion_repo: PostgresIngestionRepository | None = None
         self.user_repo: PostgresUserRepository | None = None
         self.external_identity_repo: PostgresExternalIdentityRepository | None = None
@@ -221,6 +261,18 @@ class Container:
         self.enqueue_document_metadata: EnqueueDocumentMetadata | None = None
         self.enqueue_pending_metadata: EnqueuePendingMetadata | None = None
         self.get_metadata_job_status: GetMetadataJobStatus | None = None
+        self.extract_document_academic_metadata: (
+            ExtractDocumentAcademicMetadata | None
+        ) = None
+        self.run_academic_metadata_extraction: RunAcademicMetadataExtraction | None = (
+            None
+        )
+        self.enqueue_academic_metadata_extraction: (
+            EnqueueAcademicMetadataExtraction | None
+        ) = None
+        self.get_academic_metadata_run_status: GetAcademicMetadataRunStatus | None = (
+            None
+        )
         self.ask_task_service: AskTaskService | None = None
         self.ingestion_task_service: IngestionTaskService | None = None
         self.validate_session: ValidateSession | None = None
@@ -307,6 +359,27 @@ class Container:
             await self.doc_repo.initialize()
             log_event(logger, logging.INFO, "document_repo_initialized")
 
+            self.academic_metadata_repo = PostgresDocumentAcademicMetadataRepository(
+                self._db_pool
+            )
+            log_event(
+                logger, logging.INFO, "document_academic_metadata_repo_initialized"
+            )
+
+            self.academic_metadata_attempt_repo = (
+                PostgresDocumentAcademicMetadataAttemptRepository(self._db_pool)
+            )
+            log_event(
+                logger,
+                logging.INFO,
+                "document_academic_metadata_attempt_repo_initialized",
+            )
+
+            self.academic_metadata_run_repo = PostgresAcademicMetadataRunRepository(
+                self._db_pool
+            )
+            log_event(logger, logging.INFO, "academic_metadata_run_repo_initialized")
+
             self.ingestion_repo = PostgresIngestionRepository(self._db_pool)
             await self.ingestion_repo.initialize()
             log_event(logger, logging.INFO, "ingestion_repo_initialized")
@@ -368,6 +441,7 @@ class Container:
             metadata_use_case=self.extract_document_metadata,
             ingest_use_case=self.ingest,
             ingestion_repo=self.ingestion_repo,
+            academic_metadata_use_case=self.run_academic_metadata_extraction,
         )
         log_event(logger, logging.INFO, "job_worker_started")
 
@@ -485,6 +559,9 @@ class Container:
             "auth_rate_limiter",
             "reranker",
             "doc_repo",
+            "academic_metadata_repo",
+            "academic_metadata_attempt_repo",
+            "academic_metadata_run_repo",
             "ingestion_repo",
             "user_repo",
             "suggestion_repo",
@@ -505,6 +582,10 @@ class Container:
             "enqueue_document_metadata",
             "enqueue_pending_metadata",
             "get_metadata_job_status",
+            "extract_document_academic_metadata",
+            "run_academic_metadata_extraction",
+            "enqueue_academic_metadata_extraction",
+            "get_academic_metadata_run_status",
             "ask_task_service",
             "ingestion_task_service",
             "create_document_suggestion",
@@ -695,6 +776,9 @@ class Container:
         assert self.vector_store is not None
         assert self.ingestion_repo is not None
         assert self.doc_repo is not None
+        assert self.academic_metadata_repo is not None
+        assert self.academic_metadata_attempt_repo is not None
+        assert self.academic_metadata_run_repo is not None
         assert self.cache is not None
         assert self.file_storage is not None
         assert self.user_repo is not None
@@ -754,6 +838,46 @@ class Container:
             storage=self.file_storage,
             pdf_text_extractor=PyMuPdfTextExtractor(),
             metadata_extractor=self.extract_metadata,
+        )
+        academic_metadata_providers = [
+            OpenAlexProvider(
+                mailto=OPENALEX_MAILTO or CROSSREF_MAILTO,
+                api_key=OPENALEX_API_KEY,
+            ),
+            CrossrefProvider(mailto=CROSSREF_MAILTO or OPENALEX_MAILTO),
+        ]
+        log_event(
+            logger,
+            logging.INFO,
+            "openalex_provider_configured",
+            api_key_configured=bool(OPENALEX_API_KEY),
+        )
+        self.extract_document_academic_metadata = ExtractDocumentAcademicMetadata(
+            repo=self.doc_repo,
+            metadata_repo=self.academic_metadata_repo,
+            providers=academic_metadata_providers,
+            min_confidence=ACADEMIC_METADATA_MIN_CONFIDENCE,
+            min_author_confidence=ACADEMIC_METADATA_MIN_AUTHOR_CONFIDENCE,
+            candidates_per_provider=ACADEMIC_METADATA_CANDIDATES_PER_PROVIDER,
+        )
+        self.run_academic_metadata_extraction = RunAcademicMetadataExtraction(
+            repo=self.doc_repo,
+            metadata_repo=self.academic_metadata_repo,
+            attempt_repo=self.academic_metadata_attempt_repo,
+            run_repo=self.academic_metadata_run_repo,
+            extract_document_academic_metadata=self.extract_document_academic_metadata,
+        )
+        self.enqueue_academic_metadata_extraction = EnqueueAcademicMetadataExtraction(
+            run_repo=self.academic_metadata_run_repo,
+            queue=self._get_queue,  # type: ignore[arg-type]
+            default_delay_seconds=max(
+                ACADEMIC_METADATA_DEFAULT_DELAY_SECONDS,
+                ACADEMIC_METADATA_MIN_DELAY_SECONDS,
+            ),
+            min_delay_seconds=ACADEMIC_METADATA_MIN_DELAY_SECONDS,
+        )
+        self.get_academic_metadata_run_status = GetAcademicMetadataRunStatus(
+            run_repo=self.academic_metadata_run_repo
         )
         self.get_document_file = GetDocumentFile(
             repo=self.doc_repo, storage=self.file_storage

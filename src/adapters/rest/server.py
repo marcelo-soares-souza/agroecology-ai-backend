@@ -17,8 +17,11 @@ from src.adapters.rest.auth_routes import router as auth_router
 from src.adapters.rest.dependencies import (
     get_ask_task_service,
     get_avatar_file,
+    get_academic_metadata_run_status,
     get_delete_document,
+    get_document_academic_metadata_repo,
     get_document_file,
+    get_enqueue_academic_metadata_extraction,
     get_enqueue_pending_metadata,
     get_extract_document_metadata,
     get_ingestion_repo,
@@ -42,6 +45,9 @@ from src.adapters.rest.schemas import (
     AnswerResponse,
     AskRequest,
     AskResponse,
+    AcademicMetadataExtractBody,
+    AcademicMetadataExtractResponse,
+    AcademicMetadataRunStatusResponse,
     DocumentListResponse,
     DocumentRecord,
     DocumentSkipped,
@@ -57,7 +63,11 @@ from src.adapters.rest.schemas import (
     MetadataExtractionStatusResponse,
     StatusResponse,
 )
-from src.adapters.rest.serializers import serialize_document, serialize_ingestion_run
+from src.adapters.rest.serializers import (
+    serialize_academic_metadata_run,
+    serialize_document,
+    serialize_ingestion_run,
+)
 from src.adapters.rest.suggestion_routes import admin_router as suggestion_admin_router
 from src.adapters.rest.suggestion_routes import user_router as suggestion_user_router
 from src.bootstrap.container import container
@@ -369,6 +379,10 @@ async def list_all_documents(
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
     docs, total = await manage.list_paginated(q, limit, offset)
+    academic_metadata_repo = await get_document_academic_metadata_repo()
+    academic_metadata_map = await academic_metadata_repo.get_many(
+        [doc.id for doc in docs]
+    )
     log_event(
         logger,
         logging.INFO,
@@ -379,7 +393,13 @@ async def list_all_documents(
         offset=offset,
     )
     return DocumentListResponse(
-        data=[serialize_document(d) for d in docs],
+        data=[
+            serialize_document(
+                d,
+                academic_metadata=academic_metadata_map.get(d.id),
+            )
+            for d in docs
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -439,6 +459,63 @@ async def get_metadata_extraction_status(
     )
 
 
+@app.post(
+    "/api/v1/admin/documents/academic-metadata/extract",
+    response_model=AcademicMetadataExtractResponse,
+)
+async def extract_academic_metadata(
+    body: AcademicMetadataExtractBody,
+    current_user: User = Depends(require_role("admin")),
+):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="extract_academic_document_metadata",
+        admin_id=current_user.id,
+        delay_seconds=body.delay_seconds,
+    )
+    try:
+        run = await get_enqueue_academic_metadata_extraction().execute(
+            delay_seconds=body.delay_seconds,
+            force=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if run is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Academic metadata extraction is already active",
+        )
+
+    return AcademicMetadataExtractResponse(
+        run_id=run.id,
+        status=run.status,
+        delay_seconds=run.delay_seconds,
+    )
+
+
+@app.get(
+    "/api/v1/admin/documents/academic-metadata/status",
+    response_model=AcademicMetadataRunStatusResponse,
+)
+async def academic_metadata_status(
+    current_user: User = Depends(require_role("admin")),
+):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="read_academic_metadata_status",
+        admin_id=current_user.id,
+    )
+    run = await get_academic_metadata_run_status().execute()
+    if run is None:
+        return AcademicMetadataRunStatusResponse(status="idle")
+    return AcademicMetadataRunStatusResponse(**serialize_academic_metadata_run(run))
+
+
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
 async def get_one_document(doc_id: str):
     manage = get_manage_docs()
@@ -458,6 +535,9 @@ async def get_one_document(doc_id: str):
         suggested_by_user_name = suggestion.user_name
         suggested_by_user_slug = suggestion.user_slug
 
+    academic_metadata_repo = await get_document_academic_metadata_repo()
+    academic_metadata = await academic_metadata_repo.get(doc_id)
+
     log_event(
         logger,
         logging.INFO,
@@ -469,6 +549,7 @@ async def get_one_document(doc_id: str):
         suggested_by_user_id=suggested_by_user_id,
         suggested_by_user_name=suggested_by_user_name,
         suggested_by_user_slug=suggested_by_user_slug,
+        academic_metadata=academic_metadata,
     )
 
 
@@ -501,7 +582,10 @@ async def update_one_document(
         document_id=doc_id,
         user_id=current_user.id,
     )
-    return serialize_document(doc)
+    academic_metadata_repo = await get_document_academic_metadata_repo()
+    return serialize_document(
+        doc, academic_metadata=await academic_metadata_repo.get(doc_id)
+    )
 
 
 @app.post("/api/v1/documents/{doc_id}/extract-metadata", response_model=DocumentRecord)
@@ -528,9 +612,17 @@ async def extract_document_metadata(
         updated_doc = await manage.get(doc_id)
         if not updated_doc:
             raise HTTPException(status_code=404, detail="Document not found")
-        return serialize_document(updated_doc)
+        academic_metadata_repo = await get_document_academic_metadata_repo()
+        return serialize_document(
+            updated_doc,
+            academic_metadata=await academic_metadata_repo.get(doc_id),
+        )
 
-    return serialize_document(doc)
+    academic_metadata_repo = await get_document_academic_metadata_repo()
+    return serialize_document(
+        doc,
+        academic_metadata=await academic_metadata_repo.get(doc_id),
+    )
 
 
 @app.get("/api/v1/documents/{doc_id}/view")

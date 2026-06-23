@@ -29,12 +29,23 @@ class IngestionUseCase(Protocol):
         pass
 
 
+class AcademicMetadataRunUseCase(Protocol):
+    async def execute(
+        self,
+        run_id: str,
+        delay_seconds: int,
+        force: bool = False,
+    ) -> None:
+        pass
+
+
 JobHandler = Callable[
     [
         dict,
         MetadataExtractionUseCase | None,
         IngestionUseCase | None,
         IngestionRepository | None,
+        AcademicMetadataRunUseCase | None,
     ],
     None,
 ]
@@ -56,6 +67,7 @@ def _handle_ingest(
     _metadata_use_case: MetadataExtractionUseCase | None,
     ingest_use_case: IngestionUseCase | None,
     ingestion_repo: IngestionRepository | None,
+    _academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
 ) -> None:
     run_id = payload["run_id"]
     force = payload.get("force", False)
@@ -95,6 +107,7 @@ def _handle_extract_metadata(
     metadata_use_case: MetadataExtractionUseCase | None,
     _ingest_use_case: IngestionUseCase | None = None,
     _ingestion_repo: IngestionRepository | None = None,
+    _academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
 ) -> None:
     doc_id = payload["document_id"]
     log_event(logger, logging.INFO, "metadata_job_started", document_id=doc_id)
@@ -138,12 +151,64 @@ def _handle_extract_metadata(
         )
 
 
+@_register_handler("documents.extract_academic_metadata")
+def _handle_extract_academic_metadata(
+    payload: dict,
+    _metadata_use_case: MetadataExtractionUseCase | None,
+    _ingest_use_case: IngestionUseCase | None,
+    _ingestion_repo: IngestionRepository | None,
+    academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+) -> None:
+    run_id = payload["run_id"]
+    delay_seconds = int(payload.get("delay_seconds", 60))
+    force = bool(payload.get("force", False))
+    log_event(
+        logger,
+        logging.INFO,
+        "academic_metadata_job_started",
+        run_id=run_id,
+        delay_seconds=delay_seconds,
+        force=force,
+    )
+
+    try:
+
+        async def _run():
+            if academic_metadata_use_case is None:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "academic_metadata_job_aborted",
+                    reason="academic_metadata_use_case_not_available",
+                    run_id=run_id,
+                )
+                return
+
+            await academic_metadata_use_case.execute(
+                run_id=run_id,
+                delay_seconds=delay_seconds,
+                force=force,
+            )
+
+        asyncio.run(_run())
+    except Exception as e:
+        log_event(
+            logger,
+            logging.ERROR,
+            "academic_metadata_job_failed",
+            run_id=run_id,
+            error=str(e),
+        )
+        raise
+
+
 def start_job_worker(
     queue_repo: QueueRepository,
     stop_event: threading.Event | None = None,
     metadata_use_case: MetadataExtractionUseCase | None = None,
     ingest_use_case: IngestionUseCase | None = None,
     ingestion_repo: IngestionRepository | None = None,
+    academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
 ) -> threading.Thread:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -187,7 +252,13 @@ def start_job_worker(
                 else job["payload"]
             )
             logger.info("Processing job %s: %s", job["id"], job_type)
-            handler(payload, metadata_use_case, ingest_use_case, ingestion_repo)
+            handler(
+                payload,
+                metadata_use_case,
+                ingest_use_case,
+                ingestion_repo,
+                academic_metadata_use_case,
+            )
             _safe_complete(job["id"])
             logger.info("Job completed: %s", job["id"])
         except Exception as e:

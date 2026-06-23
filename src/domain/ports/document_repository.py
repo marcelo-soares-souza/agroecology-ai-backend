@@ -58,7 +58,7 @@ class DocumentRepository(ABC):
             q: Optional search query.
             limit: Maximum number of documents to return.
             offset: Number of documents to skip.
-            full_metadata: When true, require complete basic academic metadata.
+            full_metadata: When true, require complete basic and academic metadata.
 
         Returns:
             A tuple with the page of documents and the total matching count.

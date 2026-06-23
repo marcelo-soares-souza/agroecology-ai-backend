@@ -284,9 +284,11 @@ Queues a background run that enriches document records with external academic
 metadata from OpenAlex and Crossref. Existing `title` and `authors` fields are
 only used for matching and are never changed.
 
-The request accepts `delay_seconds` with a minimum of 60 seconds between
-documents. Documents already attempted by this feature are skipped on future
-runs, including documents with no external match. Requires the `admin` role.
+The request may omit `delay_seconds` to use the configured backend default.
+When provided, `delay_seconds` must respect the configured minimum, currently
+60 seconds between documents. Documents already attempted by this feature are
+skipped on future runs, including documents with no external match. Requires
+the `admin` role.
 """,
     },
     ("GET", "/api/v1/admin/documents/academic-metadata/status"): {
@@ -294,8 +296,9 @@ runs, including documents with no external match. Requires the `admin` role.
         "summary": "Get academic metadata extraction status",
         "description": """
 Returns progress for the active or latest academic metadata extraction run,
-including processed, enriched, skipped, and failed document counts. Requires the
-`admin` role.
+including processed, enriched, skipped, failed, and pending eligible document
+counts. Pending eligible documents are records with title and authors that have
+not been attempted by this feature yet. Requires the `admin` role.
 """,
     },
     ("GET", "/api/v1/documents/{doc_id}"): {

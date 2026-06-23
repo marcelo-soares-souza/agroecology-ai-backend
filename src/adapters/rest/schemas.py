@@ -172,7 +172,7 @@ class DocumentUpdateBody(BaseModel):
 
 
 class AcademicMetadataExtractBody(BaseModel):
-    delay_seconds: int = Field(default=60, ge=60)
+    delay_seconds: int | None = Field(default=None, ge=60)
 
 
 class AcademicMetadataRunStatusResponse(BaseModel):
@@ -183,6 +183,7 @@ class AcademicMetadataRunStatusResponse(BaseModel):
     documents_enriched: int = 0
     documents_skipped: int = 0
     documents_failed: int = 0
+    documents_pending: int = 0
     delay_seconds: int = 60
     current_document_id: str | None = None
     error: str | None = None

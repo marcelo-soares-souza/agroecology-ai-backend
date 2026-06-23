@@ -877,7 +877,8 @@ class Container:
             min_delay_seconds=ACADEMIC_METADATA_MIN_DELAY_SECONDS,
         )
         self.get_academic_metadata_run_status = GetAcademicMetadataRunStatus(
-            run_repo=self.academic_metadata_run_repo
+            run_repo=self.academic_metadata_run_repo,
+            attempt_repo=self.academic_metadata_attempt_repo,
         )
         self.get_document_file = GetDocumentFile(
             repo=self.doc_repo, storage=self.file_storage

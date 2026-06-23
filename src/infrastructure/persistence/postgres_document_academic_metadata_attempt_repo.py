@@ -22,6 +22,23 @@ class PostgresDocumentAcademicMetadataAttemptRepository(
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    async def count_pending(self) -> int:
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM documents d
+                    LEFT JOIN document_academic_metadata_attempts a
+                        ON a.document_id = d.id
+                    WHERE a.document_id IS NULL
+                        AND NULLIF(BTRIM(COALESCE(d.title, '')), '') IS NOT NULL
+                        AND NULLIF(BTRIM(COALESCE(d.authors, '')), '') IS NOT NULL
+                    """
+                )
+                result = await cur.fetchone()
+                return int(result[0]) if result else 0
+
     async def exists(self, document_id: str) -> bool:
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:

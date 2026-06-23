@@ -464,20 +464,21 @@ async def get_metadata_extraction_status(
     response_model=AcademicMetadataExtractResponse,
 )
 async def extract_academic_metadata(
-    body: AcademicMetadataExtractBody,
+    body: AcademicMetadataExtractBody | None = None,
     current_user: User = Depends(require_role("admin")),
 ):
+    delay_seconds = body.delay_seconds if body is not None else None
     log_event(
         logger,
         logging.INFO,
         "admin_action",
         action="extract_academic_document_metadata",
         admin_id=current_user.id,
-        delay_seconds=body.delay_seconds,
+        requested_delay_seconds=delay_seconds,
     )
     try:
         run = await get_enqueue_academic_metadata_extraction().execute(
-            delay_seconds=body.delay_seconds,
+            delay_seconds=delay_seconds,
             force=False,
         )
     except ValueError as exc:
@@ -510,10 +511,18 @@ async def academic_metadata_status(
         action="read_academic_metadata_status",
         admin_id=current_user.id,
     )
-    run = await get_academic_metadata_run_status().execute()
+    status_service = get_academic_metadata_run_status()
+    documents_pending = await status_service.count_pending_documents()
+    run = await status_service.execute()
     if run is None:
-        return AcademicMetadataRunStatusResponse(status="idle")
-    return AcademicMetadataRunStatusResponse(**serialize_academic_metadata_run(run))
+        return AcademicMetadataRunStatusResponse(
+            status="idle",
+            documents_pending=documents_pending,
+        )
+    return AcademicMetadataRunStatusResponse(
+        **serialize_academic_metadata_run(run),
+        documents_pending=documents_pending,
+    )
 
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)

@@ -9,6 +9,10 @@ from src.domain.models.document_academic_metadata import (
 
 class DocumentAcademicMetadataAttemptRepository(ABC):
     @abstractmethod
+    async def count_pending(self) -> int:
+        """Return how many eligible documents have not been attempted yet."""
+
+    @abstractmethod
     async def exists(self, document_id: str) -> bool:
         """Return whether a document has already been attempted."""
 

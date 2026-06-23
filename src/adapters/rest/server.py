@@ -372,13 +372,14 @@ async def upload_documents(
 @app.get("/api/v1/documents", response_model=DocumentListResponse)
 async def list_all_documents(
     q: str | None = Query(default=None, max_length=200),
+    full_metadata: bool = Query(default=False),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
-    docs, total = await manage.list_paginated(q, limit, offset)
+    docs, total = await manage.list_paginated(q, limit, offset, full_metadata)
     academic_metadata_repo = await get_document_academic_metadata_repo()
     academic_metadata_map = await academic_metadata_repo.get_many(
         [doc.id for doc in docs]
@@ -389,6 +390,7 @@ async def list_all_documents(
         "documents_list_completed",
         returned_documents=len(docs),
         total_documents=total,
+        full_metadata=full_metadata,
         limit=limit,
         offset=offset,
     )

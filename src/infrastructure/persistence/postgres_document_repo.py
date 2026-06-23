@@ -70,25 +70,52 @@ class PostgresDocumentRepository(DocumentRepository):
                 return [self._to_domain(dict(r)) for r in rows]
 
     async def list_paginated(
-        self, q: str | None, limit: int, offset: int
+        self, q: str | None, limit: int, offset: int, full_metadata: bool = False
     ) -> tuple[list[Document], int]:
-        where_clause = ""
+        join_clause = ""
+        where_parts: list[str] = []
         params: list[str | int] = []
         search = q.strip() if q else ""
         if search:
-            where_clause = """
-                WHERE filename ILIKE %s
-                   OR title ILIKE %s
-                   OR authors ILIKE %s
-                   OR url ILIKE %s
-            """
+            where_parts.append(
+                """
+                (
+                    d.filename ILIKE %s
+                    OR d.title ILIKE %s
+                    OR d.authors ILIKE %s
+                    OR d.url ILIKE %s
+                )
+                """
+            )
             pattern = f"%{search}%"
             params.extend([pattern, pattern, pattern, pattern])
+        if full_metadata:
+            join_clause = """
+                JOIN document_academic_metadata dam
+                    ON dam.document_id = d.id
+            """
+            where_parts.append(
+                """
+                NULLIF(BTRIM(COALESCE(d.title, '')), '') IS NOT NULL
+                AND NULLIF(BTRIM(COALESCE(d.authors, '')), '') IS NOT NULL
+                AND NULLIF(BTRIM(COALESCE(dam.doi, '')), '') IS NOT NULL
+                AND dam.publication_year IS NOT NULL
+                AND NULLIF(BTRIM(COALESCE(dam.venue, '')), '') IS NOT NULL
+                AND dam.citation_count IS NOT NULL
+                AND NULLIF(BTRIM(COALESCE(dam.source_url, '')), '') IS NOT NULL
+                """
+            )
+        where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    f"SELECT COUNT(*)::int AS total FROM documents {where_clause}",
+                    f"""
+                    SELECT COUNT(*)::int AS total
+                    FROM documents d
+                    {join_clause}
+                    {where_clause}
+                    """,
                     params,
                 )
                 total_row = await cur.fetchone()
@@ -96,10 +123,11 @@ class PostgresDocumentRepository(DocumentRepository):
 
                 await cur.execute(
                     f"""
-                    SELECT *
-                    FROM documents
+                    SELECT d.*
+                    FROM documents d
+                    {join_clause}
                     {where_clause}
-                    ORDER BY title ASC NULLS LAST, filename ASC, created_at DESC
+                    ORDER BY d.title ASC NULLS LAST, d.filename ASC, d.created_at DESC
                     LIMIT %s OFFSET %s
                     """,
                     [*params, limit, offset],

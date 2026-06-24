@@ -99,7 +99,6 @@ class PostgresDocumentRepository(DocumentRepository):
                 NULLIF(BTRIM(COALESCE(d.title, '')), '') IS NOT NULL
                 AND NULLIF(BTRIM(COALESCE(d.authors, '')), '') IS NOT NULL
                 AND dam.publication_year IS NOT NULL
-                AND NULLIF(BTRIM(COALESCE(dam.venue, '')), '') IS NOT NULL
                 AND dam.citation_count IS NOT NULL
                 AND NULLIF(BTRIM(COALESCE(dam.source_url, '')), '') IS NOT NULL
                 """

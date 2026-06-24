@@ -41,9 +41,21 @@ class RunAcademicMetadataExtraction:
         run_id: str,
         delay_seconds: int,
         force: bool = False,
+        document_ids: list[str] | None = None,
     ) -> None:
         try:
-            documents = await self._repo.list_all()
+            if document_ids:
+                documents = await self._repo.get_many(document_ids)
+                order = {
+                    document_id: index
+                    for index, document_id in enumerate(document_ids)
+                }
+                documents = sorted(
+                    documents,
+                    key=lambda document: order.get(document.id, len(order)),
+                )
+            else:
+                documents = await self._repo.list_all()
 
             if not force:
                 filtered = []
@@ -62,6 +74,7 @@ class RunAcademicMetadataExtraction:
                 documents_total=total,
                 delay_seconds=delay_seconds,
                 force=force,
+                document_count=len(document_ids or []),
             )
 
             processed = 0

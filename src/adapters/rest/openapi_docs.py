@@ -290,6 +290,15 @@ Documents already attempted by this feature are skipped on future runs,
 including documents with no external match. Requires the `admin` role.
 """,
     },
+    ("POST", "/api/v1/admin/documents/{doc_id}/academic-metadata/extract"): {
+        "tags": ["documents"],
+        "summary": "Queue academic metadata extraction for one document",
+        "description": """
+Queues a background run that enriches one document with external academic
+metadata from OpenAlex and Crossref. The document must already have title and
+authors because they are used for validated matching. Requires the `admin` role.
+""",
+    },
     ("GET", "/api/v1/admin/documents/academic-metadata/status"): {
         "tags": ["documents"],
         "summary": "Get academic metadata extraction status",
@@ -298,6 +307,15 @@ Returns progress for the active or latest academic metadata extraction run,
 including processed, enriched, skipped, failed, and pending eligible document
 counts. Pending eligible documents are records with title and authors that have
 not been attempted by this feature yet. Requires the `admin` role.
+""",
+    },
+    ("GET", "/api/v1/admin/documents/academic-metadata/runs/{run_id}"): {
+        "tags": ["documents"],
+        "summary": "Get one academic metadata extraction run",
+        "description": """
+Returns progress for a specific academic metadata extraction run by id. Use this
+after queueing single-document extraction to poll the matching background job.
+Requires the `admin` role.
 """,
     },
     ("GET", "/api/v1/documents/{doc_id}"): {

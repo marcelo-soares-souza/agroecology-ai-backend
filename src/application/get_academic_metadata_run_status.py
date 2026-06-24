@@ -24,5 +24,8 @@ class GetAcademicMetadataRunStatus:
             return active
         return await self._run_repo.get_latest_run()
 
+    async def get_run(self, run_id: str) -> AcademicMetadataRun | None:
+        return await self._run_repo.get(run_id)
+
     async def count_pending_documents(self) -> int:
         return await self._attempt_repo.count_pending()

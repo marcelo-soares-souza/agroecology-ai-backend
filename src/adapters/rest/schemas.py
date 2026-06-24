@@ -174,6 +174,7 @@ class DocumentUpdateBody(BaseModel):
 
 class AcademicMetadataExtractBody(BaseModel):
     delay_seconds: int | None = None
+    force: bool | None = None
 
 
 class AcademicMetadataRunStatusResponse(BaseModel):

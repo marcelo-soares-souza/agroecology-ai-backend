@@ -35,6 +35,7 @@ class AcademicMetadataRunUseCase(Protocol):
         run_id: str,
         delay_seconds: int,
         force: bool = False,
+        document_ids: list[str] | None = None,
     ) -> None:
         pass
 
@@ -162,6 +163,12 @@ def _handle_extract_academic_metadata(
     run_id = payload["run_id"]
     delay_seconds = int(payload.get("delay_seconds", 60))
     force = bool(payload.get("force", False))
+    raw_document_ids = payload.get("document_ids")
+    document_ids = (
+        [str(document_id) for document_id in raw_document_ids]
+        if isinstance(raw_document_ids, list)
+        else None
+    )
     log_event(
         logger,
         logging.INFO,
@@ -169,6 +176,7 @@ def _handle_extract_academic_metadata(
         run_id=run_id,
         delay_seconds=delay_seconds,
         force=force,
+        document_count=len(document_ids or []),
     )
 
     try:
@@ -188,6 +196,7 @@ def _handle_extract_academic_metadata(
                 run_id=run_id,
                 delay_seconds=delay_seconds,
                 force=force,
+                document_ids=document_ids,
             )
 
         asyncio.run(_run())

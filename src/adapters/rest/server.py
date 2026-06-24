@@ -471,6 +471,7 @@ async def extract_academic_metadata(
     current_user: User = Depends(require_role("admin")),
 ):
     delay_seconds = body.delay_seconds if body is not None else None
+    force = body.force if body is not None and body.force is not None else False
     log_event(
         logger,
         logging.INFO,
@@ -478,11 +479,69 @@ async def extract_academic_metadata(
         action="extract_academic_document_metadata",
         admin_id=current_user.id,
         requested_delay_seconds=delay_seconds,
+        force=force,
     )
     try:
         run = await get_enqueue_academic_metadata_extraction().execute(
             delay_seconds=delay_seconds,
-            force=False,
+            force=force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if run is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Academic metadata extraction is already active",
+        )
+
+    return AcademicMetadataExtractResponse(
+        run_id=run.id,
+        status=run.status,
+        delay_seconds=run.delay_seconds,
+    )
+
+
+@app.post(
+    "/api/v1/admin/documents/{doc_id}/academic-metadata/extract",
+    response_model=AcademicMetadataExtractResponse,
+)
+async def extract_document_academic_metadata(
+    doc_id: str,
+    body: AcademicMetadataExtractBody | None = None,
+    current_user: User = Depends(require_role("admin")),
+):
+    delay_seconds = body.delay_seconds if body is not None else None
+    force = body.force if body is not None and body.force is not None else True
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="extract_single_document_academic_metadata",
+        admin_id=current_user.id,
+        target_id=doc_id,
+        requested_delay_seconds=delay_seconds,
+        force=force,
+    )
+    manage = get_manage_docs()
+    if manage is None:
+        raise HTTPException(status_code=503, detail="Not initialized")
+    doc = await manage.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not (doc.title and doc.title.strip()) or not (
+        doc.authors and doc.authors.strip()
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Title and authors are required for academic metadata extraction",
+        )
+
+    try:
+        run = await get_enqueue_academic_metadata_extraction().execute(
+            delay_seconds=delay_seconds,
+            force=force,
+            document_ids=[doc_id],
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -522,6 +581,33 @@ async def academic_metadata_status(
             status="idle",
             documents_pending=documents_pending,
         )
+    return AcademicMetadataRunStatusResponse(
+        **serialize_academic_metadata_run(run),
+        documents_pending=documents_pending,
+    )
+
+
+@app.get(
+    "/api/v1/admin/documents/academic-metadata/runs/{run_id}",
+    response_model=AcademicMetadataRunStatusResponse,
+)
+async def academic_metadata_run_status(
+    run_id: str,
+    current_user: User = Depends(require_role("admin")),
+):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="read_academic_metadata_run_status",
+        admin_id=current_user.id,
+        target_id=run_id,
+    )
+    status_service = get_academic_metadata_run_status()
+    run = await status_service.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Academic metadata run not found")
+    documents_pending = await status_service.count_pending_documents()
     return AcademicMetadataRunStatusResponse(
         **serialize_academic_metadata_run(run),
         documents_pending=documents_pending,

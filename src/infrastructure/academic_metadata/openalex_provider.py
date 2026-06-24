@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
@@ -12,7 +13,7 @@ from src.infrastructure.academic_metadata.parsing import (
     collapse_whitespace,
     parse_year,
 )
-from src.shared.logging_utils import log_event
+from src.shared.logging_utils import hash_for_log, log_event, preview_for_log
 
 logger = logging.getLogger("agroecology.academic_metadata")
 
@@ -62,14 +63,42 @@ class OpenAlexProvider(AcademicMetadataProvider):
             timeout=self._timeout_seconds,
             headers={"User-Agent": "AgroecologyMapAI/academic-metadata"},
         ) as client:
-            payload = await self._fetch_payload(client, f'"{title}"', limit)
+            payload = await self._fetch_payload(
+                client,
+                f'"{title}"',
+                limit,
+                query_mode="quoted",
+                title=title,
+            )
             if not payload.get("results"):
-                payload = await self._fetch_payload(client, title, limit)
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "academic_metadata_provider_query_fallback",
+                    provider=self.name,
+                    from_query_mode="quoted",
+                    to_query_mode="plain",
+                    results_count=0,
+                    title_key=hash_for_log(title),
+                    title_preview=preview_for_log(title),
+                )
+                payload = await self._fetch_payload(
+                    client,
+                    title,
+                    limit,
+                    query_mode="plain",
+                    title=title,
+                )
 
         return [self._to_candidate(work) for work in payload.get("results", [])]
 
     async def _fetch_payload(
-        self, client: httpx.AsyncClient, search: str, limit: int
+        self,
+        client: httpx.AsyncClient,
+        search: str,
+        limit: int,
+        query_mode: str,
+        title: str,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {
             "search": search,
@@ -90,9 +119,42 @@ class OpenAlexProvider(AcademicMetadataProvider):
                 )
                 self._api_key_usage_logged = True
 
-        response = await client.get("https://api.openalex.org/works", params=params)
-        response.raise_for_status()
-        return response.json()
+        started_at = time.perf_counter()
+        status_code: int | None = None
+        try:
+            response = await client.get("https://api.openalex.org/works", params=params)
+            status_code = response.status_code
+            response.raise_for_status()
+            payload = response.json()
+            results_count = len(payload.get("results") or [])
+            log_event(
+                logger,
+                logging.INFO,
+                "academic_metadata_provider_query_completed",
+                provider=self.name,
+                query_mode=query_mode,
+                status_code=status_code,
+                results_count=results_count,
+                limit=limit,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                title_key=hash_for_log(title),
+                title_preview=preview_for_log(title),
+            )
+            return payload
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "academic_metadata_provider_query_failed",
+                provider=self.name,
+                query_mode=query_mode,
+                status_code=status_code,
+                error_type=type(exc).__name__,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                title_key=hash_for_log(title),
+                title_preview=preview_for_log(title),
+            )
+            raise
 
     def _to_candidate(self, work: dict[str, Any]) -> AcademicMetadataCandidate:
         authors = [

@@ -47,8 +47,7 @@ class RunAcademicMetadataExtraction:
             if document_ids:
                 documents = await self._repo.get_many(document_ids)
                 order = {
-                    document_id: index
-                    for index, document_id in enumerate(document_ids)
+                    document_id: index for index, document_id in enumerate(document_ids)
                 }
                 documents = sorted(
                     documents,
@@ -128,7 +127,8 @@ class RunAcademicMetadataExtraction:
                 else:
                     try:
                         result = await self._extract_document_academic_metadata.execute(
-                            doc.id
+                            doc.id,
+                            run_id=run_id,
                         )
                         if result:
                             enriched += 1

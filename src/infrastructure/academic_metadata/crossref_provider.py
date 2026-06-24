@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -12,6 +14,9 @@ from src.infrastructure.academic_metadata.parsing import (
     first_string,
     strip_markup,
 )
+from src.shared.logging_utils import hash_for_log, log_event, preview_for_log
+
+logger = logging.getLogger("agroecology.academic_metadata")
 
 
 class CrossrefProvider(AcademicMetadataProvider):
@@ -38,14 +43,46 @@ class CrossrefProvider(AcademicMetadataProvider):
             timeout=self._timeout_seconds,
             headers={"User-Agent": "AgroecologyMapAI/academic-metadata"},
         ) as client:
-            response = await client.get("https://api.crossref.org/works", params=params)
-            response.raise_for_status()
-            payload = response.json()
+            started_at = time.perf_counter()
+            status_code: int | None = None
+            try:
+                response = await client.get(
+                    "https://api.crossref.org/works", params=params
+                )
+                status_code = response.status_code
+                response.raise_for_status()
+                payload = response.json()
+            except Exception as exc:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "academic_metadata_provider_query_failed",
+                    provider=self.name,
+                    query_mode="title",
+                    status_code=status_code,
+                    error_type=type(exc).__name__,
+                    elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                    title_key=hash_for_log(title),
+                    title_preview=preview_for_log(title),
+                )
+                raise
 
-        return [
-            self._to_candidate(item)
-            for item in payload.get("message", {}).get("items", [])
-        ]
+        items = payload.get("message", {}).get("items", [])
+        log_event(
+            logger,
+            logging.INFO,
+            "academic_metadata_provider_query_completed",
+            provider=self.name,
+            query_mode="title",
+            status_code=status_code,
+            results_count=len(items),
+            limit=limit,
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            title_key=hash_for_log(title),
+            title_preview=preview_for_log(title),
+        )
+
+        return [self._to_candidate(item) for item in items]
 
     def _to_candidate(self, item: dict[str, Any]) -> AcademicMetadataCandidate:
         return AcademicMetadataCandidate(

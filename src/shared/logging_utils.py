@@ -7,6 +7,7 @@ import os
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, cast
 
 _default_formatter_class: type[logging.Formatter] | None
@@ -43,6 +44,9 @@ def configure_logging(level: int = logging.INFO) -> None:
     Args:
         level: The logging level to set (default INFO).
     """
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     formatter: logging.Formatter
     if _default_formatter_class is not None:
         formatter_class = cast(type[logging.Formatter], _default_formatter_class)
@@ -225,3 +229,32 @@ def truncate_for_log(value: Any, limit: int = 3000) -> str:
     if len(text) <= limit:
         return text
     return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
+
+
+def preview_for_log(value: Any, limit: int = 160) -> str:
+    """Return a compact single-line preview for structured logs."""
+    if value is None:
+        return "-"
+    text = " ".join(str(value).split())
+    if not text:
+        return "-"
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(limit - 3, 0)].rstrip()}..."
+
+
+def hash_for_log(value: Any, length: int = 12) -> str:
+    """Return a short stable hash for correlating sensitive or long values."""
+    if value is None:
+        return "-"
+    text = str(value).strip()
+    if not text:
+        return "-"
+    return sha256(text.encode("utf-8")).hexdigest()[:length]
+
+
+def round_float_for_log(value: float | None, digits: int = 3) -> float | None:
+    """Round a float for readable structured logs."""
+    if value is None:
+        return None
+    return round(value, digits)

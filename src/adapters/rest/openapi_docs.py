@@ -334,7 +334,8 @@ This endpoint only supports PDF documents and requires the `admin` role.
 Returns the stored file inline for browser viewing.
 
 The response is a file response, not JSON. Use this endpoint from browser UI
-links or embedded PDF viewers.
+links or embedded PDF viewers. PDF files with restrictive license metadata return
+403 instead of the stored file.
 """,
     },
     ("GET", "/api/v1/documents/{doc_id}/download"): {
@@ -343,7 +344,8 @@ links or embedded PDF viewers.
         "description": """
 Returns the stored file as a file response.
 
-Use this endpoint when a client needs the original uploaded document bytes.
+Use this endpoint when a client needs the original uploaded document bytes. PDF
+files with restrictive license metadata return 403 instead of the stored file.
 """,
     },
     ("POST", "/api/v1/documents/extract-all-metadata"): {

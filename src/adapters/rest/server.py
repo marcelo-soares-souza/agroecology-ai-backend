@@ -70,6 +70,7 @@ from src.adapters.rest.serializers import (
 )
 from src.adapters.rest.suggestion_routes import admin_router as suggestion_admin_router
 from src.adapters.rest.suggestion_routes import user_router as suggestion_user_router
+from src.application.get_document_file import DocumentFileAccessBlockedError
 from src.bootstrap.container import container
 from src.domain.models.user import User
 from src.shared.config import APP_URL
@@ -638,7 +639,13 @@ async def extract_document_metadata(
 
 @app.get("/api/v1/documents/{doc_id}/view")
 async def view_document(doc_id: str):
-    doc_file = await get_document_file().execute(doc_id)
+    try:
+        doc_file = await get_document_file().execute(doc_id)
+    except DocumentFileAccessBlockedError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Document file access is restricted by license",
+        ) from exc
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -655,7 +662,13 @@ async def view_document(doc_id: str):
 
 @app.get("/api/v1/documents/{doc_id}/download")
 async def download_document(doc_id: str):
-    doc_file = await get_document_file().execute(doc_id)
+    try:
+        doc_file = await get_document_file().execute(doc_id)
+    except DocumentFileAccessBlockedError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Document file access is restricted by license",
+        ) from exc
     if not doc_file:
         raise HTTPException(status_code=404, detail="Document not found")
 

@@ -883,7 +883,9 @@ class Container:
             attempt_repo=self.academic_metadata_attempt_repo,
         )
         self.get_document_file = GetDocumentFile(
-            repo=self.doc_repo, storage=self.file_storage
+            repo=self.doc_repo,
+            storage=self.file_storage,
+            academic_metadata_repo=self.academic_metadata_repo,
         )
         self.delete_document = DeleteDocument(
             manage_documents=self.manage_docs,

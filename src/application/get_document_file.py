@@ -1,20 +1,40 @@
 from __future__ import annotations
 
 from src.domain.dto.document_file import DocumentFile
+from src.domain.ports.document_academic_metadata_repository import (
+    DocumentAcademicMetadataRepository,
+)
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.shared.config import FILE_TYPE_TO_EXT
+from src.shared.license_policy import is_full_file_access_blocked
+
+
+class DocumentFileAccessBlockedError(Exception):
+    pass
 
 
 class GetDocumentFile:
-    def __init__(self, repo: DocumentRepository, storage: FileStoragePort) -> None:
+    def __init__(
+        self,
+        repo: DocumentRepository,
+        storage: FileStoragePort,
+        academic_metadata_repo: DocumentAcademicMetadataRepository,
+    ) -> None:
         self._repo = repo
         self._storage = storage
+        self._academic_metadata_repo = academic_metadata_repo
 
     async def execute(self, doc_id: str) -> DocumentFile | None:
         doc = await self._repo.get(doc_id)
         if not doc:
             return None
+
+        metadata = await self._academic_metadata_repo.get(doc_id)
+        if is_full_file_access_blocked(
+            doc.file_type, metadata.license if metadata is not None else None
+        ):
+            raise DocumentFileAccessBlockedError
 
         ext = FILE_TYPE_TO_EXT.get(doc.file_type)
         if not ext:

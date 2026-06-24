@@ -14,6 +14,7 @@ from src.adapters.rest.schemas import (
     DocumentRecord,
     PublicUserResponse,
 )
+from src.shared.license_policy import is_full_file_access_blocked
 
 
 def serialize_public_user(user: User | UserDTO) -> PublicUserResponse:
@@ -62,6 +63,10 @@ def serialize_document(
         file_size=doc.file_size,
         directory=doc.directory,
         ingested=doc.ingested,
+        full_file_available=not is_full_file_access_blocked(
+            doc.file_type,
+            academic_metadata.license if academic_metadata is not None else None,
+        ),
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
         suggested_by_user_id=suggested_by_user_id,

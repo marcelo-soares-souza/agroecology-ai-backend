@@ -45,14 +45,18 @@ async def get_current_user(
 
 
 def require_role(role: str):
-    async def dependency(user: User = Depends(get_current_user)) -> User:
+    async def dependency(
+        request: Request, user: User = Depends(get_current_user)
+    ) -> User:
         if user.roles is None or role not in user.roles:
             log_event(
                 logger,
-                logging.WARNING,
+                logging.INFO,
                 "auth_insufficient_permissions",
                 user_id=user.id,
                 required_role=role,
+                method=request.method,
+                path=request.url.path,
             )
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user

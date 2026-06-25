@@ -35,6 +35,21 @@ class PostgresExternalIdentityRepository(ExternalIdentityRepository):
                 row = await cur.fetchone()
                 return self._to_external_identity(dict(row)) if row else None
 
+    async def list_for_user(self, user_id: str) -> list[ExternalIdentity]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    SELECT *
+                    FROM user_external_identities
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    """,
+                    (user_id,),
+                )
+                rows = await cur.fetchall()
+                return [self._to_external_identity(dict(row)) for row in rows]
+
     async def upsert(
         self,
         *,

@@ -18,11 +18,12 @@ class UpdateUser:
         locale: str | None = None,
         role_key: str | None = None,
     ) -> UserDTO | None:
+        if status == "deleted":
+            raise ValueError("Use the delete endpoint to anonymize an account")
         if status is not None and status not in {
             "pending",
             "active",
             "suspended",
-            "deleted",
         }:
             raise ValueError(f"Invalid status: {status}")
         if role_key is not None and role_key not in {"admin", "user"}:

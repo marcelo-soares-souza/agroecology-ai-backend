@@ -57,6 +57,7 @@ class LoginUser:
         if user.status != "active":
             raise ValueError("Account is not active")
 
+        self._ensure_required_consents(user)
         await self._repo.update_last_login(user.id)
 
         log_event(logger, logging.INFO, "local_login_completed", user_id=user.id)
@@ -113,6 +114,7 @@ class LoginUser:
         refreshed_user = await self._repo.get_by_id(user.id)
         if refreshed_user:
             user = refreshed_user
+        self._ensure_required_consents(user)
         log_event(
             logger,
             logging.INFO,
@@ -121,6 +123,11 @@ class LoginUser:
             email=mask_email(user.email),
         )
         return await self._issue_tokens(user)
+
+    @staticmethod
+    def _ensure_required_consents(user: User) -> None:
+        if not user.privacy_policy_accepted or not user.tos_accepted:
+            raise ValueError("Privacy policy and terms must be accepted")
 
     async def _issue_tokens(self, user: User) -> LoginResult:
         roles = user.roles or []

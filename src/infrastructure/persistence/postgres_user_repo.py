@@ -6,7 +6,7 @@ from psycopg.rows import dict_row
 
 from src.domain.models.user import User
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import utcnow
+from src.shared.config import PRIVACY_POLICY_VERSION, TOS_VERSION, utcnow
 from src.shared.uuid7 import uuid7
 
 if TYPE_CHECKING:
@@ -48,8 +48,9 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute(
                     """INSERT INTO users (id, email, full_name, password_hash, slug, locale, status,
                               privacy_policy_accepted, privacy_policy_accepted_at,
-                              tos_accepted, tos_accepted_at, created_at, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                              privacy_policy_version, tos_accepted, tos_accepted_at,
+                              tos_version, created_at, updated_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                     (
                         user_id,
                         email,
@@ -60,8 +61,10 @@ class PostgresUserRepository(UserRepository):
                         "pending",
                         privacy_policy_accepted,
                         now if privacy_policy_accepted else None,
+                        PRIVACY_POLICY_VERSION if privacy_policy_accepted else None,
                         tos_accepted,
                         now if tos_accepted else None,
+                        TOS_VERSION if tos_accepted else None,
                         now,
                         now,
                     ),
@@ -215,41 +218,105 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
                 return user
 
-    async def anonymize_user(self, user_id: str) -> User | None:
+    async def anonymize_user(
+        self, user_id: str, request_source: str = "account_delete"
+    ) -> User | None:
         now = utcnow()
         deleted_uid = uuid7()
-        placeholder_email = f"deleted-{deleted_uid}@deleted"
+        placeholder_email = f"deleted-{deleted_uid}@deleted.invalid"
+        placeholder_slug = f"deleted-{deleted_uid}"
+        placeholder_hash = f"deleted:{deleted_uid}"
         async with self._pool.connection() as conn:
+            user = await self._select_user_on_connection(conn, user_id)
+            if user is None:
+                return None
+            if self._is_admin(user):
+                admin_ids = await self._lock_admin_users_on_connection(conn)
+                if user_id in admin_ids and len(admin_ids) <= 1:
+                    raise ValueError("Cannot delete the last administrator")
+
             async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-                row = await cur.fetchone()
-                if row is None:
-                    return None
+                await cur.execute(
+                    """INSERT INTO data_erasure_requests
+                       (id, user_id, request_source, status, requested_at, completed_at)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (uuid7(), user_id, request_source, "completed", now, now),
+                )
 
                 await cur.execute(
                     """UPDATE users SET
                          full_name = 'Deleted User',
                          email = %s,
+                         password_hash = %s,
+                         slug = %s,
                          about = NULL,
                          link = NULL,
                          avatar_path = NULL,
                          status = 'deleted',
+                         email_confirmed_at = NULL,
+                         last_login_at = NULL,
+                         privacy_policy_accepted = FALSE,
+                         privacy_policy_accepted_at = NULL,
+                         privacy_policy_version = NULL,
+                         tos_accepted = FALSE,
+                         tos_accepted_at = NULL,
+                         tos_version = NULL,
+                         deleted_at = %s,
+                         erased_at = %s,
+                         erasure_status = 'completed',
                          updated_at = %s
                        WHERE id = %s RETURNING *""",
-                    (placeholder_email, now, user_id),
+                    (
+                        placeholder_email,
+                        placeholder_hash,
+                        placeholder_slug,
+                        now,
+                        now,
+                        now,
+                        user_id,
+                    ),
                 )
                 updated = await cur.fetchone()
 
                 await cur.execute(
-                    "UPDATE refresh_tokens SET revoked_at = %s WHERE user_id = %s AND revoked_at IS NULL",
+                    """UPDATE refresh_tokens
+                       SET token_hash = 'revoked-' || id,
+                           revoked_at = COALESCE(revoked_at, %s)
+                       WHERE user_id = %s""",
+                    (now, user_id),
+                )
+
+                await cur.execute(
+                    """UPDATE email_confirmations
+                       SET token_hash = 'used-' || id,
+                           confirmed_at = COALESCE(confirmed_at, %s)
+                       WHERE user_id = %s""",
                     (now, user_id),
                 )
 
                 await cur.execute(
                     """UPDATE user_external_identities
-                       SET deleted_at = %s, updated_at = %s
-                       WHERE user_id = %s AND deleted_at IS NULL""",
+                       SET external_user_id = 'deleted-' || id,
+                           external_email = 'deleted-' || id || '@deleted.invalid',
+                           external_slug = NULL,
+                           deleted_at = %s,
+                           updated_at = %s
+                       WHERE user_id = %s""",
                     (now, now, user_id),
+                )
+
+                await cur.execute(
+                    """UPDATE document_suggestions
+                       SET user_comment = '[deleted]',
+                           original_filename = NULL,
+                           file_size = NULL,
+                           storage_directory = NULL,
+                           sha256 = NULL,
+                           personal_data_erased_at = COALESCE(personal_data_erased_at, %s),
+                           attachment_erased_at = COALESCE(attachment_erased_at, %s),
+                           updated_at = %s
+                       WHERE user_id = %s""",
+                    (now, now, now, user_id),
                 )
 
                 if updated is None:
@@ -294,7 +361,12 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    "SELECT * FROM email_confirmations WHERE token_hash = %s AND confirmed_at IS NULL AND purpose = %s",
+                    """SELECT *
+                       FROM email_confirmations
+                       WHERE token_hash = %s
+                         AND confirmed_at IS NULL
+                         AND purpose = %s
+                         AND expires_at > NOW()""",
                     (token_hash, purpose),
                 )
                 row = await cur.fetchone()
@@ -445,6 +517,11 @@ class PostgresUserRepository(UserRepository):
             approved_suggestions_count=row.get("approved_suggestions_count", 0),
             privacy_policy_accepted=row.get("privacy_policy_accepted", False),
             privacy_policy_accepted_at=row.get("privacy_policy_accepted_at"),
+            privacy_policy_version=row.get("privacy_policy_version"),
             tos_accepted=row.get("tos_accepted", False),
             tos_accepted_at=row.get("tos_accepted_at"),
+            tos_version=row.get("tos_version"),
+            deleted_at=row.get("deleted_at"),
+            erased_at=row.get("erased_at"),
+            erasure_status=row.get("erasure_status", "none"),
         )

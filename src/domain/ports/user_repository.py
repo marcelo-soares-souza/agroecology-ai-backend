@@ -128,7 +128,9 @@ class UserRepository(ABC):
         """
 
     @abstractmethod
-    async def anonymize_user(self, user_id: str) -> User | None:
+    async def anonymize_user(
+        self, user_id: str, request_source: str = "account_delete"
+    ) -> User | None:
         """Anonymize personal data and mark user as deleted.
 
         Replaces name, email, about, link with placeholder values,
@@ -136,6 +138,7 @@ class UserRepository(ABC):
 
         Args:
             user_id: The user's identifier.
+            request_source: Source of the erasure request.
 
         Returns:
             The anonymized user, or None if not found.

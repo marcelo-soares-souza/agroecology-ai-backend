@@ -45,5 +45,10 @@ class User:
     approved_suggestions_count: int = 0
     privacy_policy_accepted: bool = False
     privacy_policy_accepted_at: datetime | None = None
+    privacy_policy_version: str | None = None
     tos_accepted: bool = False
     tos_accepted_at: datetime | None = None
+    tos_version: str | None = None
+    deleted_at: datetime | None = None
+    erased_at: datetime | None = None
+    erasure_status: str = "none"

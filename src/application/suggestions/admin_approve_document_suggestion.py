@@ -112,6 +112,17 @@ class AdminApproveDocumentSuggestion:
                 )
             raise ValueError("Failed to approve suggestion")
 
+        try:
+            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
+        except Exception as cleanup_error:
+            log_event(
+                logger,
+                logging.WARNING,
+                "approved_pending_file_cleanup_failed",
+                suggestion_id=suggestion_id,
+                error=cleanup_error,
+            )
+
         await self._notify_submitter(updated)
 
         if self._auto_extract_metadata and self._enqueue_metadata:

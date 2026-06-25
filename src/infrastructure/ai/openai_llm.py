@@ -133,7 +133,6 @@ class OpenAILLM(LLMPort):
             model=self._model,
             history_messages=history_count,
             prompt_chars=len(effective_user_prompt),
-            prompt_preview=truncate_for_log(effective_user_prompt, 1200),
             temperature=temperature,
             max_tokens=max_tokens,
         )

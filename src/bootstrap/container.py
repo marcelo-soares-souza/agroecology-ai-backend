@@ -166,13 +166,16 @@ from src.shared.config import (
     AVATAR_DIR,
     BM25_TOP_K,
     CACHE_TTL,
+    CROSSREF_MAILTO,
     DATABASE_URL,
     DB_POOL_MAX_SIZE,
     DB_POOL_MIN_SIZE,
     EMBEDDING_BACKEND,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
+    EXTERNAL_AI_ENABLED,
     HYBRID_TOP_K,
+    IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED,
     IDENTITY_SERVER_ENABLED,
     IDENTITY_SERVER_URL,
     MMR_LAMBDA,
@@ -181,7 +184,6 @@ from src.shared.config import (
     OLLAMA_LLM_HOSTS,
     OPENALEX_API_KEY,
     OPENALEX_MAILTO,
-    CROSSREF_MAILTO,
     RERANK_DEVICE,
     RERANK_MODEL,
     SIMILARITY_TOP_K,
@@ -679,6 +681,11 @@ class Container:
             provider = "ollama_native"
             transport = "ollama_native_api"
         else:
+            if not EXTERNAL_AI_ENABLED:
+                raise RuntimeError(
+                    "External AI provider is disabled. Set EXTERNAL_AI_ENABLED=true "
+                    "only after documenting the provider, transfer basis, and DPA."
+                )
             self.llm = OpenAILLM(
                 api_key=LLM_API_KEY,
                 base_url=LLM_BASE_URL,
@@ -903,14 +910,26 @@ class Container:
             else None
         )
         provision_external_user = None
-        if identity_client is not None:
+        if identity_client is not None and IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED:
             assert self.external_identity_repo is not None
             provision_external_user = ProvisionExternalUser(
                 user_repo=self.user_repo,
                 external_identity_repo=self.external_identity_repo,
                 password_hasher=password_hasher,
             )
-            log_event(logger, logging.INFO, "identity_server_enabled")
+            log_event(
+                logger,
+                logging.INFO,
+                "identity_server_enabled",
+                auto_provisioning=True,
+            )
+        elif identity_client is not None:
+            log_event(
+                logger,
+                logging.INFO,
+                "identity_server_enabled",
+                auto_provisioning=False,
+            )
         else:
             log_event(logger, logging.INFO, "identity_server_disabled")
 
@@ -960,7 +979,12 @@ class Container:
             process_avatar=process_avatar,
         )
         self.list_active_users = ListActiveUsers(user_repo=self.user_repo)
-        self.export_my_data = ExportMyData(user_repo=self.user_repo)
+        assert self.suggestion_repo is not None
+        self.export_my_data = ExportMyData(
+            user_repo=self.user_repo,
+            suggestion_repo=self.suggestion_repo,
+            external_identity_repo=self.external_identity_repo,
+        )
         self.request_delete_account = RequestDeleteAccount(
             user_repo=self.user_repo,
             password_hasher=password_hasher,
@@ -969,6 +993,8 @@ class Container:
         self.confirm_delete_account = ConfirmDeleteAccount(
             user_repo=self.user_repo,
             password_hasher=password_hasher,
+            suggestion_repo=self.suggestion_repo,
+            storage=self.file_storage,
         )
         self.validate_session = ValidateSession(
             token_service=token_service, user_repo=self.user_repo
@@ -1040,7 +1066,11 @@ class Container:
         self.list_users = ListUsers(repo=self.user_repo)
         self.get_user = AdminGetUser(repo=self.user_repo)
         self.update_user = UpdateUser(repo=self.user_repo)
-        self.delete_user = DeleteUser(repo=self.user_repo)
+        self.delete_user = DeleteUser(
+            repo=self.user_repo,
+            suggestion_repo=self.suggestion_repo,
+            storage=self.file_storage,
+        )
 
         self.list_ingestion_runs = ListIngestionRuns(ingestion_repo=self.ingestion_repo)
         self.schema_status = GetSchemaStatus()

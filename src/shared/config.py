@@ -16,6 +16,11 @@ load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY", "ollama")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:14b")
+EXTERNAL_AI_ENABLED = os.getenv("EXTERNAL_AI_ENABLED", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 OLLAMA_LLM_HOSTS = tuple(
     host.strip().lower()
     for host in os.getenv(
@@ -64,6 +69,16 @@ AUTH_RATE_LIMIT_MAX_FAILURES = int(os.getenv("AUTH_RATE_LIMIT_MAX_FAILURES", "5"
 AUTH_RATE_LIMIT_BLOCK_SECONDS = int(os.getenv("AUTH_RATE_LIMIT_BLOCK_SECONDS", "600"))
 IDENTITY_SERVER_URL = os.getenv("IDENTITY_SERVER_URL", "").strip()
 IDENTITY_SERVER_ENABLED = bool(IDENTITY_SERVER_URL)
+IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED = os.getenv(
+    "IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED", "false"
+).lower() in ("1", "true", "yes")
+PRIVACY_POLICY_VERSION = os.getenv("PRIVACY_POLICY_VERSION", "2026-06-25")
+TOS_VERSION = os.getenv("TOS_VERSION", "2026-06-25")
+TRUSTED_PROXY_HOSTS = tuple(
+    host.strip()
+    for host in os.getenv("TRUSTED_PROXY_HOSTS", "127.0.0.1,::1,localhost").split(",")
+    if host.strip()
+)
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@agroecologymap.org")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")

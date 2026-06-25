@@ -60,8 +60,8 @@ class ProvisionExternalUser:
             slug=slug,
             locale="pt-BR",
             role_key=role_key,
-            privacy_policy_accepted=True,
-            tos_accepted=True,
+            privacy_policy_accepted=False,
+            tos_accepted=False,
         )
         if remote_identity.is_confirmed:
             await self._user_repo.confirm_email(user.id)

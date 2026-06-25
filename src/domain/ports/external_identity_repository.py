@@ -13,6 +13,10 @@ class ExternalIdentityRepository(ABC):
         pass
 
     @abstractmethod
+    async def list_for_user(self, user_id: str) -> list[ExternalIdentity]:
+        pass
+
+    @abstractmethod
     async def upsert(
         self,
         *,

@@ -308,6 +308,7 @@ class DeleteAccountConfirmRequest(BaseModel):
 class ExportDataResponse(BaseModel):
     user: dict
     suggestions: list[dict]
+    external_identities: list[dict] = Field(default_factory=list)
 
 
 class MessageResponse(BaseModel):

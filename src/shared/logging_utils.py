@@ -84,6 +84,24 @@ def header_value(headers: Mapping[str, str], name: str) -> str:
     return headers.get(name, "").strip()
 
 
+def _trusted_proxy_hosts() -> set[str]:
+    return {
+        host.strip().lower()
+        for host in os.getenv(
+            "TRUSTED_PROXY_HOSTS", "127.0.0.1,::1,localhost"
+        ).split(",")
+        if host.strip()
+    }
+
+
+def _is_trusted_proxy(client_host: str | None) -> bool:
+    if not client_host:
+        return False
+    hosts = _trusted_proxy_hosts()
+    normalized = client_host.strip().lower().strip("[]")
+    return "*" in hosts or normalized in hosts
+
+
 def resolve_client_ip(headers: Mapping[str, str], client_host: str | None) -> str:
     """Determine the originating client IP from request headers.
 
@@ -97,19 +115,20 @@ def resolve_client_ip(headers: Mapping[str, str], client_host: str | None) -> st
     Returns:
         The resolved client IP address string.
     """
-    cf_connecting_ip = header_value(headers, "cf-connecting-ip")
-    if cf_connecting_ip:
-        return cf_connecting_ip
+    if _is_trusted_proxy(client_host):
+        cf_connecting_ip = header_value(headers, "cf-connecting-ip")
+        if cf_connecting_ip:
+            return cf_connecting_ip
 
-    forwarded_for = header_value(headers, "x-forwarded-for")
-    if forwarded_for:
-        first_hop = forwarded_for.split(",")[0].strip()
-        if first_hop:
-            return first_hop
+        forwarded_for = header_value(headers, "x-forwarded-for")
+        if forwarded_for:
+            first_hop = forwarded_for.split(",")[0].strip()
+            if first_hop:
+                return first_hop
 
-    real_ip = header_value(headers, "x-real-ip")
-    if real_ip:
-        return real_ip
+        real_ip = header_value(headers, "x-real-ip")
+        if real_ip:
+            return real_ip
 
     return client_host or "unknown"
 

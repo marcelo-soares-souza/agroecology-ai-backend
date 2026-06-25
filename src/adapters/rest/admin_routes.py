@@ -86,4 +86,4 @@ async def delete_user(user_id: str, user: User = Depends(require_role("admin")))
         _raise_admin_error(str(exc))
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
-    return MessageResponse(message="User deleted successfully")
+    return MessageResponse(message="User anonymized successfully")

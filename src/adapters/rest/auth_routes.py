@@ -40,6 +40,7 @@ from src.adapters.rest.schemas import (
     MessageResponse,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PublicUserResponse,
     PublicUserListResponse,
     RefreshRequest,
     RegisterRequest,
@@ -366,12 +367,12 @@ async def upload_my_avatar(
     return serialize_user(result)
 
 
-@router.get("/users/by-slug/{slug}", response_model=UserResponse)
+@router.get("/users/by-slug/{slug}", response_model=PublicUserResponse)
 async def get_user_by_slug(slug: str):
     user = await get_user_by_slug_use_case().execute(slug)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return serialize_user(user)
+    return serialize_public_user(user)
 
 
 @router.get("/users", response_model=PublicUserListResponse)

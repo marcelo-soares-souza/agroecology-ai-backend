@@ -70,7 +70,12 @@ class PostgresDocumentRepository(DocumentRepository):
                 return [self._to_domain(dict(r)) for r in rows]
 
     async def list_paginated(
-        self, q: str | None, limit: int, offset: int, full_metadata: bool = False
+        self,
+        q: str | None,
+        limit: int,
+        offset: int,
+        full_metadata: bool = False,
+        publication_year: int | None = None,
     ) -> tuple[list[Document], int]:
         join_clause = ""
         where_parts: list[str] = []
@@ -89,11 +94,12 @@ class PostgresDocumentRepository(DocumentRepository):
             )
             pattern = f"%{search}%"
             params.extend([pattern, pattern, pattern, pattern])
-        if full_metadata:
+        if full_metadata or publication_year is not None:
             join_clause = """
                 JOIN document_academic_metadata dam
                     ON dam.document_id = d.id
             """
+        if full_metadata:
             where_parts.append(
                 """
                 NULLIF(BTRIM(COALESCE(d.title, '')), '') IS NOT NULL
@@ -103,6 +109,9 @@ class PostgresDocumentRepository(DocumentRepository):
                 AND NULLIF(BTRIM(COALESCE(dam.source_url, '')), '') IS NOT NULL
                 """
             )
+        if publication_year is not None:
+            where_parts.append("dam.publication_year = %s")
+            params.append(publication_year)
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
         async with self._pool.connection() as conn:

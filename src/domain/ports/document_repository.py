@@ -50,7 +50,12 @@ class DocumentRepository(ABC):
 
     @abstractmethod
     async def list_paginated(
-        self, q: str | None, limit: int, offset: int, full_metadata: bool = False
+        self,
+        q: str | None,
+        limit: int,
+        offset: int,
+        full_metadata: bool = False,
+        publication_year: int | None = None,
     ) -> tuple[list[Document], int]:
         """List documents with optional text search and pagination.
 
@@ -59,6 +64,7 @@ class DocumentRepository(ABC):
             limit: Maximum number of documents to return.
             offset: Number of documents to skip.
             full_metadata: When true, require complete basic and academic metadata.
+            publication_year: Optional academic metadata publication year filter.
 
         Returns:
             A tuple with the page of documents and the total matching count.

@@ -4,6 +4,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -84,6 +85,8 @@ from src.shared.logging_utils import (
 configure_logging()
 
 logger = logging.getLogger("agroecology.http")
+
+PUBLICATION_YEAR_MIN = 1985
 
 
 @asynccontextmanager
@@ -374,13 +377,29 @@ async def upload_documents(
 async def list_all_documents(
     q: str | None = Query(default=None, max_length=200),
     full_metadata: bool = Query(default=False),
+    publication_year: int | None = Query(default=None, ge=PUBLICATION_YEAR_MIN),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
     manage = get_manage_docs()
     if manage is None:
         raise HTTPException(status_code=503, detail="Not initialized")
-    docs, total = await manage.list_paginated(q, limit, offset, full_metadata)
+    current_year = datetime.now(UTC).year
+    if publication_year is not None and publication_year > current_year:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "publication_year must be between "
+                f"{PUBLICATION_YEAR_MIN} and {current_year}"
+            ),
+        )
+    docs, total = await manage.list_paginated(
+        q=q,
+        limit=limit,
+        offset=offset,
+        full_metadata=full_metadata,
+        publication_year=publication_year,
+    )
     academic_metadata_repo = await get_document_academic_metadata_repo()
     academic_metadata_map = await academic_metadata_repo.get_many(
         [doc.id for doc in docs]
@@ -392,6 +411,7 @@ async def list_all_documents(
         returned_documents=len(docs),
         total_documents=total,
         full_metadata=full_metadata,
+        publication_year=publication_year,
         limit=limit,
         offset=offset,
     )

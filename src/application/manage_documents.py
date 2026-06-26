@@ -49,9 +49,16 @@ class ManageDocuments:
         return await self._repo.list_all()
 
     async def list_paginated(
-        self, q: str | None, limit: int, offset: int, full_metadata: bool = False
+        self,
+        q: str | None,
+        limit: int,
+        offset: int,
+        full_metadata: bool = False,
+        publication_year: int | None = None,
     ) -> tuple[list[Document], int]:
-        return await self._repo.list_paginated(q, limit, offset, full_metadata)
+        return await self._repo.list_paginated(
+            q, limit, offset, full_metadata, publication_year
+        )
 
     async def get_stats(self) -> DocumentStats:
         return await self._repo.get_stats()

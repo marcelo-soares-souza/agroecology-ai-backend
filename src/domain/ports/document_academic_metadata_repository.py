@@ -28,6 +28,10 @@ class DocumentAcademicMetadataRepository(ABC):
         """Return how many documents have stored academic metadata."""
 
     @abstractmethod
+    async def list_publication_years(self, min_year: int, max_year: int) -> list[int]:
+        """Return distinct publication years in descending order."""
+
+    @abstractmethod
     async def upsert(
         self, metadata: DocumentAcademicMetadataUpsert
     ) -> DocumentAcademicMetadata:

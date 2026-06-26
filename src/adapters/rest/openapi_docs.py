@@ -268,6 +268,16 @@ Use this endpoint to find document ids for update, download, deletion, or manual
 metadata extraction.
 """,
     },
+    ("GET", "/api/v1/documents/publication-years"): {
+        "tags": ["documents"],
+        "summary": "List document publication years",
+        "description": """
+Returns distinct academic metadata publication years in descending order.
+
+Use this endpoint to populate document filters without presenting years that do
+not exist in the knowledge base.
+""",
+    },
     ("GET", "/api/v1/documents/metadata-status"): {
         "tags": ["documents"],
         "summary": "Get metadata extraction queue status",

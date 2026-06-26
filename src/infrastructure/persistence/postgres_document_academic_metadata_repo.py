@@ -72,6 +72,21 @@ class PostgresDocumentAcademicMetadataRepository(DocumentAcademicMetadataReposit
                 result = await cur.fetchone()
                 return int(result[0]) if result else 0
 
+    async def list_publication_years(self, min_year: int, max_year: int) -> list[int]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT DISTINCT publication_year
+                    FROM document_academic_metadata
+                    WHERE publication_year BETWEEN %s AND %s
+                    ORDER BY publication_year DESC
+                    """,
+                    (min_year, max_year),
+                )
+                rows = await cur.fetchall()
+                return [int(row[0]) for row in rows]
+
     async def upsert(
         self, metadata: DocumentAcademicMetadataUpsert
     ) -> DocumentAcademicMetadata:

@@ -429,6 +429,23 @@ async def list_all_documents(
     )
 
 
+@app.get("/api/v1/documents/publication-years", response_model=list[int])
+async def list_document_publication_years():
+    academic_metadata_repo = await get_document_academic_metadata_repo()
+    current_year = datetime.now(UTC).year
+    years = await academic_metadata_repo.list_publication_years(
+        PUBLICATION_YEAR_MIN,
+        current_year,
+    )
+    log_event(
+        logger,
+        logging.INFO,
+        "document_publication_years_completed",
+        publication_years=len(years),
+    )
+    return years
+
+
 @app.get("/api/v1/documents/stats", response_model=DocumentStatsResponse)
 async def get_document_stats():
     manage = get_manage_docs()

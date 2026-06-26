@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from psycopg.rows import dict_row
 
 from src.domain.models.document_academic_metadata import (
+    AcademicMetadataStatusTotals,
     DocumentAcademicMetadataAttempt,
 )
 from src.domain.ports.document_academic_metadata_attempt_repository import (
@@ -38,6 +39,32 @@ class PostgresDocumentAcademicMetadataAttemptRepository(
                 )
                 result = await cur.fetchone()
                 return int(result[0]) if result else 0
+
+    async def count_totals(self) -> AcademicMetadataStatusTotals:
+        pending = await self.count_pending()
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        COUNT(*)::int AS processed_total,
+                        COUNT(*) FILTER (
+                            WHERE status IN ('skipped', 'no_match')
+                        )::int AS skipped_total,
+                        COUNT(*) FILTER (WHERE status = 'failed')::int
+                            AS failed_total
+                    FROM document_academic_metadata_attempts
+                    """
+                )
+                row = await cur.fetchone()
+
+        return AcademicMetadataStatusTotals(
+            documents_processed_total=int(row["processed_total"]) if row else 0,
+            documents_skipped_total=int(row["skipped_total"]) if row else 0,
+            documents_failed_total=int(row["failed_total"]) if row else 0,
+            documents_with_full_metadata=0,
+            documents_eligible_pending=pending,
+        )
 
     async def exists(self, document_id: str) -> bool:
         async with self._pool.connection() as conn:

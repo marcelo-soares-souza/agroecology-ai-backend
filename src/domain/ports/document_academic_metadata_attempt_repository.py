@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from src.domain.models.document_academic_metadata import (
+    AcademicMetadataStatusTotals,
     DocumentAcademicMetadataAttempt,
 )
 
@@ -11,6 +12,10 @@ class DocumentAcademicMetadataAttemptRepository(ABC):
     @abstractmethod
     async def count_pending(self) -> int:
         """Return how many eligible documents have not been attempted yet."""
+
+    @abstractmethod
+    async def count_totals(self) -> AcademicMetadataStatusTotals:
+        """Return aggregate academic metadata attempt counters."""
 
     @abstractmethod
     async def exists(self, document_id: str) -> bool:

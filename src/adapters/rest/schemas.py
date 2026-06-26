@@ -186,6 +186,11 @@ class AcademicMetadataRunStatusResponse(BaseModel):
     documents_skipped: int = 0
     documents_failed: int = 0
     documents_pending: int = 0
+    documents_processed_total: int = 0
+    documents_skipped_total: int = 0
+    documents_failed_total: int = 0
+    documents_with_full_metadata: int = 0
+    documents_eligible_pending: int = 0
     delay_seconds: int = 60
     current_document_id: str | None = None
     error: str | None = None

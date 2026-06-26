@@ -888,6 +888,7 @@ class Container:
         self.get_academic_metadata_run_status = GetAcademicMetadataRunStatus(
             run_repo=self.academic_metadata_run_repo,
             attempt_repo=self.academic_metadata_attempt_repo,
+            metadata_repo=self.academic_metadata_repo,
         )
         self.get_document_file = GetDocumentFile(
             repo=self.doc_repo,

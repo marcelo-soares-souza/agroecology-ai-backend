@@ -65,6 +65,13 @@ class PostgresDocumentAcademicMetadataRepository(DocumentAcademicMetadataReposit
                 )
                 return await cur.fetchone() is not None
 
+    async def count_all(self) -> int:
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT COUNT(*) FROM document_academic_metadata")
+                result = await cur.fetchone()
+                return int(result[0]) if result else 0
+
     async def upsert(
         self, metadata: DocumentAcademicMetadataUpsert
     ) -> DocumentAcademicMetadata:

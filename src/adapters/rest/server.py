@@ -575,15 +575,18 @@ async def academic_metadata_status(
     )
     status_service = get_academic_metadata_run_status()
     documents_pending = await status_service.count_pending_documents()
+    totals = await status_service.get_totals()
     run = await status_service.execute()
     if run is None:
         return AcademicMetadataRunStatusResponse(
             status="idle",
             documents_pending=documents_pending,
+            **totals.__dict__,
         )
     return AcademicMetadataRunStatusResponse(
         **serialize_academic_metadata_run(run),
         documents_pending=documents_pending,
+        **totals.__dict__,
     )
 
 
@@ -608,9 +611,11 @@ async def academic_metadata_run_status(
     if run is None:
         raise HTTPException(status_code=404, detail="Academic metadata run not found")
     documents_pending = await status_service.count_pending_documents()
+    totals = await status_service.get_totals()
     return AcademicMetadataRunStatusResponse(
         **serialize_academic_metadata_run(run),
         documents_pending=documents_pending,
+        **totals.__dict__,
     )
 
 

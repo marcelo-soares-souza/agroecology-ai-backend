@@ -97,6 +97,15 @@ class AcademicMetadataRun:
 
 
 @dataclass
+class AcademicMetadataStatusTotals:
+    documents_processed_total: int
+    documents_skipped_total: int
+    documents_failed_total: int
+    documents_with_full_metadata: int
+    documents_eligible_pending: int
+
+
+@dataclass
 class DocumentAcademicMetadataAttempt:
     document_id: str
     status: str

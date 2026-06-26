@@ -24,6 +24,10 @@ class DocumentAcademicMetadataRepository(ABC):
         """Return whether academic metadata already exists for a document."""
 
     @abstractmethod
+    async def count_all(self) -> int:
+        """Return how many documents have stored academic metadata."""
+
+    @abstractmethod
     async def upsert(
         self, metadata: DocumentAcademicMetadataUpsert
     ) -> DocumentAcademicMetadata:

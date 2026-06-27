@@ -7,6 +7,7 @@ from src.application.ask_question import AskQuestion
 from src.application.manage_documents import ManageDocuments
 from src.bootstrap.task_manager import TaskManager
 from src.domain.dto.answer_result import TaskSubmissionResult
+from src.domain.dto.chat_message import ChatMessage
 from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.ports.cache_port import CachePort
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
@@ -31,7 +32,7 @@ class AskTaskService:
         self,
         question: str,
         top_k: int,
-        history: list[dict],
+        history: list[ChatMessage],
     ) -> TaskSubmissionResult:
         should_use_cache = not history
         cached = self._cache.get(question, top_k) if should_use_cache else None
@@ -83,7 +84,7 @@ class AskTaskService:
         question: str,
         top_k: int,
         document_metadata_map: DocumentMetadataMap,
-        history: list[dict],
+        history: list[ChatMessage],
         should_cache: bool,
     ) -> None:
         started_at = take_perf_snapshot()

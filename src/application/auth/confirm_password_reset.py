@@ -24,11 +24,11 @@ class ConfirmPasswordReset:
         if not stored:
             raise ValueError("Invalid or expired reset token")
 
-        if stored["expires_at"] < datetime.now(timezone.utc):
+        if stored.expires_at < datetime.now(timezone.utc):
             raise ValueError("Reset token expired")
 
         password_hash = self._password_hasher.hash_password(new_password)
-        await self._repo.update(stored["user_id"], password_hash=password_hash)
-        await self._repo.mark_confirmation_done(stored["id"])
+        await self._repo.update(stored.user_id, password_hash=password_hash)
+        await self._repo.mark_confirmation_done(stored.id)
 
         return MessageResult(message="Password reset successfully")

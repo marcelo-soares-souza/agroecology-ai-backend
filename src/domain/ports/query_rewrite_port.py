@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+
+from src.domain.dto.chat_message import ChatMessage
 
 
 class QueryRewritePort(ABC):
@@ -11,12 +14,12 @@ class QueryRewritePort(ABC):
     """
 
     @abstractmethod
-    def rewrite(self, question: str, history: list[dict]) -> str:
+    def rewrite(self, question: str, history: Sequence[ChatMessage]) -> str:
         """Rewrite a context-dependent question into a standalone query.
 
         Args:
             question: The user's current question.
-            history: The conversation history as a list of role/content dicts.
+            history: The conversation history as role/content messages.
 
         Returns:
             The rewritten standalone query, or the original question if no

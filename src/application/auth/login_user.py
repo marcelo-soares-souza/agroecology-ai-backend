@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from src.application.config import AuthConfig
 from src.application.auth.provision_external_user import ProvisionExternalUser
 from src.domain.dto.auth_result import LoginResult
 from src.domain.dto.user_dto import UserDTO
@@ -15,7 +16,6 @@ from src.domain.ports.identity_server_client import (
     IdentityServerUnavailable,
 )
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import REFRESH_TOKEN_TTL_DAYS
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -27,12 +27,14 @@ class LoginUser:
         repo: UserRepository,
         password_hasher: PasswordHasherPort,
         token_service: TokenServicePort,
+        config: AuthConfig,
         identity_client: IdentityServerClient | None = None,
         provision_external_user: ProvisionExternalUser | None = None,
     ) -> None:
         self._repo = repo
         self._password_hasher = password_hasher
         self._token_service = token_service
+        self._config = config
         self._identity_client = identity_client
         self._provision_external_user = provision_external_user
 
@@ -134,7 +136,9 @@ class LoginUser:
         access_token = self._token_service.create_access_token(user.id, roles)
         raw_refresh = self._token_service.create_refresh_token(user.id)
         new_hash = self._password_hasher.hash_token(raw_refresh)
-        exp = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_TTL_DAYS)
+        exp = datetime.now(timezone.utc) + timedelta(
+            days=self._config.refresh_token_ttl_days
+        )
         await self._repo.store_refresh_token(user.id, new_hash, exp)
 
         avatar_url = (

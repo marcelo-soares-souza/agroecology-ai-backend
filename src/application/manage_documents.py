@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import hashlib
 
+from src.application.config import DocumentStorageConfig
 from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.models.document import Document, DocumentCreate, DocumentStats
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-from src.shared.config import FILE_TYPE_TO_EXT
 from src.shared.uuid7 import uuid7
 
-TitleMap = dict[str, str | None]
-
-
 class ManageDocuments:
-    def __init__(self, repo: DocumentRepository, storage: FileStoragePort) -> None:
+    def __init__(
+        self,
+        repo: DocumentRepository,
+        storage: FileStoragePort,
+        config: DocumentStorageConfig,
+    ) -> None:
         self._repo = repo
         self._storage = storage
+        self._config = config
 
     async def upload(
         self,
@@ -29,7 +32,7 @@ class ManageDocuments:
     ) -> Document:
         sha256_hash = hashlib.sha256(content).hexdigest()
         doc_id = uuid7()
-        ext = FILE_TYPE_TO_EXT.get(file_type, "")
+        ext = self._config.file_type_to_ext.get(file_type, "")
         await self._storage.save(directory, doc_id, ext, content)
 
         doc = DocumentCreate(
@@ -82,7 +85,7 @@ class ManageDocuments:
     async def delete(self, doc_id: str) -> Document | None:
         doc = await self._repo.delete(doc_id)
         if doc:
-            ext = FILE_TYPE_TO_EXT.get(doc.file_type, "")
+            ext = self._config.file_type_to_ext.get(doc.file_type, "")
             await self._storage.delete(doc.directory, doc.id, ext)
         return doc
 
@@ -91,9 +94,6 @@ class ManageDocuments:
 
     async def sha256_exists(self, sha256: str) -> bool:
         return await self._repo.sha256_exists(sha256)
-
-    async def get_title_map(self) -> TitleMap:
-        return await self._repo.get_title_map()
 
     async def get_metadata_map(self) -> DocumentMetadataMap:
         return await self._repo.get_metadata_map()

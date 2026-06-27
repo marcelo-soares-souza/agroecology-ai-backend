@@ -31,3 +31,14 @@ class ChallengeResult:
 
     challenge_id: str
     question: str
+
+
+@dataclass(frozen=True)
+class TokenPayload:
+    """Decoded access token payload used by application services."""
+
+    subject: str | None
+    roles: list[str]
+    issued_at: int | None = None
+    expires_at: int | None = None
+    token_id: str | None = None

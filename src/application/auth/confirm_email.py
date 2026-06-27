@@ -21,10 +21,10 @@ class ConfirmEmail:
         if not stored:
             raise ValueError("Invalid or already used token")
 
-        if stored["expires_at"] < datetime.now(timezone.utc):
+        if stored.expires_at < datetime.now(timezone.utc):
             raise ValueError("Confirmation token expired")
 
-        await self._repo.mark_confirmation_done(stored["id"])
-        await self._repo.confirm_email(stored["user_id"])
+        await self._repo.mark_confirmation_done(stored.id)
+        await self._repo.confirm_email(stored.user_id)
 
         return MessageResult(message="Email confirmed successfully")

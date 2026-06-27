@@ -7,6 +7,15 @@ from urllib.parse import urlparse
 
 from psycopg_pool import AsyncConnectionPool
 
+from src.application.config import (
+    AuthConfig,
+    AvatarStorageConfig,
+    DocumentStorageConfig,
+    IngestionConfig,
+    RagConfig,
+    StatusConfig,
+    SuggestionStorageConfig,
+)
 from src.application.admin.delete_user import DeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers
@@ -47,18 +56,25 @@ from src.application.extract_metadata import ExtractMetadata
 from src.application.get_academic_metadata_run_status import (
     GetAcademicMetadataRunStatus,
 )
+from src.application.get_document_details import GetDocumentDetails
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_metadata_job_status import GetMetadataJobStatus
-from src.application.get_schema_status import GetSchemaStatus
 from src.application.get_status import GetStatus
 from src.application.get_task_status import GetTaskStatus
 from src.application.ingest_documents import IngestDocuments
+from src.application.list_document_publication_years import (
+    ListDocumentPublicationYears,
+)
+from src.application.list_documents import ListDocuments
 from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
 from src.application.run_academic_metadata_extraction import (
     RunAcademicMetadataExtraction,
 )
 from src.application.scrape_urls import ScrapeUrls
+from src.application.start_document_academic_metadata_extraction import (
+    StartDocumentAcademicMetadataExtraction,
+)
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
 )
@@ -91,6 +107,7 @@ from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
 from src.application.upload_document import UploadDocument
+from src.application.update_document_metadata import UpdateDocumentMetadata
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.bootstrap.task_manager import TaskManager
@@ -154,6 +171,7 @@ from src.infrastructure.rate_limit.valkey_auth_rate_limiter import (
 from src.infrastructure.scraping.web_scraper import WebScraper
 from src.infrastructure.storage.avatar_processor import process_avatar
 from src.infrastructure.storage.local_file_storage import LocalFileStorage
+from src.infrastructure.storage.local_index_metadata import LocalIndexMetadata
 from src.shared.config import (
     ACADEMIC_METADATA_CANDIDATES_PER_PROVIDER,
     ACADEMIC_METADATA_DEFAULT_DELAY_SECONDS,
@@ -166,10 +184,17 @@ from src.shared.config import (
     AVATAR_DIR,
     BM25_TOP_K,
     CACHE_TTL,
+    CHUNK_MAX_CHARS,
+    CHUNK_OVERLAP,
+    CHUNK_OVERLAP_CHARS,
+    CHUNK_SIZE,
     CROSSREF_MAILTO,
+    DATA_DIR_PDFS,
+    DATA_DIR_PENDING,
     DATABASE_URL,
     DB_POOL_MAX_SIZE,
     DB_POOL_MIN_SIZE,
+    EMBEDDING_BATCH_SIZE,
     EMBEDDING_BACKEND,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
@@ -178,17 +203,31 @@ from src.shared.config import (
     IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED,
     IDENTITY_SERVER_ENABLED,
     IDENTITY_SERVER_URL,
+    FILE_EXTENSIONS,
+    FILE_TYPE_TO_EXT,
     MMR_LAMBDA,
+    INGEST_BATCH_SIZE,
+    LLM_CHUNK_MAX_CHARS,
+    LLM_CONTEXT_CHARS_BUDGET,
+    LLM_CONTEXT_MAX_CHUNKS,
+    LLM_CONTEXT_RETRY_MAX_CHUNKS,
+    LLM_MODEL,
+    LLM_THINK_ENABLE,
+    MAX_FILE_SIZE,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     OLLAMA_LLM_HOSTS,
     OPENALEX_API_KEY,
     OPENALEX_MAILTO,
+    RAG_RETRIEVAL_TOP_K,
     RERANK_DEVICE,
     RERANK_MODEL,
+    RERANK_TOP_K,
+    REFRESH_TOKEN_TTL_DAYS,
     SIMILARITY_TOP_K,
+    SYSTEM_PROMPT,
+    USER_PROMPT,
     VALKEY_URL,
-    read_index_version,
 )
 from src.shared.logging_utils import log_event
 
@@ -247,6 +286,7 @@ class Container:
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
         self.file_storage: LocalFileStorage | None = None
+        self.index_metadata: LocalIndexMetadata | None = None
         self.web_scraper: ScrapeUrls | None = None
 
         # Use cases / services
@@ -257,6 +297,10 @@ class Container:
         self.get_status: GetStatus | None = None
         self.extract_metadata: ExtractMetadata | None = None
         self.extract_document_metadata: ExtractDocumentMetadata | None = None
+        self.list_documents: ListDocuments | None = None
+        self.list_document_publication_years: ListDocumentPublicationYears | None = None
+        self.get_document_details: GetDocumentDetails | None = None
+        self.update_document_metadata: UpdateDocumentMetadata | None = None
         self.upload_document: UploadDocument | None = None
         self.get_document_file: GetDocumentFile | None = None
         self.delete_document: DeleteDocument | None = None
@@ -272,6 +316,9 @@ class Container:
         self.enqueue_academic_metadata_extraction: (
             EnqueueAcademicMetadataExtraction | None
         ) = None
+        self.start_document_academic_metadata_extraction: (
+            StartDocumentAcademicMetadataExtraction | None
+        ) = None
         self.get_academic_metadata_run_status: GetAcademicMetadataRunStatus | None = (
             None
         )
@@ -281,7 +328,6 @@ class Container:
         self.list_ingestion_runs: ListIngestionRuns | None = None
         self.task_status: GetTaskStatus | None = None
         self.list_public_suggestions: ListPublicSuggestions | None = None
-        self.schema_status: GetSchemaStatus | None = None
         self.get_avatar_file: GetAvatarFile | None = None
 
         # Auth use cases
@@ -404,6 +450,9 @@ class Container:
 
             self.file_storage = LocalFileStorage()
             log_event(logger, logging.INFO, "file_storage_initialized")
+
+            self.index_metadata = LocalIndexMetadata()
+            log_event(logger, logging.INFO, "index_metadata_initialized")
 
             self.web_scraper = ScrapeUrls(scraper=WebScraper(storage=self.file_storage))
 
@@ -570,6 +619,7 @@ class Container:
             "queue",
             "task_manager",
             "file_storage",
+            "index_metadata",
             "web_scraper",
             "ingest",
             "retriever",
@@ -578,6 +628,10 @@ class Container:
             "get_status",
             "extract_metadata",
             "extract_document_metadata",
+            "list_documents",
+            "list_document_publication_years",
+            "get_document_details",
+            "update_document_metadata",
             "upload_document",
             "get_document_file",
             "delete_document",
@@ -587,6 +641,7 @@ class Container:
             "extract_document_academic_metadata",
             "run_academic_metadata_extraction",
             "enqueue_academic_metadata_extraction",
+            "start_document_academic_metadata_extraction",
             "get_academic_metadata_run_status",
             "ask_task_service",
             "ingestion_task_service",
@@ -626,7 +681,6 @@ class Container:
             "list_ingestion_runs",
             "task_status",
             "list_public_suggestions",
-            "schema_status",
             "get_avatar_file",
             "_job_worker_stop",
             "_job_worker_thread",
@@ -709,7 +763,8 @@ class Container:
 
     def _create_cache(self) -> None:
         self.cache = ValkeyCache(VALKEY_URL, ttl=CACHE_TTL)
-        self.cache.set_index_version(read_index_version())
+        assert self.index_metadata is not None
+        self.cache.set_index_version(self.index_metadata.read_index_version())
         from src.shared.config import (
             BM25_TOP_K,
             CHUNK_MAX_CHARS,
@@ -788,7 +843,60 @@ class Container:
         assert self.academic_metadata_run_repo is not None
         assert self.cache is not None
         assert self.file_storage is not None
+        assert self.index_metadata is not None
         assert self.user_repo is not None
+
+        document_storage_config = DocumentStorageConfig(
+            max_file_size=MAX_FILE_SIZE,
+            file_extensions=FILE_EXTENSIONS,
+            file_type_to_ext=FILE_TYPE_TO_EXT,
+            upload_directory_by_ext={
+                ".pdf": DATA_DIR_PDFS.name,
+                ".md": "markdown",
+                ".txt": "web",
+            },
+        )
+        suggestion_storage_config = SuggestionStorageConfig(
+            max_file_size=MAX_FILE_SIZE,
+            pending_directory=DATA_DIR_PENDING.name,
+            approved_pdf_directory=DATA_DIR_PDFS.name,
+        )
+        avatar_storage_config = AvatarStorageConfig(
+            directory=AVATAR_DIR.name,
+            allowed_mime_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
+            max_file_size=5 * 1024 * 1024,
+        )
+        ingestion_config = IngestionConfig(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            chunk_max_chars=CHUNK_MAX_CHARS,
+            chunk_overlap_chars=CHUNK_OVERLAP_CHARS,
+            ingest_batch_size=INGEST_BATCH_SIZE,
+            embedding_batch_size=EMBEDDING_BATCH_SIZE,
+        )
+        rag_config = RagConfig(
+            llm_chunk_max_chars=LLM_CHUNK_MAX_CHARS,
+            llm_context_chars_budget=LLM_CONTEXT_CHARS_BUDGET,
+            llm_context_max_chunks=LLM_CONTEXT_MAX_CHUNKS,
+            llm_context_retry_max_chunks=LLM_CONTEXT_RETRY_MAX_CHUNKS,
+            rag_retrieval_top_k=RAG_RETRIEVAL_TOP_K,
+            rerank_top_k=RERANK_TOP_K,
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=USER_PROMPT,
+        )
+        status_config = StatusConfig(
+            llm_model=LLM_MODEL,
+            llm_think_enabled=LLM_THINK_ENABLE,
+            embedding_model=EMBEDDING_MODEL,
+            embedding_device=EMBEDDING_DEVICE,
+            similarity_top_k=SIMILARITY_TOP_K,
+            bm25_top_k=BM25_TOP_K,
+            hybrid_top_k=HYBRID_TOP_K,
+            reranker_model=RERANK_MODEL,
+            reranker_device=RERANK_DEVICE,
+            rerank_top_k=RERANK_TOP_K,
+        )
+        auth_config = AuthConfig(refresh_token_ttl_days=REFRESH_TOKEN_TTL_DAYS)
 
         # Core RAG services
         self.retriever = RetrieverService(
@@ -802,7 +910,9 @@ class Container:
             similarity_top_k=SIMILARITY_TOP_K,
         )
         self.manage_docs = ManageDocuments(
-            repo=self.doc_repo, storage=self.file_storage
+            repo=self.doc_repo,
+            storage=self.file_storage,
+            config=document_storage_config,
         )
 
         loader = LocalDocumentLoader()
@@ -811,6 +921,8 @@ class Container:
             embedder=self.embedder,
             ingestion_repo=self.ingestion_repo,
             loader=loader,
+            index_metadata=self.index_metadata,
+            config=ingestion_config,
         )
         self.ingest.register_on_complete(self._on_ingestion_complete)
 
@@ -822,12 +934,17 @@ class Container:
             doc_repo=self.doc_repo,
             llm_provider=self.llm_provider,
             llm_transport=self.llm_transport,
+            index_metadata=self.index_metadata,
+            config=status_config,
         )
         self.extract_metadata = ExtractMetadata(self.llm)
 
         rewriter = LLMQueryRewriter(llm=self.llm)
         self.ask_question = AskQuestion(
-            retriever=self.retriever, llm=self.llm, query_rewriter=rewriter
+            retriever=self.retriever,
+            llm=self.llm,
+            config=rag_config,
+            query_rewriter=rewriter,
         )
 
         self.enqueue_document_metadata = EnqueueDocumentMetadata(
@@ -837,14 +954,33 @@ class Container:
         self.upload_document = UploadDocument(
             repo=self.doc_repo,
             storage=self.file_storage,
+            config=document_storage_config,
             enqueue_metadata=self.enqueue_document_metadata.execute,
             auto_extract_metadata=AUTO_EXTRACT_METADATA,
+        )
+        self.list_documents = ListDocuments(
+            doc_repo=self.doc_repo,
+            academic_metadata_repo=self.academic_metadata_repo,
+        )
+        self.list_document_publication_years = ListDocumentPublicationYears(
+            academic_metadata_repo=self.academic_metadata_repo,
+        )
+        assert self.suggestion_repo is not None
+        self.get_document_details = GetDocumentDetails(
+            doc_repo=self.doc_repo,
+            suggestion_repo=self.suggestion_repo,
+            academic_metadata_repo=self.academic_metadata_repo,
+        )
+        self.update_document_metadata = UpdateDocumentMetadata(
+            doc_repo=self.doc_repo,
+            academic_metadata_repo=self.academic_metadata_repo,
         )
         self.extract_document_metadata = ExtractDocumentMetadata(
             repo=self.doc_repo,
             storage=self.file_storage,
             pdf_text_extractor=PyMuPdfTextExtractor(),
             metadata_extractor=self.extract_metadata,
+            config=document_storage_config,
         )
         academic_metadata_providers = [
             OpenAlexProvider(
@@ -885,6 +1021,12 @@ class Container:
             ),
             min_delay_seconds=ACADEMIC_METADATA_MIN_DELAY_SECONDS,
         )
+        self.start_document_academic_metadata_extraction = (
+            StartDocumentAcademicMetadataExtraction(
+                doc_repo=self.doc_repo,
+                enqueue_extraction=self.enqueue_academic_metadata_extraction,
+            )
+        )
         self.get_academic_metadata_run_status = GetAcademicMetadataRunStatus(
             run_repo=self.academic_metadata_run_repo,
             attempt_repo=self.academic_metadata_attempt_repo,
@@ -894,6 +1036,7 @@ class Container:
             repo=self.doc_repo,
             storage=self.file_storage,
             academic_metadata_repo=self.academic_metadata_repo,
+            config=document_storage_config,
         )
         self.delete_document = DeleteDocument(
             manage_documents=self.manage_docs,
@@ -945,6 +1088,7 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
             token_service=token_service,
+            config=auth_config,
             identity_client=identity_client,
             provision_external_user=provision_external_user,
         )
@@ -952,6 +1096,7 @@ class Container:
             repo=self.user_repo,
             password_hasher=password_hasher,
             token_service=token_service,
+            config=auth_config,
         )
         self.logout_user = LogoutUser(repo=self.user_repo)
         self.confirm_email = ConfirmEmail(
@@ -976,7 +1121,8 @@ class Container:
         self.update_my_profile = UpdateMyProfile(user_repo=self.user_repo)
         self.upload_my_avatar = UploadMyAvatar(
             user_repo=self.user_repo,
-            avatar_dir=AVATAR_DIR,
+            storage=self.file_storage,
+            config=avatar_storage_config,
             process_avatar=process_avatar,
         )
         self.list_active_users = ListActiveUsers(user_repo=self.user_repo)
@@ -996,11 +1142,16 @@ class Container:
             password_hasher=password_hasher,
             suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
+            avatar_config=avatar_storage_config,
+            suggestion_config=suggestion_storage_config,
         )
         self.validate_session = ValidateSession(
             token_service=token_service, user_repo=self.user_repo
         )
-        self.get_avatar_file = GetAvatarFile()
+        self.get_avatar_file = GetAvatarFile(
+            storage=self.file_storage,
+            config=avatar_storage_config,
+        )
 
         # Suggestion use cases
         assert self.suggestion_repo is not None
@@ -1011,6 +1162,7 @@ class Container:
             storage=self.file_storage,
             email_service=email_service,
             user_repo=self.user_repo,
+            config=suggestion_storage_config,
         )
         self.list_my_document_suggestions = ListMyDocumentSuggestions(
             suggestion_repo=self.suggestion_repo,
@@ -1024,15 +1176,18 @@ class Container:
         self.delete_document_suggestion = DeleteDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
+            config=suggestion_storage_config,
         )
         self.replace_suggestion_file = ReplaceSuggestionFile(
             suggestion_repo=self.suggestion_repo,
             doc_repo=self.doc_repo,
             storage=self.file_storage,
+            config=suggestion_storage_config,
         )
         self.get_suggestion_file = GetSuggestionFile(
             suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
+            config=suggestion_storage_config,
         )
         self.admin_list_document_suggestions = AdminListDocumentSuggestions(
             suggestion_repo=self.suggestion_repo,
@@ -1048,6 +1203,7 @@ class Container:
         self.admin_delete_document_suggestion = AdminDeleteDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
+            config=suggestion_storage_config,
         )
         self.admin_approve_document_suggestion = AdminApproveDocumentSuggestion(
             suggestion_repo=self.suggestion_repo,
@@ -1055,6 +1211,7 @@ class Container:
             storage=self.file_storage,
             email_service=email_service,
             user_repo=self.user_repo,
+            config=suggestion_storage_config,
             enqueue_metadata=self.enqueue_document_metadata.execute,
             auto_extract_metadata=AUTO_EXTRACT_METADATA,
         )
@@ -1071,10 +1228,11 @@ class Container:
             repo=self.user_repo,
             suggestion_repo=self.suggestion_repo,
             storage=self.file_storage,
+            avatar_config=avatar_storage_config,
+            suggestion_config=suggestion_storage_config,
         )
 
         self.list_ingestion_runs = ListIngestionRuns(ingestion_repo=self.ingestion_repo)
-        self.schema_status = GetSchemaStatus()
 
         # Services that depend on queue (lazy-initialized in start())
         self.task_manager = TaskManager()
@@ -1105,7 +1263,11 @@ class Container:
     def _on_ingestion_complete(self) -> None:
         if self.retriever is not None:
             self.retriever.invalidate_bm25_cache()
-        new_version = read_index_version()
+        new_version = (
+            self.index_metadata.read_index_version()
+            if self.index_metadata is not None
+            else "0"
+        )
         if self.cache is not None:
             self.cache.set_index_version(new_version)
         log_event(

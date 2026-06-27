@@ -4,6 +4,7 @@ import hashlib
 import logging
 import re
 
+from src.application.config import SuggestionStorageConfig
 from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionCreate,
@@ -13,7 +14,6 @@ from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import DATA_DIR_PENDING, MAX_FILE_SIZE
 from src.shared.logging_utils import log_event
 from src.shared.uuid7 import uuid7
 
@@ -28,12 +28,14 @@ class CreateDocumentSuggestion:
         storage: FileStoragePort,
         email_service: EmailPort,
         user_repo: UserRepository,
+        config: SuggestionStorageConfig,
     ) -> None:
         self._suggestion_repo = suggestion_repo
         self._doc_repo = doc_repo
         self._storage = storage
         self._email_service = email_service
         self._user_repo = user_repo
+        self._config = config
 
     async def execute(
         self,
@@ -74,7 +76,7 @@ class CreateDocumentSuggestion:
             if len(file_content) == 0:
                 raise ValueError("Empty file")
 
-            if len(file_content) > MAX_FILE_SIZE:
+            if len(file_content) > self._config.max_file_size:
                 raise ValueError(
                     f"File exceeds 50 MB ({len(file_content) / 1024 / 1024:.1f} MB)"
                 )
@@ -101,7 +103,7 @@ class CreateDocumentSuggestion:
 
         if file_content is not None:
             await self._storage.save(
-                DATA_DIR_PENDING.name, suggestion_id, ".pdf", file_content
+                self._config.pending_directory, suggestion_id, ".pdf", file_content
             )
 
         suggestion = DocumentSuggestionCreate(
@@ -114,7 +116,7 @@ class CreateDocumentSuggestion:
             original_filename=original_filename,
             file_type=file_type,
             file_size=file_size,
-            storage_directory=DATA_DIR_PENDING.name,
+            storage_directory=self._config.pending_directory,
             sha256=sha256_hash,
         )
 

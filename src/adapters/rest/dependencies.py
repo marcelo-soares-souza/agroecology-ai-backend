@@ -6,7 +6,6 @@ from src.application.admin.delete_user import DeleteUser as AdminDeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers as AdminListUsers
 from src.application.admin.update_user import UpdateUser as AdminUpdateUser
-from src.application.ask_question import AskQuestion
 from src.application.auth.confirm_email import ConfirmEmail
 from src.application.auth.confirm_password_reset import ConfirmPasswordReset
 from src.application.auth.delete_my_account import (
@@ -31,22 +30,22 @@ from src.application.delete_document import DeleteDocument
 from src.application.enqueue_academic_metadata_extraction import (
     EnqueueAcademicMetadataExtraction,
 )
-from src.application.enqueue_document_metadata import EnqueueDocumentMetadata
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
 from src.application.get_academic_metadata_run_status import (
     GetAcademicMetadataRunStatus,
 )
+from src.application.get_document_details import GetDocumentDetails
 from src.application.extract_document_metadata import ExtractDocumentMetadata
-from src.application.extract_metadata import ExtractMetadata
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_metadata_job_status import GetMetadataJobStatus
-from src.application.get_schema_status import GetSchemaStatus
 from src.application.get_status import GetStatus
 from src.application.get_task_status import GetTaskStatus
-from src.application.ingest_documents import IngestDocuments
+from src.application.list_document_publication_years import (
+    ListDocumentPublicationYears,
+)
+from src.application.list_documents import ListDocuments
 from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
-from src.application.scrape_urls import ScrapeUrls
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
 )
@@ -78,57 +77,17 @@ from src.application.suggestions.replace_suggestion_file import ReplaceSuggestio
 from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
+from src.application.start_document_academic_metadata_extraction import (
+    StartDocumentAcademicMetadataExtraction,
+)
 from src.application.upload_document import UploadDocument
+from src.application.update_document_metadata import UpdateDocumentMetadata
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.container import container
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.ports.auth_rate_limiter_port import AuthRateLimiterPort
-from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
-from src.domain.ports.document_academic_metadata_repository import (
-    DocumentAcademicMetadataRepository,
-)
-from src.domain.ports.ingestion_repository import IngestionRepository
-from src.domain.ports.user_repository import UserRepository
-from src.domain.ports.vector_store_port import VectorStorePort
 
 logger = logging.getLogger("agroecology.bootstrap")
-
-
-def get_vector_store() -> VectorStorePort:
-    assert container.vector_store is not None, "vector_store not initialized"
-    return container.vector_store
-
-
-async def get_ingestion_repo() -> IngestionRepository:
-    assert container.ingestion_repo is not None, "ingestion_repo not initialized"
-    return container.ingestion_repo
-
-
-async def get_user_repo() -> UserRepository:
-    assert container.user_repo is not None, "user_repo not initialized"
-    return container.user_repo
-
-
-async def get_suggestion_repo() -> DocumentSuggestionRepository:
-    assert container.suggestion_repo is not None, "suggestion_repo not initialized"
-    return container.suggestion_repo
-
-
-async def get_document_academic_metadata_repo() -> DocumentAcademicMetadataRepository:
-    assert container.academic_metadata_repo is not None, (
-        "academic_metadata_repo not initialized"
-    )
-    return container.academic_metadata_repo
-
-
-def get_ingest() -> IngestDocuments:
-    assert container.ingest is not None, "ingest not initialized"
-    return container.ingest
-
-
-def get_ask_question() -> AskQuestion:
-    assert container.ask_question is not None, "ask_question not initialized"
-    return container.ask_question
 
 
 def get_manage_docs() -> ManageDocuments | None:
@@ -137,10 +96,6 @@ def get_manage_docs() -> ManageDocuments | None:
 
 def get_status_service() -> GetStatus | None:
     return container.get_status
-
-
-def get_extract_metadata() -> ExtractMetadata | None:
-    return container.extract_metadata
 
 
 def get_task_status() -> GetTaskStatus:
@@ -294,6 +249,26 @@ def get_extract_document_metadata() -> ExtractDocumentMetadata:
     return container.extract_document_metadata
 
 
+def get_list_documents() -> ListDocuments:
+    assert container.list_documents is not None
+    return container.list_documents
+
+
+def get_list_document_publication_years() -> ListDocumentPublicationYears:
+    assert container.list_document_publication_years is not None
+    return container.list_document_publication_years
+
+
+def get_document_details() -> GetDocumentDetails:
+    assert container.get_document_details is not None
+    return container.get_document_details
+
+
+def get_update_document_metadata() -> UpdateDocumentMetadata:
+    assert container.update_document_metadata is not None
+    return container.update_document_metadata
+
+
 def get_document_file() -> GetDocumentFile:
     assert container.get_document_file is not None
     return container.get_document_file
@@ -304,24 +279,9 @@ def get_delete_document() -> DeleteDocument:
     return container.delete_document
 
 
-def get_web_scraper() -> ScrapeUrls:
-    assert container.web_scraper is not None
-    return container.web_scraper
-
-
-def get_enqueue_document_metadata() -> EnqueueDocumentMetadata:
-    assert container.enqueue_document_metadata is not None
-    return container.enqueue_document_metadata
-
-
 def get_list_ingestion_runs() -> ListIngestionRuns:
     assert container.list_ingestion_runs is not None
     return container.list_ingestion_runs
-
-
-def get_schema_status() -> GetSchemaStatus:
-    assert container.schema_status is not None
-    return container.schema_status
 
 
 def get_enqueue_pending_metadata() -> EnqueuePendingMetadata:
@@ -337,6 +297,11 @@ def get_metadata_job_status() -> GetMetadataJobStatus:
 def get_enqueue_academic_metadata_extraction() -> EnqueueAcademicMetadataExtraction:
     assert container.enqueue_academic_metadata_extraction is not None
     return container.enqueue_academic_metadata_extraction
+
+
+def get_start_document_academic_metadata_extraction() -> StartDocumentAcademicMetadataExtraction:
+    assert container.start_document_academic_metadata_extraction is not None
+    return container.start_document_academic_metadata_extraction
 
 
 def get_academic_metadata_run_status() -> GetAcademicMetadataRunStatus:

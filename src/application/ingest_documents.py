@@ -5,13 +5,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from src.application.config import IngestionConfig
 from src.domain.dto.retrieval_result import IndexedChunk
 from src.domain.ports.document_loader_port import DocumentLoaderPort
 from src.domain.ports.embedding_port import EmbeddingPort
+from src.domain.ports.index_metadata_port import IndexMetadataPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.domain.services.chunker import chunk_blocks
-from src.shared.config import CHUNK_OVERLAP, CHUNK_SIZE, INGEST_BATCH_SIZE
 from src.shared.logging_utils import log_event
 
 
@@ -33,11 +34,15 @@ class IngestDocuments:
         embedder: EmbeddingPort,
         ingestion_repo: IngestionRepository,
         loader: DocumentLoaderPort,
+        index_metadata: IndexMetadataPort,
+        config: IngestionConfig,
     ) -> None:
         self._vector_store = vector_store
         self._embedder = embedder
         self._ingestion_repo = ingestion_repo
         self._loader = loader
+        self._index_metadata = index_metadata
+        self._config = config
         self.status: str = "idle"
         self.chunks_indexed: int = 0
         self.error: str | None = None
@@ -78,10 +83,8 @@ class IngestDocuments:
 
             count = await self._ingest_all(force=force, on_progress=on_progress)
 
-            from src.shared.config import bump_index_version, write_schema_version
-
-            write_schema_version()
-            bump_index_version()
+            self._index_metadata.write_schema_version()
+            self._index_metadata.bump_index_version()
             if run_id:
                 await self._ingestion_repo.mark_done(run_id, count)
             self.status = "done"
@@ -158,7 +161,11 @@ class IngestDocuments:
                 self.current_run_id, documents_total=doc_count
             )
 
-        batch_size = INGEST_BATCH_SIZE if INGEST_BATCH_SIZE > 0 else doc_count
+        batch_size = (
+            self._config.ingest_batch_size
+            if self._config.ingest_batch_size > 0
+            else doc_count
+        )
         batches = [
             docs_to_process[i : i + batch_size] for i in range(0, doc_count, batch_size)
         ]
@@ -182,8 +189,10 @@ class IngestDocuments:
                     title=parsed.title,
                     authors=parsed.authors,
                     year=parsed.year,
-                    chunk_size=CHUNK_SIZE,
-                    overlap=CHUNK_OVERLAP,
+                    chunk_size=self._config.chunk_size,
+                    overlap=self._config.chunk_overlap,
+                    chunk_max_chars=self._config.chunk_max_chars,
+                    chunk_overlap_chars=self._config.chunk_overlap_chars,
                 )
                 for i, (text, embedding_text, meta) in enumerate(chunks):
                     if not text.strip():
@@ -286,14 +295,13 @@ class IngestDocuments:
         return total_chunks
 
     async def _embed_rows(self, rows: list[IndexedChunk]) -> None:
-        from src.shared.config import EMBEDDING_BATCH_SIZE
-
         texts_to_embed = [row.embedding_text or row.text for row in rows]
 
-        if EMBEDDING_BATCH_SIZE > 0:
-            for i in range(0, len(rows), EMBEDDING_BATCH_SIZE):
-                sub = rows[i : i + EMBEDDING_BATCH_SIZE]
-                sub_texts = texts_to_embed[i : i + EMBEDDING_BATCH_SIZE]
+        if self._config.embedding_batch_size > 0:
+            batch_size = self._config.embedding_batch_size
+            for i in range(0, len(rows), batch_size):
+                sub = rows[i : i + batch_size]
+                sub_texts = texts_to_embed[i : i + batch_size]
                 vectors = self._embedder.embed_texts(sub_texts)
                 for row, vector in zip(sub, vectors):
                     row.vector = vector

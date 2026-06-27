@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from src.domain.models.auth_token import ConfirmationTokenRecord, RefreshTokenRecord
 from src.domain.models.user import User
 
 
@@ -180,7 +181,7 @@ class UserRepository(ABC):
     @abstractmethod
     async def get_confirmation(
         self, token_hash: str, purpose: str = "email_confirmation"
-    ) -> dict | None:
+    ) -> ConfirmationTokenRecord | None:
         """Retrieve a confirmation record by token hash.
 
         Args:
@@ -188,7 +189,7 @@ class UserRepository(ABC):
             purpose: The token's purpose.
 
         Returns:
-            The confirmation record as a dict, or None if not found or expired.
+            The confirmation record, or None if not found or expired.
         """
 
     @abstractmethod
@@ -231,14 +232,14 @@ class UserRepository(ABC):
         """
 
     @abstractmethod
-    async def get_refresh_token(self, token_hash: str) -> dict | None:
+    async def get_refresh_token(self, token_hash: str) -> RefreshTokenRecord | None:
         """Retrieve a refresh token record.
 
         Args:
             token_hash: The hashed refresh token.
 
         Returns:
-            The token record as a dict, or None if not found or revoked.
+            The token record, or None if not found.
         """
 
     @abstractmethod

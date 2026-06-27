@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
@@ -9,15 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from src.adapters.rest.dependencies import (
-    get_ask_question,
-    get_ingest,
-    get_manage_docs,
-    get_vector_store,
-    get_web_scraper,
-    init_services,
-    shutdown_services,
-)
+from src.bootstrap.container import container
 from src.shared.config import DATA_DIR_MARKDOWN, DATA_DIR_PDFS, DATA_DIR_WEB
 from src.shared.logging_utils import configure_logging
 
@@ -25,39 +18,76 @@ console = Console()
 configure_logging()
 
 
-def cmd_ingest(args):
-    import asyncio
+async def _init_services() -> None:
+    await container.init()
+    await container.start()
 
+
+async def _shutdown_services() -> None:
+    await container.shutdown()
+
+
+async def _run_ingest(force: bool) -> int:
+    await _init_services()
+    try:
+        assert container.ingest is not None, "ingest not initialized"
+        return await container.ingest.execute(force=force)
+    finally:
+        await _shutdown_services()
+
+
+async def _run_ask(question: str, top_k: int):
+    await _init_services()
+    try:
+        assert container.manage_docs is not None, "manage_docs not initialized"
+        assert container.ask_question is not None, "ask_question not initialized"
+        document_metadata_map = await container.manage_docs.get_metadata_map()
+        return container.ask_question.execute(
+            question,
+            top_k=top_k,
+            document_metadata_map=document_metadata_map,
+        )
+    finally:
+        await _shutdown_services()
+
+
+async def _run_scrape(urls: list[str]) -> int:
+    await _init_services()
+    try:
+        assert container.web_scraper is not None, "web_scraper not initialized"
+        results = container.web_scraper.execute(urls)
+        return len(results)
+    finally:
+        await _shutdown_services()
+
+
+async def _get_chunk_count() -> int:
+    await _init_services()
+    try:
+        assert container.vector_store is not None, "vector_store not initialized"
+        db_exists = container.vector_store.index_exists()
+        return container.vector_store.count_chunks() if db_exists else 0
+    finally:
+        await _shutdown_services()
+
+
+def cmd_ingest(args):
     console.print("[bold]Ingesting documents...[/bold]")
     try:
-        asyncio.run(init_services())
-        count = asyncio.run(get_ingest().execute(force=args.force))
+        count = asyncio.run(_run_ingest(args.force))
         console.print(f"[green]OK[/green] {count} chunks indexed successfully!")
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
-    finally:
-        asyncio.run(shutdown_services())
 
 
 def cmd_ask(args):
-    import asyncio
-
     question = " ".join(args.question)
     try:
-        asyncio.run(init_services())
-        manage_docs = get_manage_docs()
-        title_map = asyncio.run(manage_docs.get_title_map()) if manage_docs else {}
-        result = get_ask_question().execute(
-            question,
-            top_k=args.top_k,
-            title_map=title_map,
-        )
+        result = asyncio.run(_run_ask(question, args.top_k))
     except (ValueError, FileNotFoundError) as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
-    finally:
-        asyncio.run(shutdown_services())
 
     console.print(
         Panel(
@@ -87,21 +117,17 @@ def cmd_chat(args):
 
 
 def cmd_scrape(args):
-    import asyncio
-
     urls = args.urls
     console.print(f"[bold]Scraping {len(urls)} URLs...[/bold]")
     try:
-        asyncio.run(init_services())
-        results = get_web_scraper().scrape_urls(urls)
-        console.print(f"[green]OK[/green] {len(results)} pages saved to data/web/")
-    finally:
-        asyncio.run(shutdown_services())
+        count = asyncio.run(_run_scrape(urls))
+        console.print(f"[green]OK[/green] {count} pages saved to data/web/")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
 
 
 def cmd_status(args):
-    import asyncio
-
     table = Table(title="Project Status")
     table.add_column("Component", style="cyan")
     table.add_column("Count", style="green")
@@ -112,10 +138,7 @@ def cmd_status(args):
     webs = list(DATA_DIR_WEB.glob("*.txt"))
 
     try:
-        asyncio.run(init_services())
-        vector_store = get_vector_store()
-        db_exists = vector_store.index_exists()
-        chunk_count = vector_store.count_chunks() if db_exists else 0
+        chunk_count = asyncio.run(_get_chunk_count())
 
         table.add_row("PDFs", str(len(pdfs)), str(DATA_DIR_PDFS))
         table.add_row("Markdown", str(len(mds)), str(DATA_DIR_MARKDOWN))
@@ -123,8 +146,9 @@ def cmd_status(args):
         table.add_row("Chunks indexed", str(chunk_count), "LanceDB")
 
         console.print(table)
-    finally:
-        asyncio.run(shutdown_services())
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
 
 
 def cmd_db_migrate(args):

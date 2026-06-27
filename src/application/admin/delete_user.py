@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 
+from src.application.config import AvatarStorageConfig, SuggestionStorageConfig
 from src.domain.dto.user_dto import UserDTO
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import AVATAR_DIR, DATA_DIR_PENDING
 from src.shared.logging_utils import log_event
 
 logger = logging.getLogger("agroecology.admin")
@@ -19,10 +18,14 @@ class DeleteUser:
         repo: UserRepository,
         suggestion_repo: DocumentSuggestionRepository,
         storage: FileStoragePort,
+        avatar_config: AvatarStorageConfig,
+        suggestion_config: SuggestionStorageConfig,
     ) -> None:
         self._repo = repo
         self._suggestion_repo = suggestion_repo
         self._storage = storage
+        self._avatar_config = avatar_config
+        self._suggestion_config = suggestion_config
 
     async def execute(self, actor_user_id: str, user_id: str) -> UserDTO | None:
         if user_id == actor_user_id:
@@ -34,11 +37,11 @@ class DeleteUser:
 
         if existing.avatar_path:
             try:
-                avatar_full_path = os.path.normpath(
-                    os.path.join(AVATAR_DIR, existing.avatar_path)
+                await self._storage.delete(
+                    self._avatar_config.storage_directory(user_id),
+                    self._avatar_config.file_name,
+                    self._avatar_config.file_extension,
                 )
-                if os.path.isfile(avatar_full_path):
-                    os.remove(avatar_full_path)
             except Exception as exc:
                 log_event(
                     logger,
@@ -53,7 +56,11 @@ class DeleteUser:
             if suggestion.original_filename is None:
                 continue
             try:
-                await self._storage.delete(DATA_DIR_PENDING.name, suggestion.id, ".pdf")
+                await self._storage.delete(
+                    self._suggestion_config.pending_directory,
+                    suggestion.id,
+                    ".pdf",
+                )
             except Exception as exc:
                 log_event(
                     logger,

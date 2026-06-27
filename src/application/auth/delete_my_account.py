@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
+from src.application.config import AvatarStorageConfig, SuggestionStorageConfig
 from src.domain.ports.auth_services_port import EmailPort, PasswordHasherPort
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import AVATAR_DIR, DATA_DIR_PENDING
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -58,11 +57,15 @@ class ConfirmDeleteAccount:
         password_hasher: PasswordHasherPort,
         suggestion_repo: DocumentSuggestionRepository,
         storage: FileStoragePort,
+        avatar_config: AvatarStorageConfig,
+        suggestion_config: SuggestionStorageConfig,
     ) -> None:
         self._user_repo = user_repo
         self._password_hasher = password_hasher
         self._suggestion_repo = suggestion_repo
         self._storage = storage
+        self._avatar_config = avatar_config
+        self._suggestion_config = suggestion_config
 
     async def execute(self, token: str) -> None:
         token_hash = self._password_hasher.hash_token(token)
@@ -72,24 +75,24 @@ class ConfirmDeleteAccount:
         if confirmation is None:
             raise ValueError("Invalid or expired confirmation token")
 
-        user_id = confirmation["user_id"]
+        user_id = confirmation.user_id
         user = await self._user_repo.get_by_id(user_id)
         if user is None:
             raise ValueError("User not found")
 
         if user.avatar_path:
             try:
-                avatar_full_path = os.path.normpath(
-                    os.path.join(AVATAR_DIR, user.avatar_path)
+                await self._storage.delete(
+                    self._avatar_config.storage_directory(user_id),
+                    self._avatar_config.file_name,
+                    self._avatar_config.file_extension,
                 )
-                if os.path.isfile(avatar_full_path):
-                    os.remove(avatar_full_path)
             except Exception:
                 pass
 
         await self._delete_pending_suggestion_files(user_id)
         await self._user_repo.anonymize_user(user_id)
-        await self._user_repo.mark_confirmation_done(confirmation["id"])
+        await self._user_repo.mark_confirmation_done(confirmation.id)
 
         log_event(
             logger,
@@ -105,7 +108,11 @@ class ConfirmDeleteAccount:
             if suggestion.original_filename is None:
                 continue
             try:
-                await self._storage.delete(DATA_DIR_PENDING.name, suggestion.id, ".pdf")
+                await self._storage.delete(
+                    self._suggestion_config.pending_directory,
+                    suggestion.id,
+                    ".pdf",
+                )
             except Exception as exc:
                 log_event(
                     logger,

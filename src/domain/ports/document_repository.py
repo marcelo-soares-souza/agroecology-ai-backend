@@ -135,13 +135,5 @@ class DocumentRepository(ABC):
         """
 
     @abstractmethod
-    async def get_title_map(self) -> dict[str, str | None]:
-        """Retrieve a mapping of document IDs to their titles.
-
-        Returns:
-            A dict mapping document IDs to titles (or None if untitled).
-        """
-
-    @abstractmethod
     async def get_metadata_map(self) -> DocumentMetadataMap:
         """Retrieve document-level metadata keyed by vector source path."""

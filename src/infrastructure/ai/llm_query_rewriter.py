@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from collections.abc import Sequence
 
+from src.domain.dto.chat_message import ChatMessage
 from src.domain.ports.query_rewrite_port import QueryRewritePort
-from src.shared.history_utils import (
-    _CONTEXT_DEPENDENT_PATTERNS,
+from src.domain.services.conversation_history import (
+    CONTEXT_DEPENDENT_PATTERNS,
     find_last_message,
     is_context_dependent_question,
 )
@@ -39,7 +41,7 @@ class LLMQueryRewriter(QueryRewritePort):
     def __init__(self, llm: Any | None = None) -> None:
         self._llm = llm
 
-    def rewrite(self, question: str, history: list[dict]) -> str:
+    def rewrite(self, question: str, history: Sequence[ChatMessage]) -> str:
         if not history:
             return question
 
@@ -60,7 +62,7 @@ class LLMQueryRewriter(QueryRewritePort):
         return self._llm_rewrite(question, history)
 
     @staticmethod
-    def _heuristic_rewrite(question: str, history: list[dict]) -> str:
+    def _heuristic_rewrite(question: str, history: Sequence[ChatMessage]) -> str:
         last_user = find_last_message(history, "user")
         last_assistant = find_last_message(history, "assistant")
 
@@ -69,7 +71,7 @@ class LLMQueryRewriter(QueryRewritePort):
 
         compact = " ".join(question.strip().split())
 
-        for pattern in _CONTEXT_DEPENDENT_PATTERNS:
+        for pattern in CONTEXT_DEPENDENT_PATTERNS:
             if pattern.search(compact):
                 parts = []
                 if last_user:
@@ -92,13 +94,12 @@ class LLMQueryRewriter(QueryRewritePort):
 
         return question
 
-    def _llm_rewrite(self, question: str, history: list[dict]) -> str:
+    def _llm_rewrite(self, question: str, history: Sequence[ChatMessage]) -> str:
         if self._llm is None:
             return question
 
         history_text = "\n".join(
-            f"{m.get('role', '?')}: {_snip(str(m.get('content', '')))}"
-            for m in history[-4:]
+            f"{message.role}: {_snip(message.content)}" for message in history[-4:]
         )
 
         try:

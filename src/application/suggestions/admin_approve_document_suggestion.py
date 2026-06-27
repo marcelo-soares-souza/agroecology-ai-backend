@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from src.application.config import SuggestionStorageConfig
 from src.application.suggestions._guard import require_pending_suggestion
 from src.domain.dto.suggestion_result import ApprovalResult
 from src.domain.models.document import DocumentCreate
@@ -12,7 +13,6 @@ from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
-from src.shared.config import DATA_DIR_PDFS, DATA_DIR_PENDING
 from src.shared.logging_utils import log_event
 from src.shared.uuid7 import uuid7
 
@@ -27,6 +27,7 @@ class AdminApproveDocumentSuggestion:
         storage: FileStoragePort,
         email_service: EmailPort,
         user_repo: UserRepository,
+        config: SuggestionStorageConfig,
         enqueue_metadata: Callable[[str], object] | None = None,
         auto_extract_metadata: bool = False,
     ) -> None:
@@ -35,6 +36,7 @@ class AdminApproveDocumentSuggestion:
         self._storage = storage
         self._email_service = email_service
         self._user_repo = user_repo
+        self._config = config
         self._enqueue_metadata = enqueue_metadata
         self._auto_extract_metadata = auto_extract_metadata
 
@@ -61,10 +63,12 @@ class AdminApproveDocumentSuggestion:
         reviewed_at = datetime.now(timezone.utc)
 
         pdf_content = await self._storage.read(
-            DATA_DIR_PENDING.name, suggestion_id, ".pdf"
+            self._config.pending_directory, suggestion_id, ".pdf"
         )
 
-        await self._storage.save(DATA_DIR_PDFS.name, document_id, ".pdf", pdf_content)
+        await self._storage.save(
+            self._config.approved_pdf_directory, document_id, ".pdf", pdf_content
+        )
 
         try:
             doc = DocumentCreate(
@@ -72,7 +76,7 @@ class AdminApproveDocumentSuggestion:
                 filename=suggestion.original_filename,
                 file_type="pdf",
                 file_size=suggestion.file_size or 0,
-                directory=DATA_DIR_PDFS.name,
+                directory=self._config.approved_pdf_directory,
                 title=suggestion.title,
                 authors=suggestion.authors,
                 url=suggestion.url,
@@ -101,7 +105,9 @@ class AdminApproveDocumentSuggestion:
 
         except Exception:
             try:
-                await self._storage.delete(DATA_DIR_PDFS.name, document_id, ".pdf")
+                await self._storage.delete(
+                    self._config.approved_pdf_directory, document_id, ".pdf"
+                )
             except Exception as cleanup_error:
                 log_event(
                     logger,
@@ -113,7 +119,9 @@ class AdminApproveDocumentSuggestion:
             raise ValueError("Failed to approve suggestion")
 
         try:
-            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
+            await self._storage.delete(
+                self._config.pending_directory, suggestion_id, ".pdf"
+            )
         except Exception as cleanup_error:
             log_event(
                 logger,

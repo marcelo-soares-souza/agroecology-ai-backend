@@ -398,7 +398,7 @@ async def export_my_data(user: User = Depends(get_current_user)):
         data = await get_export_my_data().execute(user_id=user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return ExportDataResponse(**data)
+    return ExportDataResponse(**data.to_dict())
 
 
 @router.post("/me/delete-request", response_model=MessageResponse)

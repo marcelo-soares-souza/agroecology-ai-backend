@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+from src.application.config import SuggestionStorageConfig
 from src.domain.models.document_suggestion import (
     DocumentSuggestion,
     DocumentSuggestionUpdate,
@@ -9,7 +10,6 @@ from src.domain.models.document_suggestion import (
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-from src.shared.config import DATA_DIR_PENDING, MAX_FILE_SIZE
 
 
 class ReplaceSuggestionFile:
@@ -18,10 +18,12 @@ class ReplaceSuggestionFile:
         suggestion_repo: DocumentSuggestionRepository,
         doc_repo: DocumentRepository,
         storage: FileStoragePort,
+        config: SuggestionStorageConfig,
     ) -> None:
         self._suggestion_repo = suggestion_repo
         self._doc_repo = doc_repo
         self._storage = storage
+        self._config = config
 
     async def execute(
         self,
@@ -48,7 +50,7 @@ class ReplaceSuggestionFile:
         if len(file_content) == 0:
             raise ValueError("Empty file")
 
-        if len(file_content) > MAX_FILE_SIZE:
+        if len(file_content) > self._config.max_file_size:
             raise ValueError(
                 f"File exceeds 50 MB ({len(file_content) / 1024 / 1024:.1f} MB)"
             )
@@ -62,17 +64,19 @@ class ReplaceSuggestionFile:
             raise ValueError("This file has already been uploaded as a document")
 
         if suggestion.original_filename is not None:
-            await self._storage.delete(DATA_DIR_PENDING.name, suggestion_id, ".pdf")
+            await self._storage.delete(
+                self._config.pending_directory, suggestion_id, ".pdf"
+            )
 
         await self._storage.save(
-            DATA_DIR_PENDING.name, suggestion_id, ".pdf", file_content
+            self._config.pending_directory, suggestion_id, ".pdf", file_content
         )
 
         data = DocumentSuggestionUpdate(
             original_filename=original_filename,
             file_type="pdf",
             file_size=len(file_content),
-            storage_directory=DATA_DIR_PENDING.name,
+            storage_directory=self._config.pending_directory,
             sha256=sha256_hash,
         )
 

@@ -6,6 +6,7 @@ from src.domain.ports.auth_services_port import (
     PasswordHasherPort,
     TokenServicePort,
 )
+from src.domain.dto.auth_result import ChallengeResult, TokenPayload
 from src.infrastructure.auth import human_check, jwt_handler, password_hasher
 from src.infrastructure.email import smtp_service
 
@@ -31,16 +32,27 @@ class JwtTokenService(TokenServicePort):
     def create_refresh_token(self, user_id: str) -> str:
         return jwt_handler.create_refresh_token(user_id)
 
-    def decode(self, token: str) -> dict | None:
+    def decode(self, token: str) -> TokenPayload | None:
         try:
-            return jwt_handler.decode_token(token)
+            payload = jwt_handler.decode_token(token)
         except Exception:
             return None
+        return TokenPayload(
+            subject=payload.get("sub"),
+            roles=list(payload.get("roles") or []),
+            issued_at=payload.get("iat"),
+            expires_at=payload.get("exp"),
+            token_id=payload.get("jti"),
+        )
 
 
 class JwtHumanCheck(HumanCheckPort):
-    def create_challenge(self, locale: str = "pt-BR") -> dict[str, str]:
-        return human_check.create_challenge(locale)
+    def create_challenge(self, locale: str = "pt-BR") -> ChallengeResult:
+        challenge = human_check.create_challenge(locale)
+        return ChallengeResult(
+            challenge_id=challenge["challenge_id"],
+            question=challenge["question"],
+        )
 
     def verify_challenge(self, challenge_id: str, answer: str) -> bool:
         return human_check.verify_challenge(challenge_id, answer)

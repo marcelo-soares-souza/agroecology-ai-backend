@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.domain.models.document import Document
+from src.domain.models.document_academic_metadata import DocumentAcademicMetadata
+
 
 @dataclass(frozen=True)
 class MetadataResult:
@@ -80,3 +83,26 @@ class PendingMetadataEnqueueResult:
     """
 
     enqueued: int
+
+
+@dataclass(frozen=True)
+class DocumentDetailsResult:
+    document: Document
+    academic_metadata: DocumentAcademicMetadata | None = None
+    suggested_by_user_id: str | None = None
+    suggested_by_user_name: str | None = None
+    suggested_by_user_slug: str | None = None
+
+
+@dataclass(frozen=True)
+class DocumentListItem:
+    document: Document
+    academic_metadata: DocumentAcademicMetadata | None = None
+
+
+@dataclass(frozen=True)
+class DocumentListResult:
+    items: list[DocumentListItem]
+    total: int
+    limit: int
+    offset: int

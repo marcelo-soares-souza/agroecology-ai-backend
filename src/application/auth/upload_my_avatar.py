@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import Path
 
+from src.application.config import AvatarStorageConfig
 from src.domain.dto.user_dto import UserDTO
+from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
-
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_AVATAR_SIZE = 5 * 1024 * 1024
 
 
 class UploadMyAvatar:
     def __init__(
         self,
         user_repo: UserRepository,
-        avatar_dir: Path,
+        storage: FileStoragePort,
+        config: AvatarStorageConfig,
         process_avatar: Callable[[bytes], bytes],
     ) -> None:
         self._user_repo = user_repo
-        self._avatar_dir = avatar_dir
+        self._storage = storage
+        self._config = config
         self._process_avatar = process_avatar
 
     async def execute(
@@ -27,10 +27,10 @@ class UploadMyAvatar:
         content: bytes,
         content_type: str,
     ) -> UserDTO:
-        if content_type not in ALLOWED_MIME_TYPES:
+        if content_type not in self._config.allowed_mime_types:
             raise ValueError("Unsupported image type. Use JPEG, PNG, or WebP.")
 
-        if len(content) > MAX_AVATAR_SIZE:
+        if len(content) > self._config.max_file_size:
             raise ValueError("Image must not exceed 5MB.")
 
         try:
@@ -38,10 +38,18 @@ class UploadMyAvatar:
         except Exception as e:
             raise ValueError(f"Invalid image: {e}")
 
-        user_dir = self._avatar_dir / user_id
-        user_dir.mkdir(parents=True, exist_ok=True)
-        avatar_path = user_dir / "avatar.webp"
-        avatar_path.write_bytes(processed)
+        directory = self._config.storage_directory(user_id)
+        await self._storage.save(
+            directory,
+            self._config.file_name,
+            self._config.file_extension,
+            processed,
+        )
+        avatar_path = self._storage.get_path(
+            directory,
+            self._config.file_name,
+            self._config.file_extension,
+        )
 
         updated = await self._user_repo.update(user_id, avatar_path=str(avatar_path))
         if not updated:

@@ -9,8 +9,4 @@ class GetHumanChallenge:
         self._human_check = human_check
 
     def execute(self, locale: str = "pt-BR") -> ChallengeResult:
-        challenge = self._human_check.create_challenge(locale=locale)
-        return ChallengeResult(
-            challenge_id=challenge["challenge_id"],
-            question=challenge["question"],
-        )
+        return self._human_check.create_challenge(locale=locale)

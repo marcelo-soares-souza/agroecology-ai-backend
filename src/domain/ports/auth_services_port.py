@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from src.domain.dto.auth_result import ChallengeResult, TokenPayload
+
 
 class PasswordHasherPort(ABC):
     """Port for password hashing and verification.
@@ -87,14 +89,14 @@ class TokenServicePort(ABC):
         """
 
     @abstractmethod
-    def decode(self, token: str) -> dict | None:
+    def decode(self, token: str) -> TokenPayload | None:
         """Decode and validate a JWT token.
 
         Args:
             token: The JWT token string.
 
         Returns:
-            The decoded payload as a dict, or None if invalid/expired.
+            The decoded payload, or None if invalid/expired.
         """
 
 
@@ -102,14 +104,14 @@ class HumanCheckPort(ABC):
     """Port for CAPTCHA-like human verification challenges."""
 
     @abstractmethod
-    def create_challenge(self, locale: str = "pt-BR") -> dict[str, str]:
+    def create_challenge(self, locale: str = "pt-BR") -> ChallengeResult:
         """Generate a new human-verification challenge.
 
         Args:
             locale: The locale for the challenge question.
 
         Returns:
-            A dict with challenge_id and question keys.
+            The generated challenge.
         """
 
     @abstractmethod

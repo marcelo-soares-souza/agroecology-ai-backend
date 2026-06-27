@@ -23,7 +23,7 @@ class ValidateSession:
             log_event(logger, logging.WARNING, "auth_invalid_token", ip=client_ip)
             return None
 
-        user_id = payload.get("sub")
+        user_id = payload.subject
         if not user_id:
             log_event(logger, logging.WARNING, "auth_missing_subject", ip=client_ip)
             return None

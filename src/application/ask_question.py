@@ -3,28 +3,23 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from lingua import Language, LanguageDetectorBuilder
 
+from src.application.config import RagConfig
 from src.domain.dto.answer_result import AnswerResult, SourceResult
+from src.domain.dto.chat_message import ChatMessage
 from src.domain.dto.document_metadata import DocumentMetadataMap
 from src.domain.dto.retrieval_result import RetrievedChunk
 from src.domain.ports.llm_port import LLMPort
 from src.domain.ports.query_rewrite_port import QueryRewritePort
-from src.domain.services.retriever import RetrieverService
-from src.shared.config import (
-    LLM_CHUNK_MAX_CHARS,
-    LLM_CONTEXT_CHARS_BUDGET,
-    LLM_CONTEXT_MAX_CHUNKS,
-    LLM_CONTEXT_RETRY_MAX_CHUNKS,
-    RERANK_TOP_K,
-    RAG_RETRIEVAL_TOP_K,
-    SYSTEM_PROMPT,
-    USER_PROMPT,
+from src.domain.services.conversation_history import (
+    find_last_message,
+    is_context_dependent_question,
 )
-from src.shared.history_utils import find_last_message, is_context_dependent_question
+from src.domain.services.retriever import RetrieverService
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
 _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
@@ -306,10 +301,12 @@ class AskQuestion:
         self,
         retriever: RetrieverService,
         llm: LLMPort,
+        config: RagConfig,
         query_rewriter: QueryRewritePort | None = None,
     ) -> None:
         self._retriever = retriever
         self._llm = llm
+        self._config = config
         self._query_rewriter = query_rewriter
 
     def execute(
@@ -317,17 +314,17 @@ class AskQuestion:
         question: str,
         top_k: int | None = None,
         document_metadata_map: DocumentMetadataMap | None = None,
-        history: list[dict[str, Any]] | None = None,
+        history: Sequence[ChatMessage] | None = None,
     ) -> AnswerResult:
         started_at = take_perf_snapshot()
-        normalized_history: list[dict[str, Any]] = history or []
+        normalized_history = list(history or [])
         follow_up = bool(normalized_history) and is_context_dependent_question(question)
         (
             expected_language,
             language_confidence,
             language_source,
         ) = self._resolve_answer_language(question, normalized_history, follow_up)
-        requested_top_k = top_k or RERANK_TOP_K
+        requested_top_k = top_k or self._config.rerank_top_k
         retrieval_top_k = self._resolve_retrieval_top_k()
         question_profile = self._profile_question(
             search_text=question,
@@ -361,7 +358,7 @@ class AskQuestion:
 
         self._apply_document_metadata(retrieved, document_metadata_map)
 
-        answer_history: list[dict[str, Any]] = normalized_history if follow_up else []
+        answer_history: list[ChatMessage] = normalized_history if follow_up else []
         context_started_at = take_perf_snapshot()
         context_chunks = self._select_context_chunks(retrieved, question_profile)
         covered_concepts = self._covered_concepts(question_profile, context_chunks)
@@ -405,7 +402,7 @@ class AskQuestion:
             question_profile,
         )
         if not answer and len(context_chunks) > 1:
-            retry_chunks = context_chunks[:LLM_CONTEXT_RETRY_MAX_CHUNKS]
+            retry_chunks = context_chunks[: self._config.llm_context_retry_max_chunks]
             log_event(
                 logger,
                 logging.WARNING,
@@ -548,7 +545,11 @@ class AskQuestion:
 
     @staticmethod
     def _resolve_retrieval_top_k() -> int:
-        return max(RAG_RETRIEVAL_TOP_K, RERANK_TOP_K, LLM_CONTEXT_MAX_CHUNKS)
+        return max(
+            self._config.rag_retrieval_top_k,
+            self._config.rerank_top_k,
+            self._config.llm_context_max_chunks,
+        )
 
     @classmethod
     def _build_context(cls, retrieved: list[RetrievedChunk]) -> str:
@@ -608,12 +609,12 @@ class AskQuestion:
         self,
         question: str,
         context_chunks: list[RetrievedChunk],
-        answer_history: list[dict[str, Any]],
+        answer_history: list[ChatMessage],
         expected_language: str,
         question_profile: QuestionProfile,
     ) -> str:
         context = self._build_context(context_chunks)
-        user_prompt = USER_PROMPT.replace("{context}", context)
+        user_prompt = self._config.user_prompt.replace("{context}", context)
         user_prompt = user_prompt.replace("{question}", question)
         user_prompt = user_prompt.replace("{expected_language}", expected_language)
         intent_guidance = _INTENT_GUIDANCE.get(
@@ -635,9 +636,9 @@ class AskQuestion:
                 "support must come from the supplied sources below.\n\n" + user_prompt
             )
         return self._llm.complete(
-            SYSTEM_PROMPT,
+            self._config.system_prompt,
             user_prompt,
-            history=answer_history,
+            history=[message.to_dict() for message in answer_history],
         )
 
     @classmethod
@@ -662,7 +663,7 @@ class AskQuestion:
         answer: str,
         question: str,
         context_chunks: list[RetrievedChunk],
-        answer_history: list[dict[str, Any]],
+        answer_history: list[ChatMessage],
         expected_language: str,
         question_profile: QuestionProfile,
     ) -> tuple[str, list[int]]:
@@ -736,7 +737,7 @@ class AskQuestion:
         answer: str,
         question: str,
         context_chunks: list[RetrievedChunk],
-        answer_history: list[dict[str, Any]],
+        answer_history: list[ChatMessage],
         expected_language: str,
         question_profile: QuestionProfile,
     ) -> str:
@@ -763,9 +764,9 @@ class AskQuestion:
         )
         try:
             return self._llm.complete(
-                SYSTEM_PROMPT,
+                self._config.system_prompt,
                 repair_prompt,
-                history=answer_history,
+                history=[message.to_dict() for message in answer_history],
             ).strip()
         except Exception as exc:
             log_event(
@@ -912,10 +913,10 @@ class AskQuestion:
             desired = 4
         return max(1, desired)
 
-    @classmethod
     def _select_context_chunks(
-        cls, retrieved: list[RetrievedChunk], profile: QuestionProfile
+        self, retrieved: list[RetrievedChunk], profile: QuestionProfile
     ) -> list[RetrievedChunk]:
+        cls = type(self)
         candidates = cls._prepare_context_candidates(retrieved, profile)
         if not candidates:
             return retrieved[:1]
@@ -933,7 +934,8 @@ class AskQuestion:
                 return False
             if (
                 selected
-                and used_chars + candidate.estimated_chars > LLM_CONTEXT_CHARS_BUDGET
+                and used_chars + candidate.estimated_chars
+                > self._config.llm_context_chars_budget
             ):
                 return False
             selected.append(candidate)
@@ -1031,7 +1033,7 @@ class AskQuestion:
     @staticmethod
     def _prepare_context_text(chunk: RetrievedChunk) -> str:
         text = chunk.text.strip()
-        if len(text) <= LLM_CHUNK_MAX_CHARS:
+        if len(text) <= self._config.llm_chunk_max_chars:
             return text
 
         log_event(
@@ -1042,11 +1044,11 @@ class AskQuestion:
             source=chunk.source,
             chunk_index=chunk.chunk_index,
             text_chars=len(text),
-            limit_chars=LLM_CHUNK_MAX_CHARS,
+            limit_chars=self._config.llm_chunk_max_chars,
         )
-        split_at = text.rfind(" ", 0, LLM_CHUNK_MAX_CHARS)
-        if split_at < int(LLM_CHUNK_MAX_CHARS * 0.6):
-            split_at = LLM_CHUNK_MAX_CHARS
+        split_at = text.rfind(" ", 0, self._config.llm_chunk_max_chars)
+        if split_at < int(self._config.llm_chunk_max_chars * 0.6):
+            split_at = self._config.llm_chunk_max_chars
         return text[:split_at].strip()
 
     @classmethod
@@ -1183,7 +1185,7 @@ class AskQuestion:
     def _resolve_answer_language(
         cls,
         question: str,
-        history: list[dict[str, Any]],
+        history: Sequence[ChatMessage],
         follow_up: bool,
     ) -> tuple[str, str, str]:
         detected_language, confidence = cls._detect_question_language(question)

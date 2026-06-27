@@ -4,11 +4,12 @@ import re
 from dataclasses import dataclass, field
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock
-from src.shared.config import CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _SHORT_BODY_FRAGMENT_CHARS = 120
 _CHARS_PER_TOKEN = 4
+_DEFAULT_CHUNK_MAX_CHARS = 1200
+_DEFAULT_CHUNK_OVERLAP_CHARS = 180
 _MIN_SPLIT_RATIO = 0.55
 _EXCLUDED_BLOCK_TYPES = {
     BlockType.REFERENCE,
@@ -220,8 +221,8 @@ def _build_overlap(text: str, overlap_chars: int) -> str:
 
 def _split_text_by_char_limit(
     text: str,
-    max_chars: int = CHUNK_MAX_CHARS,
-    overlap_chars: int = CHUNK_OVERLAP_CHARS,
+    max_chars: int = _DEFAULT_CHUNK_MAX_CHARS,
+    overlap_chars: int = _DEFAULT_CHUNK_OVERLAP_CHARS,
 ) -> list[str]:
     normalized = _normalize_text(text)
     if not normalized:
@@ -255,9 +256,13 @@ def _split_text_by_char_limit(
     return chunks
 
 
-def _split_table_text(text: str) -> list[str]:
+def _split_table_text(
+    text: str,
+    chunk_max_chars: int = _DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_chars: int = _DEFAULT_CHUNK_OVERLAP_CHARS,
+) -> list[str]:
     normalized = _normalize_text(text)
-    if len(normalized) <= CHUNK_MAX_CHARS:
+    if len(normalized) <= chunk_max_chars:
         return [normalized] if normalized else []
 
     rows = [
@@ -279,7 +284,7 @@ def _split_table_text(text: str) -> list[str]:
             continue
 
         candidate = " ".join([*current, row]).strip()
-        if len(candidate) > CHUNK_MAX_CHARS and current:
+        if len(candidate) > chunk_max_chars and current:
             chunks.append(" ".join(current).strip())
             current = [header, row] if repeat_header else [row]
         else:
@@ -290,7 +295,13 @@ def _split_table_text(text: str) -> list[str]:
 
     split_chunks: list[str] = []
     for chunk in chunks:
-        split_chunks.extend(_split_text_by_char_limit(chunk))
+        split_chunks.extend(
+            _split_text_by_char_limit(
+                chunk,
+                max_chars=chunk_max_chars,
+                overlap_chars=chunk_overlap_chars,
+            )
+        )
     return split_chunks
 
 
@@ -324,18 +335,26 @@ def _merge_short_body_parts(parts: list[_BlockPart]) -> list[_BlockPart]:
 
 
 def _split_long_part(
-    part: _BlockPart, chunk_size: int, overlap: int
+    part: _BlockPart,
+    chunk_size: int,
+    overlap: int,
+    chunk_max_chars: int = _DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_chars: int = _DEFAULT_CHUNK_OVERLAP_CHARS,
 ) -> list[_BlockPart]:
-    if len(part.text) <= CHUNK_MAX_CHARS:
+    if len(part.text) <= chunk_max_chars:
         return [part]
 
     if BlockType.TABLE.value in part.block_types:
-        split_texts = _split_table_text(part.text)
+        split_texts = _split_table_text(
+            part.text,
+            chunk_max_chars=chunk_max_chars,
+            chunk_overlap_chars=chunk_overlap_chars,
+        )
     else:
         split_texts = _split_text_by_char_limit(
             part.text,
-            max_chars=CHUNK_MAX_CHARS,
-            overlap_chars=CHUNK_OVERLAP_CHARS,
+            max_chars=chunk_max_chars,
+            overlap_chars=chunk_overlap_chars,
         )
 
     return [
@@ -392,40 +411,12 @@ def _build_chunk(
     return chunk_text, embedding_text, meta
 
 
-def split_sentences(text: str) -> list[str]:
-    """Split text into sentences, respecting paragraph boundaries.
-
-    Args:
-        text: The input text.
-
-    Returns:
-        A list of sentence strings.
-    """
-    paragraphs = re.split(r"\n\s*\n", text)
-    sentences: list[str] = []
-
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
-        parts = _SENTENCE_END.split(para)
-        for part in parts:
-            if "\n" in part:
-                sentences.extend(
-                    line.strip() for line in part.split("\n") if line.strip()
-                )
-            else:
-                part = part.strip()
-                if part:
-                    sentences.append(part)
-
-    return sentences
-
-
 def chunk_text(
     text: str,
     chunk_size: int,
     overlap: int,
+    chunk_max_chars: int = _DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_chars: int = _DEFAULT_CHUNK_OVERLAP_CHARS,
 ) -> list[str]:
     """Split plain text into overlapping chunks of roughly equal token size.
 
@@ -437,8 +428,8 @@ def chunk_text(
     Returns:
         A list of chunk text strings.
     """
-    chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, CHUNK_MAX_CHARS)
-    overlap_chars = min(overlap * _CHARS_PER_TOKEN, CHUNK_OVERLAP_CHARS)
+    chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, chunk_max_chars)
+    overlap_chars = min(overlap * _CHARS_PER_TOKEN, chunk_overlap_chars)
     return _split_text_by_char_limit(
         text,
         max_chars=chunk_size_chars,
@@ -451,6 +442,8 @@ def chunk_blocks(
     document_id: str,
     chunk_size: int,
     overlap: int,
+    chunk_max_chars: int = _DEFAULT_CHUNK_MAX_CHARS,
+    chunk_overlap_chars: int = _DEFAULT_CHUNK_OVERLAP_CHARS,
     title: str | None = None,
     authors: str | None = None,
     year: int | None = None,
@@ -511,7 +504,13 @@ def chunk_blocks(
             if b.block_type not in _SELF_CONTAINED_BLOCKS:
                 continue
 
-            for part in _split_long_part(_to_part(b), chunk_size, overlap):
+            for part in _split_long_part(
+                _to_part(b),
+                chunk_size,
+                overlap,
+                chunk_max_chars=chunk_max_chars,
+                chunk_overlap_chars=chunk_overlap_chars,
+            ):
                 chunk = _build_chunk(
                     parts=[part],
                     document_id=document_id,
@@ -538,10 +537,18 @@ def chunk_blocks(
 
         split_parts: list[_BlockPart] = []
         for part in _merge_short_body_parts(body_parts):
-            split_parts.extend(_split_long_part(part, chunk_size, overlap))
+            split_parts.extend(
+                _split_long_part(
+                    part,
+                    chunk_size,
+                    overlap,
+                    chunk_max_chars=chunk_max_chars,
+                    chunk_overlap_chars=chunk_overlap_chars,
+                )
+            )
 
-        chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, CHUNK_MAX_CHARS)
-        overlap_chars = min(overlap * _CHARS_PER_TOKEN, CHUNK_OVERLAP_CHARS)
+        chunk_size_chars = min(chunk_size * _CHARS_PER_TOKEN, chunk_max_chars)
+        overlap_chars = min(overlap * _CHARS_PER_TOKEN, chunk_overlap_chars)
 
         current: list[_BlockPart] = []
         current_len = 0

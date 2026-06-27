@@ -246,15 +246,6 @@ class PostgresDocumentRepository(DocumentRepository):
                 rows = await cur.fetchall()
                 return [self._to_domain(dict(r)) for r in rows]
 
-    async def get_title_map(self) -> dict[str, str | None]:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT id, file_type, directory, title FROM documents"
-                )
-                rows = await cur.fetchall()
-                return {f"{r[2]}/{r[0]}.{r[1]}": r[3] for r in rows}
-
     async def get_metadata_map(self) -> DocumentMetadataMap:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:

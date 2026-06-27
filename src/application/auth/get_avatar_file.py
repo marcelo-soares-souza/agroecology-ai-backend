@@ -1,15 +1,27 @@
 from __future__ import annotations
 
-from pathlib import Path
-
+from src.application.config import AvatarStorageConfig
 from src.domain.dto.user_dto import UserDTO
+from src.domain.ports.file_storage_port import FileStoragePort
 
 
 class GetAvatarFile:
+    def __init__(self, storage: FileStoragePort, config: AvatarStorageConfig) -> None:
+        self._storage = storage
+        self._config = config
+
     async def execute(self, user: UserDTO) -> str | None:
         if not user.avatar_path:
             return None
-        path = Path(user.avatar_path)
-        if not path.exists():
+        directory = self._config.storage_directory(user.id)
+        if not await self._storage.exists(
+            directory,
+            self._config.file_name,
+            self._config.file_extension,
+        ):
             return None
-        return str(path)
+        return self._storage.get_path(
+            directory,
+            self._config.file_name,
+            self._config.file_extension,
+        )

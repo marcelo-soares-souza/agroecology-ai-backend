@@ -4,32 +4,27 @@ import hashlib
 import logging
 from collections.abc import Callable
 
+from src.application.config import DocumentStorageConfig
 from src.domain.dto.document_result import UploadDocumentResult
 from src.domain.models.document import DocumentCreate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
-from src.shared.config import FILE_EXTENSIONS, MAX_FILE_SIZE
 from src.shared.uuid7 import uuid7
 
 logger = logging.getLogger("agroecology.upload")
-
-_DATA_DIR_MAP = {
-    ".pdf": "pdfs",
-    ".md": "markdown",
-    ".txt": "web",
-}
-
 
 class UploadDocument:
     def __init__(
         self,
         repo: DocumentRepository,
         storage: FileStoragePort,
+        config: DocumentStorageConfig,
         enqueue_metadata: Callable[[str], object] | None = None,
         auto_extract_metadata: bool = False,
     ) -> None:
         self._repo = repo
         self._storage = storage
+        self._config = config
         self._enqueue_metadata = enqueue_metadata
         self._auto_extract_metadata = auto_extract_metadata
 
@@ -44,17 +39,17 @@ class UploadDocument:
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         ext = f".{ext}"
 
-        if ext not in FILE_EXTENSIONS:
+        if ext not in self._config.file_extensions:
             raise ValueError(f"Unsupported format ({ext})")
 
-        file_type = FILE_EXTENSIONS[ext]
-        directory = _DATA_DIR_MAP[ext]
+        file_type = self._config.file_extensions[ext]
+        directory = self._config.upload_directory_by_ext[ext]
         size = len(content)
 
         if size == 0:
             raise ValueError("Empty file")
 
-        if size > MAX_FILE_SIZE:
+        if size > self._config.max_file_size:
             raise ValueError(f"File exceeds 50 MB ({size / 1024 / 1024:.1f} MB)")
 
         sha256_hash = hashlib.sha256(content).hexdigest()

@@ -5,10 +5,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ChatMessageRequest(BaseModel):
+    role: str = Field(..., min_length=1, max_length=40)
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=6, ge=1, le=20)
-    history: list[dict] = Field(default_factory=list)
+    history: list[ChatMessageRequest] = Field(default_factory=list)
 
 
 class AskResponse(BaseModel):

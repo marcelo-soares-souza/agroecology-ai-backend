@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from psycopg.rows import dict_row
 
+from src.domain.models.auth_token import ConfirmationTokenRecord, RefreshTokenRecord
 from src.domain.models.user import User
 from src.domain.ports.user_repository import UserRepository
 from src.shared.config import PRIVACY_POLICY_VERSION, TOS_VERSION, utcnow
@@ -357,7 +358,7 @@ class PostgresUserRepository(UserRepository):
 
     async def get_confirmation(
         self, token_hash: str, purpose: str = "email_confirmation"
-    ) -> dict | None:
+    ) -> ConfirmationTokenRecord | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -370,7 +371,15 @@ class PostgresUserRepository(UserRepository):
                     (token_hash, purpose),
                 )
                 row = await cur.fetchone()
-                return dict(row) if row else None
+                if row is None:
+                    return None
+                return ConfirmationTokenRecord(
+                    id=row["id"],
+                    user_id=row["user_id"],
+                    expires_at=row["expires_at"],
+                    purpose=row["purpose"],
+                    confirmed_at=row["confirmed_at"],
+                )
 
     async def mark_confirmation_done(self, confirmation_id: str) -> None:
         now = utcnow()
@@ -411,7 +420,7 @@ class PostgresUserRepository(UserRepository):
                     (now, user_id),
                 )
 
-    async def get_refresh_token(self, token_hash: str) -> dict | None:
+    async def get_refresh_token(self, token_hash: str) -> RefreshTokenRecord | None:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
@@ -419,7 +428,14 @@ class PostgresUserRepository(UserRepository):
                     (token_hash,),
                 )
                 row = await cur.fetchone()
-                return dict(row) if row else None
+                if row is None:
+                    return None
+                return RefreshTokenRecord(
+                    id=row["id"],
+                    user_id=row["user_id"],
+                    expires_at=row["expires_at"],
+                    revoked_at=row["revoked_at"],
+                )
 
     async def assign_role(self, user_id: str, role_key: str) -> None:
         role_id = (

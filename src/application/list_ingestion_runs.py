@@ -13,3 +13,6 @@ class ListIngestionRuns:
 
     async def get(self, run_id: str) -> IngestionRun | None:
         return await self._ingestion_repo.get(run_id)
+
+    async def get_active(self) -> IngestionRun | None:
+        return await self._ingestion_repo.get_active_run()

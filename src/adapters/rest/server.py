@@ -4,7 +4,6 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,19 +19,21 @@ from src.adapters.rest.dependencies import (
     get_avatar_file,
     get_academic_metadata_run_status,
     get_delete_document,
-    get_document_academic_metadata_repo,
+    get_document_details,
     get_document_file,
     get_enqueue_academic_metadata_extraction,
     get_enqueue_pending_metadata,
     get_extract_document_metadata,
-    get_ingestion_repo,
     get_ingestion_task_service,
+    get_list_document_publication_years,
+    get_list_documents,
     get_list_ingestion_runs,
     get_manage_docs,
     get_metadata_job_status,
     get_status_service,
-    get_suggestion_repo,
+    get_start_document_academic_metadata_extraction,
     get_task_status,
+    get_update_document_metadata,
     get_upload_document,
     init_services,
     shutdown_services,
@@ -73,6 +74,7 @@ from src.adapters.rest.suggestion_routes import admin_router as suggestion_admin
 from src.adapters.rest.suggestion_routes import user_router as suggestion_user_router
 from src.application.get_document_file import DocumentFileAccessBlockedError
 from src.bootstrap.container import container
+from src.domain.dto.chat_message import ChatMessage
 from src.domain.models.user import User
 from src.shared.config import APP_URL
 from src.shared.logging_utils import (
@@ -212,7 +214,10 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     result = await get_ask_task_service().submit(
         question=body.question,
         top_k=body.top_k,
-        history=body.history,
+        history=[
+            ChatMessage(role=message.role, content=message.content)
+            for message in body.history
+        ],
     )
     return AskResponse(task_id=result.task_id, status=result.status)
 
@@ -269,8 +274,7 @@ async def ingest_start(
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
 async def ingest_status(current_user: User = Depends(require_role("admin"))):
-    repo = await get_ingestion_repo()
-    run = await repo.get_active_run()
+    run = await get_list_ingestion_runs().get_active()
     if run is None:
         return IngestStatusResponse(status="idle")
 
@@ -381,35 +385,22 @@ async def list_all_documents(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    current_year = datetime.now(UTC).year
-    if publication_year is not None and publication_year > current_year:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "publication_year must be between "
-                f"{PUBLICATION_YEAR_MIN} and {current_year}"
-            ),
+    try:
+        result = await get_list_documents().execute(
+            q=q,
+            limit=limit,
+            offset=offset,
+            full_metadata=full_metadata,
+            publication_year=publication_year,
         )
-    docs, total = await manage.list_paginated(
-        q=q,
-        limit=limit,
-        offset=offset,
-        full_metadata=full_metadata,
-        publication_year=publication_year,
-    )
-    academic_metadata_repo = await get_document_academic_metadata_repo()
-    academic_metadata_map = await academic_metadata_repo.get_many(
-        [doc.id for doc in docs]
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     log_event(
         logger,
         logging.INFO,
         "documents_list_completed",
-        returned_documents=len(docs),
-        total_documents=total,
+        returned_documents=len(result.items),
+        total_documents=result.total,
         full_metadata=full_metadata,
         publication_year=publication_year,
         limit=limit,
@@ -418,25 +409,20 @@ async def list_all_documents(
     return DocumentListResponse(
         data=[
             serialize_document(
-                d,
-                academic_metadata=academic_metadata_map.get(d.id),
+                item.document,
+                academic_metadata=item.academic_metadata,
             )
-            for d in docs
+            for item in result.items
         ],
-        total=total,
-        limit=limit,
-        offset=offset,
+        total=result.total,
+        limit=result.limit,
+        offset=result.offset,
     )
 
 
 @app.get("/api/v1/documents/publication-years", response_model=list[int])
 async def list_document_publication_years():
-    academic_metadata_repo = await get_document_academic_metadata_repo()
-    current_year = datetime.now(UTC).year
-    years = await academic_metadata_repo.list_publication_years(
-        PUBLICATION_YEAR_MIN,
-        current_year,
-    )
+    years = await get_list_document_publication_years().execute()
     log_event(
         logger,
         logging.INFO,
@@ -560,26 +546,14 @@ async def extract_document_academic_metadata(
         requested_delay_seconds=delay_seconds,
         force=force,
     )
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.get(doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-    if not (doc.title and doc.title.strip()) or not (
-        doc.authors and doc.authors.strip()
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Title and authors are required for academic metadata extraction",
-        )
-
     try:
-        run = await get_enqueue_academic_metadata_extraction().execute(
+        run = await get_start_document_academic_metadata_extraction().execute(
+            doc_id=doc_id,
             delay_seconds=delay_seconds,
             force=force,
-            document_ids=[doc_id],
         )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -658,25 +632,9 @@ async def academic_metadata_run_status(
 
 @app.get("/api/v1/documents/{doc_id}", response_model=DocumentRecord)
 async def get_one_document(doc_id: str):
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.get(doc_id)
-    if not doc:
+    result = await get_document_details().execute(doc_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    suggested_by_user_id: str | None = None
-    suggested_by_user_name: str | None = None
-    suggested_by_user_slug: str | None = None
-    suggestion_repo = await get_suggestion_repo()
-    suggestion = await suggestion_repo.get_by_document_id(doc_id)
-    if suggestion:
-        suggested_by_user_id = suggestion.user_id
-        suggested_by_user_name = suggestion.user_name
-        suggested_by_user_slug = suggestion.user_slug
-
-    academic_metadata_repo = await get_document_academic_metadata_repo()
-    academic_metadata = await academic_metadata_repo.get(doc_id)
 
     log_event(
         logger,
@@ -685,11 +643,11 @@ async def get_one_document(doc_id: str):
         document_id=doc_id,
     )
     return serialize_document(
-        doc,
-        suggested_by_user_id=suggested_by_user_id,
-        suggested_by_user_name=suggested_by_user_name,
-        suggested_by_user_slug=suggested_by_user_slug,
-        academic_metadata=academic_metadata,
+        result.document,
+        suggested_by_user_id=result.suggested_by_user_id,
+        suggested_by_user_name=result.suggested_by_user_name,
+        suggested_by_user_slug=result.suggested_by_user_slug,
+        academic_metadata=result.academic_metadata,
     )
 
 
@@ -707,13 +665,10 @@ async def update_one_document(
         admin_id=current_user.id,
         target_id=doc_id,
     )
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.update_metadata(
+    result = await get_update_document_metadata().execute(
         doc_id, title=body.title, authors=body.authors, url=body.url
     )
-    if not doc:
+    if result is None:
         raise HTTPException(status_code=404, detail="Document not found")
     log_event(
         logger,
@@ -722,9 +677,9 @@ async def update_one_document(
         document_id=doc_id,
         user_id=current_user.id,
     )
-    academic_metadata_repo = await get_document_academic_metadata_repo()
     return serialize_document(
-        doc, academic_metadata=await academic_metadata_repo.get(doc_id)
+        result.document,
+        academic_metadata=result.academic_metadata,
     )
 
 
@@ -742,26 +697,27 @@ async def extract_document_metadata(
         target_id=doc_id,
     )
     result = await get_extract_document_metadata().execute(doc_id)
-    manage = get_manage_docs()
-    if manage is None:
-        raise HTTPException(status_code=503, detail="Not initialized")
-    doc = await manage.get(doc_id)
-    if not doc:
+    details = await get_document_details().execute(doc_id)
+    if details is None:
         raise HTTPException(status_code=404, detail="Document not found")
     if result:
-        updated_doc = await manage.get(doc_id)
-        if not updated_doc:
+        updated_details = await get_document_details().execute(doc_id)
+        if updated_details is None:
             raise HTTPException(status_code=404, detail="Document not found")
-        academic_metadata_repo = await get_document_academic_metadata_repo()
         return serialize_document(
-            updated_doc,
-            academic_metadata=await academic_metadata_repo.get(doc_id),
+            updated_details.document,
+            suggested_by_user_id=updated_details.suggested_by_user_id,
+            suggested_by_user_name=updated_details.suggested_by_user_name,
+            suggested_by_user_slug=updated_details.suggested_by_user_slug,
+            academic_metadata=updated_details.academic_metadata,
         )
 
-    academic_metadata_repo = await get_document_academic_metadata_repo()
     return serialize_document(
-        doc,
-        academic_metadata=await academic_metadata_repo.get(doc_id),
+        details.document,
+        suggested_by_user_id=details.suggested_by_user_id,
+        suggested_by_user_name=details.suggested_by_user_name,
+        suggested_by_user_slug=details.suggested_by_user_slug,
+        academic_metadata=details.academic_metadata,
     )
 
 

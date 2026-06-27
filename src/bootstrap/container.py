@@ -399,6 +399,8 @@ class Container:
 
             self._create_embedder()
             self._create_llm()
+            self.index_metadata = LocalIndexMetadata()
+            log_event(logger, logging.INFO, "index_metadata_initialized")
             self._create_cache()
             self._create_auth_rate_limiter()
             self._create_reranker()
@@ -450,9 +452,6 @@ class Container:
 
             self.file_storage = LocalFileStorage()
             log_event(logger, logging.INFO, "file_storage_initialized")
-
-            self.index_metadata = LocalIndexMetadata()
-            log_event(logger, logging.INFO, "index_metadata_initialized")
 
             self.web_scraper = ScrapeUrls(scraper=WebScraper(storage=self.file_storage))
 

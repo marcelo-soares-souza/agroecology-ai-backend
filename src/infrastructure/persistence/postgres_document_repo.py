@@ -77,7 +77,10 @@ class PostgresDocumentRepository(DocumentRepository):
         full_metadata: bool = False,
         publication_year: int | None = None,
     ) -> tuple[list[Document], int]:
-        join_clause = ""
+        join_clause = """
+            LEFT JOIN document_academic_metadata dam
+                ON dam.document_id = d.id
+        """
         where_parts: list[str] = []
         params: list[str | int] = []
         search = q.strip() if q else ""
@@ -94,11 +97,6 @@ class PostgresDocumentRepository(DocumentRepository):
             )
             pattern = f"%{search}%"
             params.extend([pattern, pattern, pattern, pattern])
-        if full_metadata or publication_year is not None:
-            join_clause = """
-                JOIN document_academic_metadata dam
-                    ON dam.document_id = d.id
-            """
         if full_metadata:
             where_parts.append(
                 """
@@ -134,7 +132,18 @@ class PostgresDocumentRepository(DocumentRepository):
                     FROM documents d
                     {join_clause}
                     {where_clause}
-                    ORDER BY d.title ASC NULLS LAST, d.filename ASC, d.created_at DESC
+                    ORDER BY
+                        CASE
+                            WHEN POSITION(
+                                'agroecology' IN LOWER(COALESCE(d.title, ''))
+                            ) > 0 THEN 0
+                            ELSE 1
+                        END ASC,
+                        dam.citation_count DESC NULLS LAST,
+                        dam.reference_count DESC NULLS LAST,
+                        d.title ASC NULLS LAST,
+                        d.filename ASC,
+                        d.created_at DESC
                     LIMIT %s OFFSET %s
                     """,
                     [*params, limit, offset],

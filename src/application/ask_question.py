@@ -543,8 +543,7 @@ class AskQuestion:
 
         return sources
 
-    @staticmethod
-    def _resolve_retrieval_top_k() -> int:
+    def _resolve_retrieval_top_k(self) -> int:
         return max(
             self._config.rag_retrieval_top_k,
             self._config.rerank_top_k,
@@ -917,7 +916,7 @@ class AskQuestion:
         self, retrieved: list[RetrievedChunk], profile: QuestionProfile
     ) -> list[RetrievedChunk]:
         cls = type(self)
-        candidates = cls._prepare_context_candidates(retrieved, profile)
+        candidates = self._prepare_context_candidates(retrieved, profile)
         if not candidates:
             return retrieved[:1]
 
@@ -1004,14 +1003,14 @@ class AskQuestion:
         ]
         return sorted(adjacent, key=lambda candidate: candidate.rank)
 
-    @classmethod
     def _prepare_context_candidates(
-        cls, retrieved: list[RetrievedChunk], profile: QuestionProfile
+        self, retrieved: list[RetrievedChunk], profile: QuestionProfile
     ) -> list[_ContextCandidate]:
+        cls = type(self)
         candidates: list[_ContextCandidate] = []
 
         for rank, chunk in enumerate(retrieved, 1):
-            trimmed_text = cls._prepare_context_text(chunk)
+            trimmed_text = self._prepare_context_text(chunk)
             if not trimmed_text:
                 continue
 
@@ -1030,10 +1029,10 @@ class AskQuestion:
 
         return candidates
 
-    @staticmethod
-    def _prepare_context_text(chunk: RetrievedChunk) -> str:
+    def _prepare_context_text(self, chunk: RetrievedChunk) -> str:
         text = chunk.text.strip()
-        if len(text) <= self._config.llm_chunk_max_chars:
+        limit = self._config.llm_chunk_max_chars
+        if len(text) <= limit:
             return text
 
         log_event(
@@ -1044,11 +1043,11 @@ class AskQuestion:
             source=chunk.source,
             chunk_index=chunk.chunk_index,
             text_chars=len(text),
-            limit_chars=self._config.llm_chunk_max_chars,
+            limit_chars=limit,
         )
-        split_at = text.rfind(" ", 0, self._config.llm_chunk_max_chars)
-        if split_at < int(self._config.llm_chunk_max_chars * 0.6):
-            split_at = self._config.llm_chunk_max_chars
+        split_at = text.rfind(" ", 0, limit)
+        if split_at < int(limit * 0.6):
+            split_at = limit
         return text[:split_at].strip()
 
     @classmethod

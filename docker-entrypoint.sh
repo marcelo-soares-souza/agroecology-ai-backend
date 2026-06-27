@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+if [[ "$#" -gt 0 ]]; then
+  exec "$@"
+fi
+
 PG_HOST="${POSTGRES_HOST:-postgres}"
 PG_USER="${POSTGRES_USER:-postgres}"
 

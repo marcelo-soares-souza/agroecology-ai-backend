@@ -267,7 +267,8 @@ class _ContextCandidate:
     chunk: RetrievedChunk
     rank: int
     estimated_chars: int
-    priority: int
+    context_priority: int
+    effective_context_priority: int
     concept_hits: tuple[str, ...]
 
 
@@ -954,7 +955,10 @@ class AskQuestion:
 
         ranked_by_context = sorted(
             candidates,
-            key=lambda c: (-c.priority, cls._authority_adjusted_rank(c)),
+            key=lambda c: (
+                -c.effective_context_priority,
+                cls._authority_adjusted_rank(c),
+            ),
         )
         ranked_by_relevance = sorted(candidates, key=cls._authority_adjusted_rank)
 
@@ -972,7 +976,7 @@ class AskQuestion:
 
         elif profile.intent in {"definition", "methodology", "results"}:
             for candidate in ranked_by_context:
-                if candidate.priority > 0 and add_candidate(candidate):
+                if candidate.context_priority > 0 and add_candidate(candidate):
                     if (
                         profile.intent in {"methodology", "results"}
                         and profile.requested_scope == "single_study"
@@ -1036,12 +1040,14 @@ class AskQuestion:
             authority_bonus = cls._academic_authority_bonus(authority_score)
             chunk_copy.academic_authority_score = authority_score
             chunk_copy.academic_authority_bonus = authority_bonus
+            context_priority = cls._context_priority(chunk_copy, profile, concept_hits)
             candidates.append(
                 _ContextCandidate(
                     chunk=chunk_copy,
                     rank=rank,
                     estimated_chars=len(trimmed_text) + 300,
-                    priority=cls._context_priority(chunk_copy, profile, concept_hits),
+                    context_priority=context_priority,
+                    effective_context_priority=context_priority + authority_bonus,
                     concept_hits=concept_hits,
                 )
             )
@@ -1185,7 +1191,8 @@ class AskQuestion:
                 source=chunk.source,
                 retrieval_rank=candidate.rank,
                 adjusted_rank=cls._authority_adjusted_rank(candidate),
-                context_priority=candidate.priority,
+                context_priority=candidate.context_priority,
+                effective_context_priority=candidate.effective_context_priority,
                 selected=candidate_key in selected_context_ranks,
                 context_rank=selected_context_ranks.get(candidate_key),
                 concept_hits=len(candidate.concept_hits),

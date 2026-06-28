@@ -784,9 +784,9 @@ class Container:
             f"rag_k={RAG_RETRIEVAL_TOP_K}|rerank_k={RERANK_TOP_K}|"
             f"mmr={MMR_LAMBDA}|ctx={LLM_CONTEXT_MAX_CHUNKS}|"
             f"chunk_chars={CHUNK_MAX_CHARS}|chunk_overlap={CHUNK_OVERLAP_CHARS}|"
-            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v3|"
-            f"authority=academic_v1|max_bonus=4|"
-            f"diagnostics=authority_rank_v1|"
+            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v4|"
+            f"authority=academic_v2|max_bonus=4|priority=direct_bonus|"
+            f"diagnostics=authority_rank_v2|"
             f"prompt=evidence_chat_v2|citations=validated_v1"
         )
 

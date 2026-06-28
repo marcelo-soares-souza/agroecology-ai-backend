@@ -94,6 +94,10 @@ class RetrievedChunk:
         rrf_score: Reciprocal Rank Fusion score.
         score: Final aggregated score.
         score_type: Type of score used for ranking.
+        citation_count: Document citation count from academic metadata.
+        reference_count: Document reference count from academic metadata.
+        academic_authority_score: Normalized academic authority score.
+        academic_authority_bonus: Context selection priority bonus.
     """
 
     id: str
@@ -117,6 +121,10 @@ class RetrievedChunk:
     rrf_score: float | None = None
     score: float = 0.0
     score_type: str = "unknown"
+    citation_count: int | None = None
+    reference_count: int | None = None
+    academic_authority_score: float = 0.0
+    academic_authority_bonus: int = 0
 
     @classmethod
     def from_dict(cls, row: dict[str, Any]) -> RetrievedChunk:
@@ -144,6 +152,22 @@ class RetrievedChunk:
             rrf_score=_to_optional_float(row.get("_rrf_score", row.get("rrf_score"))),
             score=float(row.get("_score", row.get("score", 0.0)) or 0.0),
             score_type=str(row.get("_score_type", row.get("score_type", "unknown"))),
+            citation_count=_to_optional_int(row.get("citation_count")),
+            reference_count=_to_optional_int(row.get("reference_count")),
+            academic_authority_score=float(
+                row.get(
+                    "_academic_authority_score",
+                    row.get("academic_authority_score", 0.0),
+                )
+                or 0.0
+            ),
+            academic_authority_bonus=int(
+                row.get(
+                    "_academic_authority_bonus",
+                    row.get("academic_authority_bonus", 0),
+                )
+                or 0
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -169,6 +193,10 @@ class RetrievedChunk:
             "_rrf_score": self.rrf_score,
             "_score": self.score,
             "_score_type": self.score_type,
+            "citation_count": self.citation_count,
+            "reference_count": self.reference_count,
+            "_academic_authority_score": self.academic_authority_score,
+            "_academic_authority_bonus": self.academic_authority_bonus,
         }
 
 

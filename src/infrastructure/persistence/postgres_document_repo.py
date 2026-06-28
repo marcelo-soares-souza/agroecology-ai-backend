@@ -146,7 +146,7 @@ class PostgresDocumentRepository(DocumentRepository):
                     ORDER BY
                         CASE
                             WHEN POSITION(
-                                'agroecology' IN LOWER(COALESCE(d.title, ''))
+                                'agroecolog' IN LOWER(COALESCE(d.title, ''))
                             ) > 0 THEN 0
                             ELSE 1
                         END ASC,
@@ -267,8 +267,20 @@ class PostgresDocumentRepository(DocumentRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
                     """
-                    SELECT id, file_type, directory, title, authors
-                    FROM documents
+                    SELECT
+                        d.id,
+                        d.file_type,
+                        d.directory,
+                        d.title,
+                        d.authors,
+                        dam.publication_year,
+                        dam.venue,
+                        dam.doi,
+                        dam.citation_count,
+                        dam.reference_count
+                    FROM documents d
+                    LEFT JOIN document_academic_metadata dam
+                        ON dam.document_id = d.id
                     """
                 )
                 rows = await cur.fetchall()
@@ -277,6 +289,11 @@ class PostgresDocumentRepository(DocumentRepository):
                         DocumentMetadata(
                             title=row.get("title"),
                             authors=row.get("authors"),
+                            year=row.get("publication_year"),
+                            doi=row.get("doi"),
+                            journal=row.get("venue"),
+                            citation_count=row.get("citation_count"),
+                            reference_count=row.get("reference_count"),
                         )
                     )
                     for row in rows

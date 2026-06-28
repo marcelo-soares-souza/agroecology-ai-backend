@@ -784,7 +784,8 @@ class Container:
             f"rag_k={RAG_RETRIEVAL_TOP_K}|rerank_k={RERANK_TOP_K}|"
             f"mmr={MMR_LAMBDA}|ctx={LLM_CONTEXT_MAX_CHUNKS}|"
             f"chunk_chars={CHUNK_MAX_CHARS}|chunk_overlap={CHUNK_OVERLAP_CHARS}|"
-            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v2|"
+            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v3|"
+            f"authority=academic_v1|max_bonus=4|"
             f"prompt=evidence_chat_v2|citations=validated_v1"
         )
 

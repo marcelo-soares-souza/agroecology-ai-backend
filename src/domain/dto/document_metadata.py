@@ -13,6 +13,8 @@ class DocumentMetadata:
     doi: str | None = None
     journal: str | None = None
     language: str | None = None
+    citation_count: int | None = None
+    reference_count: int | None = None
 
 
 DocumentMetadataMap = dict[str, DocumentMetadata]

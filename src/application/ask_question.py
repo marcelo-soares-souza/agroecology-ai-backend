@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -246,6 +247,10 @@ _INTENT_GUIDANCE: dict[str, str] = {
 }
 logger = logging.getLogger("agroecology.rag")
 
+_ACADEMIC_AUTHORITY_CONTEXT_BONUS_MAX = 4
+_ACADEMIC_AUTHORITY_CITATION_CAP = 500
+_ACADEMIC_AUTHORITY_REFERENCE_CAP = 150
+
 
 @dataclass(frozen=True)
 class QuestionProfile:
@@ -361,6 +366,7 @@ class AskQuestion:
         answer_history: list[ChatMessage] = normalized_history if follow_up else []
         context_started_at = take_perf_snapshot()
         context_chunks = self._select_context_chunks(retrieved, question_profile)
+        self._log_context_authority_scores(context_chunks)
         covered_concepts = self._covered_concepts(question_profile, context_chunks)
         missing_concept_count = max(
             0, len(question_profile.concepts) - len(covered_concepts)
@@ -491,6 +497,10 @@ class AskQuestion:
                 chunk.journal = metadata.journal
             if metadata.language:
                 chunk.language = metadata.language
+            if metadata.citation_count is not None:
+                chunk.citation_count = metadata.citation_count
+            if metadata.reference_count is not None:
+                chunk.reference_count = metadata.reference_count
 
     @staticmethod
     def _build_source_results(
@@ -942,8 +952,11 @@ class AskQuestion:
             used_chars += candidate.estimated_chars
             return True
 
-        ranked_by_context = sorted(candidates, key=lambda c: (-c.priority, c.rank))
-        ranked_by_relevance = sorted(candidates, key=lambda c: c.rank)
+        ranked_by_context = sorted(
+            candidates,
+            key=lambda c: (-c.priority, cls._authority_adjusted_rank(c)),
+        )
+        ranked_by_relevance = sorted(candidates, key=cls._authority_adjusted_rank)
 
         if profile.concepts and (
             profile.intent == "comparison" or len(profile.concepts) >= 2
@@ -1017,6 +1030,10 @@ class AskQuestion:
             chunk_copy = RetrievedChunk.from_dict(chunk.to_dict())
             chunk_copy.text = trimmed_text
             concept_hits = cls._matching_concepts(profile.concepts, chunk_copy)
+            authority_score = cls._academic_authority_score(chunk_copy)
+            authority_bonus = cls._academic_authority_bonus(authority_score)
+            chunk_copy.academic_authority_score = authority_score
+            chunk_copy.academic_authority_bonus = authority_bonus
             candidates.append(
                 _ContextCandidate(
                     chunk=chunk_copy,
@@ -1081,6 +1098,67 @@ class AskQuestion:
             priority += 10
 
         return priority
+
+    @staticmethod
+    def _academic_authority_score(chunk: RetrievedChunk) -> float:
+        citation_count = chunk.citation_count
+        reference_count = chunk.reference_count
+        if citation_count is None and reference_count is None:
+            return 0.0
+
+        citation_score = 0.0
+        reference_score = 0.0
+
+        if citation_count is not None:
+            citation_score = min(
+                1.0,
+                math.log1p(max(0, citation_count))
+                / math.log1p(_ACADEMIC_AUTHORITY_CITATION_CAP),
+            )
+
+        if reference_count is not None:
+            reference_score = min(
+                1.0,
+                math.log1p(max(0, reference_count))
+                / math.log1p(_ACADEMIC_AUTHORITY_REFERENCE_CAP),
+            )
+
+        if citation_count is not None and reference_count is not None:
+            score = (citation_score * 0.8) + (reference_score * 0.2)
+        elif citation_count is not None:
+            score = citation_score
+        else:
+            score = reference_score * 0.35
+
+        return round(max(0.0, min(1.0, score)), 4)
+
+    @staticmethod
+    def _academic_authority_bonus(authority_score: float) -> int:
+        return round(
+            max(0.0, min(1.0, authority_score))
+            * _ACADEMIC_AUTHORITY_CONTEXT_BONUS_MAX
+        )
+
+    @staticmethod
+    def _authority_adjusted_rank(candidate: _ContextCandidate) -> int:
+        return max(1, candidate.rank - candidate.chunk.academic_authority_bonus)
+
+    @staticmethod
+    def _log_context_authority_scores(context_chunks: list[RetrievedChunk]) -> None:
+        for rank, chunk in enumerate(context_chunks, 1):
+            log_event(
+                logger,
+                logging.INFO,
+                "rag_context_authority_score",
+                context_rank=rank,
+                chunk_id=chunk.id,
+                document_id=chunk.document_id,
+                source=chunk.source,
+                authority_score=chunk.academic_authority_score,
+                authority_bonus=chunk.academic_authority_bonus,
+                citation_count=chunk.citation_count,
+                reference_count=chunk.reference_count,
+            )
 
     @classmethod
     def _matching_concepts(

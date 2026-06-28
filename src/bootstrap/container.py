@@ -786,6 +786,7 @@ class Container:
             f"chunk_chars={CHUNK_MAX_CHARS}|chunk_overlap={CHUNK_OVERLAP_CHARS}|"
             f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v3|"
             f"authority=academic_v1|max_bonus=4|"
+            f"diagnostics=authority_rank_v1|"
             f"prompt=evidence_chat_v2|citations=validated_v1"
         )
 

@@ -991,7 +991,9 @@ class AskQuestion:
         for candidate in ranked_by_relevance:
             add_candidate(candidate)
 
-        return [candidate.chunk for candidate in selected] or [candidates[0].chunk]
+        final_candidates = selected or [candidates[0]]
+        cls._log_context_candidate_rankings(candidates, final_candidates)
+        return [candidate.chunk for candidate in final_candidates]
 
     @staticmethod
     def _candidate_key(candidate: _ContextCandidate) -> str:
@@ -1154,6 +1156,39 @@ class AskQuestion:
                 chunk_id=chunk.id,
                 document_id=chunk.document_id,
                 source=chunk.source,
+                authority_score=chunk.academic_authority_score,
+                authority_bonus=chunk.academic_authority_bonus,
+                citation_count=chunk.citation_count,
+                reference_count=chunk.reference_count,
+            )
+
+    @classmethod
+    def _log_context_candidate_rankings(
+        cls,
+        candidates: list[_ContextCandidate],
+        selected: list[_ContextCandidate],
+    ) -> None:
+        selected_context_ranks = {
+            cls._candidate_key(candidate): rank
+            for rank, candidate in enumerate(selected, 1)
+        }
+
+        for candidate in candidates:
+            chunk = candidate.chunk
+            candidate_key = cls._candidate_key(candidate)
+            log_event(
+                logger,
+                logging.INFO,
+                "rag_context_candidate_rank",
+                chunk_id=chunk.id,
+                document_id=chunk.document_id,
+                source=chunk.source,
+                retrieval_rank=candidate.rank,
+                adjusted_rank=cls._authority_adjusted_rank(candidate),
+                context_priority=candidate.priority,
+                selected=candidate_key in selected_context_ranks,
+                context_rank=selected_context_ranks.get(candidate_key),
+                concept_hits=len(candidate.concept_hits),
                 authority_score=chunk.academic_authority_score,
                 authority_bonus=chunk.academic_authority_bonus,
                 citation_count=chunk.citation_count,

@@ -33,9 +33,11 @@ class AskTaskService:
         question: str,
         top_k: int,
         history: list[ChatMessage],
+        locale: str | None = None,
     ) -> TaskSubmissionResult:
         should_use_cache = not history
-        cached = self._cache.get(question, top_k) if should_use_cache else None
+        cache_question = self._cache_question_key(question, locale)
+        cached = self._cache.get(cache_question, top_k) if should_use_cache else None
 
         task_id = self._task_manager.create(question, top_k)
         if cached:
@@ -52,6 +54,7 @@ class AskTaskService:
                 task_id=task_id,
                 top_k=top_k,
                 history_messages=len(history),
+                locale=locale,
             )
             return TaskSubmissionResult(task_id=task_id, status="done")
 
@@ -62,6 +65,7 @@ class AskTaskService:
             task_id=task_id,
             top_k=top_k,
             history_messages=len(history),
+            locale=locale,
         )
 
         document_metadata_map = await self._manage_documents.get_metadata_map()
@@ -75,6 +79,8 @@ class AskTaskService:
             document_metadata_map,
             history,
             should_use_cache,
+            locale,
+            cache_question,
         )
         return TaskSubmissionResult(task_id=task_id, status="processing")
 
@@ -86,6 +92,8 @@ class AskTaskService:
         document_metadata_map: DocumentMetadataMap,
         history: list[ChatMessage],
         should_cache: bool,
+        locale: str | None,
+        cache_question: str,
     ) -> None:
         started_at = take_perf_snapshot()
         try:
@@ -94,6 +102,7 @@ class AskTaskService:
                 top_k,
                 document_metadata_map,
                 history=history,
+                locale=locale,
             )
             self._task_manager.update(
                 task_id,
@@ -102,7 +111,7 @@ class AskTaskService:
                 sources=result.to_source_dicts(),
             )
             if should_cache and result.answer.strip():
-                self._cache.set(question, result, top_k)
+                self._cache.set(cache_question, result, top_k)
             log_event(
                 logger,
                 logging.INFO,
@@ -111,6 +120,7 @@ class AskTaskService:
                 retrieved_sources=len(result.sources),
                 answer_chars=len(result.answer),
                 cached=should_cache,
+                locale=locale,
                 **perf_fields(started_at, "task"),
             )
         except Exception as exc:
@@ -123,3 +133,10 @@ class AskTaskService:
                 error=exc,
                 **perf_fields(started_at, "task"),
             )
+
+    @staticmethod
+    def _cache_question_key(question: str, locale: str | None) -> str:
+        normalized_locale = (locale or "").strip().lower()
+        if not normalized_locale:
+            return question
+        return f"{question}\n\n[answer_locale={normalized_locale}]"

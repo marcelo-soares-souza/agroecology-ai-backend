@@ -14,6 +14,7 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=6, ge=1, le=20)
     history: list[ChatMessageRequest] = Field(default_factory=list)
+    locale: str | None = Field(default=None, max_length=20)
 
 
 class AskResponse(BaseModel):

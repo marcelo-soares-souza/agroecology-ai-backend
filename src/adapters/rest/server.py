@@ -218,6 +218,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
             ChatMessage(role=message.role, content=message.content)
             for message in body.history
         ],
+        locale=body.locale,
     )
     return AskResponse(task_id=result.task_id, status=result.status)
 

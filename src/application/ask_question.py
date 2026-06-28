@@ -23,13 +23,26 @@ from src.domain.services.conversation_history import (
 from src.domain.services.retriever import RetrieverService
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
-_LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
+_LANGUAGE_STRONG_PATTERN_RULES: tuple[
+    tuple[str, tuple[re.Pattern[str], ...]], ...
+] = (
+    (
+        "English",
+        (
+            re.compile(
+                r"\b(what\s+(?:is|are|does|do)|how\s+(?:does|do|to|can|is|are)|"
+                r"why|where|when|define|definition|tell\s+me\s+about)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
     (
         "Portuguese",
         (
-            re.compile(r"[ãõáàâêéíóôúç]"),
             re.compile(
-                r"\b(o que|como|quais|qual|porque|por que|para|uma|não|voc[eê]|sobre)\b",
+                r"\b(o que\s+(?:e|é|s[aã]o)|como\s+(?:fazer|e|é|s[aã]o)|"
+                r"por que|qual\s+(?:e|é|s[aã]o|a|o)|quais\s+s[aã]o|"
+                r"defina|definir|defini[cç][aã]o)\b",
                 re.IGNORECASE,
             ),
         ),
@@ -37,9 +50,11 @@ _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "Spanish",
         (
-            re.compile(r"[ñ¿¡]"),
             re.compile(
-                r"\b(qué|como|cu[aá]l|cu[aá]les|porque|por qu[eé]|para|una|sobre|usted)\b",
+                r"\b(qu[eé]\s+es|qu[eé]\s+son|c[oó]mo\s+(?:hacer|es|son)|"
+                r"c[óÓ]mo\s+funciona|"
+                r"por qu[eé]|cu[aá]l(?:es)?\s+(?:es|son)|definir|"
+                r"definici[oó]n)\b",
                 re.IGNORECASE,
             ),
         ),
@@ -47,9 +62,38 @@ _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "French",
         (
-            re.compile(r"[àâçéèêëîïôùûüœ]"),
             re.compile(
-                r"\b(quoi|comment|quel|quelle|quels|quelles|pourquoi|avec|une|sur)\b",
+                r"\b(qu['’]est[- ]ce que|c['’]est quoi|comment\s+(?:fonctionne|"
+                r"faire|est|sont|peut|la|le|les|l['’])|pourquoi|"
+                r"quel(?:le|les|s)?\s+(?:est|sont)|d[eé]finir|d[eé]finition)\b",
+                re.IGNORECASE,
+            ),
+        ),
+    ),
+)
+_LANGUAGE_WEAK_PATTERN_RULES: tuple[
+    tuple[str, tuple[re.Pattern[str], ...]], ...
+] = (
+    (
+        "Portuguese",
+        (
+            re.compile(r"[ãõç]"),
+            re.compile(r"\b(n[aã]o|voc[eê]|tamb[eé]m|ent[aã]o)\b", re.IGNORECASE),
+        ),
+    ),
+    (
+        "Spanish",
+        (
+            re.compile(r"[ñ¿¡]"),
+            re.compile(r"\b(usted|tambi[eé]n|entonces)\b", re.IGNORECASE),
+        ),
+    ),
+    (
+        "French",
+        (
+            re.compile(r"[œ]"),
+            re.compile(
+                r"\b(est-ce|c['’]est|l['’]|d['’]|n['’])\b",
                 re.IGNORECASE,
             ),
         ),
@@ -58,7 +102,7 @@ _LANGUAGE_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
         "English",
         (
             re.compile(
-                r"\b(what|how|which|why|when|where|can|could|would|should|about|the|is|are)\b",
+                r"\b(the|this|that|and|with|about|could|would|should)\b",
                 re.IGNORECASE,
             ),
         ),
@@ -78,6 +122,20 @@ _LINGUA_LANGUAGE_NAMES = {
     Language.FRENCH: "French",
 }
 _LINGUA_DETECTOR = LanguageDetectorBuilder.from_languages(*_LINGUA_LANGUAGES).build()
+_LOCALE_LANGUAGE_NAMES = {
+    "en": "English",
+    "en-us": "English",
+    "en-gb": "English",
+    "pt": "Portuguese",
+    "pt-br": "Portuguese",
+    "pt-pt": "Portuguese",
+    "es": "Spanish",
+    "es-es": "Spanish",
+    "es-419": "Spanish",
+    "fr": "French",
+    "fr-fr": "French",
+    "fr-ca": "French",
+}
 _QUESTION_INTENT_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     "comparison": (
         re.compile(r"\b(compare|comparar|comparacao|comparison)\b"),
@@ -262,6 +320,58 @@ class QuestionProfile:
     max_context_chunks: int
 
 
+@dataclass(frozen=True)
+class LanguageDetection:
+    language: str
+    confidence: str
+    source: str
+    question_word_count: int
+    top_language: str | None = None
+    top_score: float | None = None
+    second_language: str | None = None
+    second_score: float | None = None
+    score_margin: float | None = None
+    has_strong_pattern: bool = False
+    locale_fallback_used: bool = False
+
+    def with_source(
+        self,
+        source: str,
+        *,
+        language: str | None = None,
+        confidence: str | None = None,
+        locale_fallback_used: bool | None = None,
+    ) -> LanguageDetection:
+        return LanguageDetection(
+            language=language or self.language,
+            confidence=confidence or self.confidence,
+            source=source,
+            question_word_count=self.question_word_count,
+            top_language=self.top_language,
+            top_score=self.top_score,
+            second_language=self.second_language,
+            second_score=self.second_score,
+            score_margin=self.score_margin,
+            has_strong_pattern=self.has_strong_pattern,
+            locale_fallback_used=(
+                self.locale_fallback_used
+                if locale_fallback_used is None
+                else locale_fallback_used
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class LinguaDetection:
+    language: str
+    confidence: str
+    top_language: str
+    top_score: float
+    second_language: str | None
+    second_score: float | None
+    score_margin: float | None
+
+
 @dataclass
 class _ContextCandidate:
     chunk: RetrievedChunk
@@ -321,21 +431,42 @@ class AskQuestion:
         top_k: int | None = None,
         document_metadata_map: DocumentMetadataMap | None = None,
         history: Sequence[ChatMessage] | None = None,
+        locale: str | None = None,
     ) -> AnswerResult:
         started_at = take_perf_snapshot()
         normalized_history = list(history or [])
         follow_up = bool(normalized_history) and is_context_dependent_question(question)
-        (
-            expected_language,
-            language_confidence,
-            language_source,
-        ) = self._resolve_answer_language(question, normalized_history, follow_up)
+        language_detection = self._resolve_answer_language(
+            question,
+            normalized_history,
+            follow_up,
+            locale,
+        )
+        expected_language = language_detection.language
+        language_confidence = language_detection.confidence
+        language_source = language_detection.source
         requested_top_k = top_k or self._config.rerank_top_k
         retrieval_top_k = self._resolve_retrieval_top_k()
         question_profile = self._profile_question(
             search_text=question,
             language=expected_language,
             is_follow_up=follow_up,
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_language_detected",
+            expected_language=expected_language,
+            language_confidence=language_confidence,
+            language_source=language_source,
+            question_word_count=language_detection.question_word_count,
+            top_language=language_detection.top_language,
+            top_score=language_detection.top_score,
+            second_language=language_detection.second_language,
+            second_score=language_detection.second_score,
+            score_margin=language_detection.score_margin,
+            has_strong_pattern=language_detection.has_strong_pattern,
+            locale_fallback_used=language_detection.locale_fallback_used,
         )
         log_event(
             logger,
@@ -1272,33 +1403,116 @@ class AskQuestion:
             or candidate_section not in selected_sections
         )
 
-    @staticmethod
-    def _detect_question_language(question: str) -> tuple[str, str]:
+    @classmethod
+    def _detect_question_language(cls, question: str) -> tuple[str, str]:
+        detection = cls._detect_question_language_details(question)
+        return detection.language, detection.confidence
+
+    @classmethod
+    def _detect_question_language_details(cls, question: str) -> LanguageDetection:
         compact_question = " ".join(question.strip().split())
+        word_count = len(compact_question.split())
         if not compact_question:
-            return _LANGUAGE_FALLBACK_LABEL, "low"
+            return LanguageDetection(
+                language=_LANGUAGE_FALLBACK_LABEL,
+                confidence="low",
+                source="fallback",
+                question_word_count=0,
+            )
 
-        lingua_result = AskQuestion._detect_with_lingua(compact_question)
-        if lingua_result is not None:
-            return lingua_result
+        strong_language = cls._detect_strong_language_pattern(compact_question)
+        lingua_result = cls._detect_with_lingua(compact_question)
+        if strong_language:
+            return LanguageDetection(
+                language=strong_language,
+                confidence="high",
+                source="pattern",
+                question_word_count=word_count,
+                top_language=lingua_result.top_language if lingua_result else None,
+                top_score=lingua_result.top_score if lingua_result else None,
+                second_language=lingua_result.second_language
+                if lingua_result
+                else None,
+                second_score=lingua_result.second_score if lingua_result else None,
+                score_margin=lingua_result.score_margin if lingua_result else None,
+                has_strong_pattern=True,
+            )
 
-        best_language = ""
+        if lingua_result is not None and cls._accept_lingua_detection(
+            lingua_result,
+            word_count,
+        ):
+            return LanguageDetection(
+                language=lingua_result.language,
+                confidence=lingua_result.confidence,
+                source="lingua",
+                question_word_count=word_count,
+                top_language=lingua_result.top_language,
+                top_score=lingua_result.top_score,
+                second_language=lingua_result.second_language,
+                second_score=lingua_result.second_score,
+                score_margin=lingua_result.score_margin,
+            )
+
+        weak_language, weak_score = cls._detect_weak_language_pattern(compact_question)
+        if weak_language:
+            confidence = "medium" if weak_score >= 2 and word_count >= 4 else "low"
+            return LanguageDetection(
+                language=weak_language,
+                confidence=confidence,
+                source="weak_pattern",
+                question_word_count=word_count,
+                top_language=lingua_result.top_language if lingua_result else None,
+                top_score=lingua_result.top_score if lingua_result else None,
+                second_language=lingua_result.second_language
+                if lingua_result
+                else None,
+                second_score=lingua_result.second_score if lingua_result else None,
+                score_margin=lingua_result.score_margin if lingua_result else None,
+            )
+
+        return LanguageDetection(
+            language=_LANGUAGE_FALLBACK_LABEL,
+            confidence="low",
+            source="fallback",
+            question_word_count=word_count,
+            top_language=lingua_result.top_language if lingua_result else None,
+            top_score=lingua_result.top_score if lingua_result else None,
+            second_language=lingua_result.second_language if lingua_result else None,
+            second_score=lingua_result.second_score if lingua_result else None,
+            score_margin=lingua_result.score_margin if lingua_result else None,
+        )
+
+    @staticmethod
+    def _detect_strong_language_pattern(question: str) -> str | None:
+        for language_name, patterns in _LANGUAGE_STRONG_PATTERN_RULES:
+            if any(pattern.search(question) for pattern in patterns):
+                return language_name
+        return None
+
+    @staticmethod
+    def _detect_weak_language_pattern(question: str) -> tuple[str | None, int]:
+        best_language: str | None = None
         best_score = 0
-
-        for language_name, patterns in _LANGUAGE_PATTERN_RULES:
-            score = sum(1 for pattern in patterns if pattern.search(compact_question))
+        for language_name, patterns in _LANGUAGE_WEAK_PATTERN_RULES:
+            score = sum(1 for pattern in patterns if pattern.search(question))
             if score > best_score:
                 best_language = language_name
                 best_score = score
+        return best_language, best_score
 
-        if not best_language:
-            return _LANGUAGE_FALLBACK_LABEL, "low"
-
-        if best_score >= 2 or len(compact_question.split()) >= 6:
-            return best_language, "high"
-        if len(compact_question.split()) >= 3:
-            return best_language, "medium"
-        return best_language, "low"
+    @staticmethod
+    def _accept_lingua_detection(detection: LinguaDetection, word_count: int) -> bool:
+        margin = detection.score_margin or 0.0
+        if word_count <= 4:
+            return (detection.top_score >= 0.95 and margin >= 0.12) or (
+                detection.top_score >= 0.88 and margin >= 0.2
+            )
+        if word_count <= 8:
+            return (detection.top_score >= 0.9 and margin >= 0.1) or (
+                detection.top_score >= 0.75 and margin >= 0.14
+            )
+        return detection.top_score >= 0.6 and margin >= 0.08
 
     @classmethod
     def _resolve_answer_language(
@@ -1306,28 +1520,46 @@ class AskQuestion:
         question: str,
         history: Sequence[ChatMessage],
         follow_up: bool,
-    ) -> tuple[str, str, str]:
-        detected_language, confidence = cls._detect_question_language(question)
-        if confidence in {"high", "medium"}:
-            return detected_language, confidence, "current_question_lingua"
+        locale: str | None = None,
+    ) -> LanguageDetection:
+        detection = cls._detect_question_language_details(question)
+        if detection.confidence in {"high", "medium"}:
+            return detection.with_source(f"current_question_{detection.source}")
 
         if follow_up:
             last_user = find_last_message(history, "user")
             if last_user:
-                previous_language, previous_confidence = cls._detect_question_language(
-                    last_user
-                )
-                if previous_confidence in {"high", "medium"}:
-                    return (
-                        previous_language,
-                        previous_confidence,
-                        "history_last_user_lingua",
+                previous_detection = cls._detect_question_language_details(last_user)
+                if previous_detection.confidence in {"high", "medium"}:
+                    return previous_detection.with_source(
+                        f"history_last_user_{previous_detection.source}"
                     )
 
-        return detected_language, confidence, "current_question_fallback"
+        locale_language = cls._language_from_locale(locale)
+        if locale_language:
+            return detection.with_source(
+                "request_locale_fallback",
+                language=locale_language,
+                confidence="medium",
+                locale_fallback_used=True,
+            )
+
+        return detection.with_source("current_question_fallback")
 
     @staticmethod
-    def _detect_with_lingua(question: str) -> tuple[str, str] | None:
+    def _language_from_locale(locale: str | None) -> str | None:
+        if not locale:
+            return None
+        normalized = locale.strip().lower().replace("_", "-")
+        if not normalized:
+            return None
+        if normalized in _LOCALE_LANGUAGE_NAMES:
+            return _LOCALE_LANGUAGE_NAMES[normalized]
+        language_code = normalized.split("-", 1)[0]
+        return _LOCALE_LANGUAGE_NAMES.get(language_code)
+
+    @staticmethod
+    def _detect_with_lingua(question: str) -> LinguaDetection | None:
         compact_question = " ".join(question.strip().split())
         if not compact_question:
             return None
@@ -1340,15 +1572,39 @@ class AskQuestion:
             compact_question
         )
         top_confidence = float(confidence_values[0].value) if confidence_values else 0.0
+        second_confidence = (
+            float(confidence_values[1].value) if len(confidence_values) > 1 else None
+        )
         language_name = _LINGUA_LANGUAGE_NAMES.get(detected_language)
         if not language_name:
             return None
 
-        if top_confidence >= 0.9:
+        score_margin = (
+            round(top_confidence - second_confidence, 4)
+            if second_confidence is not None
+            else None
+        )
+        if top_confidence >= 0.9 and (score_margin is None or score_margin >= 0.2):
             confidence = "high"
-        elif top_confidence >= 0.6:
+        elif top_confidence >= 0.75 and (score_margin is None or score_margin >= 0.1):
             confidence = "medium"
         else:
             confidence = "low"
 
-        return language_name, confidence
+        second_language = None
+        if len(confidence_values) > 1:
+            second_raw_language = getattr(confidence_values[1], "language", None)
+            if second_raw_language is not None:
+                second_language = _LINGUA_LANGUAGE_NAMES.get(second_raw_language)
+
+        return LinguaDetection(
+            language=language_name,
+            confidence=confidence,
+            top_language=language_name,
+            top_score=round(top_confidence, 4),
+            second_language=second_language,
+            second_score=round(second_confidence, 4)
+            if second_confidence is not None
+            else None,
+            score_margin=score_margin,
+        )

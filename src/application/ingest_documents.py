@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from src.application.config import IngestionConfig
 from src.domain.dto.retrieval_result import IndexedChunk
 from src.domain.ports.document_loader_port import DocumentLoaderPort
+from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.embedding_port import EmbeddingPort
 from src.domain.ports.index_metadata_port import IndexMetadataPort
 from src.domain.ports.ingestion_repository import IngestionRepository
@@ -33,6 +34,7 @@ class IngestDocuments:
         vector_store: VectorStorePort,
         embedder: EmbeddingPort,
         ingestion_repo: IngestionRepository,
+        document_repo: DocumentRepository,
         loader: DocumentLoaderPort,
         index_metadata: IndexMetadataPort,
         config: IngestionConfig,
@@ -40,6 +42,7 @@ class IngestDocuments:
         self._vector_store = vector_store
         self._embedder = embedder
         self._ingestion_repo = ingestion_repo
+        self._document_repo = document_repo
         self._loader = loader
         self._index_metadata = index_metadata
         self._config = config
@@ -130,35 +133,70 @@ class IngestDocuments:
         if force:
             await self._mark_all_not_ingested()
 
-        all_docs = await self._loader.load_all()
-        if not all_docs:
-            raise ValueError(
-                "No documents found. Add files to data/pdfs/, data/markdown/ or data/web/"
-            )
-
-        doc_ids = {d.doc_id for d in all_docs}
-
-        existing_ingested = await self._get_ingested_doc_ids(doc_ids)
+        registered_documents = await self._document_repo.list_all()
+        if not registered_documents:
+            raise ValueError("No registered documents found. Upload documents first.")
 
         if force:
-            docs_to_process = all_docs
+            documents_to_load = registered_documents
         else:
-            docs_to_process = [d for d in all_docs if d.doc_id not in existing_ingested]
-            if not docs_to_process:
+            documents_to_load = [
+                doc for doc in registered_documents if not doc.ingested
+            ]
+            if not documents_to_load:
                 if self._vector_store.index_exists():
                     log_event(
                         logger,
                         logging.INFO,
                         "ingestion_no_new_documents",
-                        total_documents=len(all_docs),
+                        total_documents=len(registered_documents),
                         index_exists=True,
                     )
                     return 0
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "ingestion_index_missing_rebuilding_registered_documents",
+                    total_documents=len(registered_documents),
+                )
+                documents_to_load = registered_documents
 
+        loaded_documents = await self._loader.load(documents_to_load)
+        loadable_doc_ids = {doc.doc_id for doc in loaded_documents}
+        skipped_documents = len(documents_to_load) - len(loadable_doc_ids)
+        if skipped_documents:
+            log_event(
+                logger,
+                logging.WARNING,
+                "ingestion_registered_documents_skipped",
+                selected_documents=len(documents_to_load),
+                loadable_documents=len(loaded_documents),
+                skipped_documents=skipped_documents,
+            )
+
+        if not loaded_documents:
+            if force:
+                self._clear_existing_index()
+            if self.current_run_id:
+                await self._ingestion_repo.update_progress(
+                    self.current_run_id,
+                    documents_total=len(documents_to_load),
+                    documents_processed=len(documents_to_load),
+                    chunks_generated=0,
+                )
+            log_event(
+                logger,
+                logging.WARNING,
+                "ingestion_no_loadable_registered_documents",
+                selected_documents=len(documents_to_load),
+            )
+            return 0
+
+        docs_to_process = loaded_documents
         doc_count = len(docs_to_process)
         if self.current_run_id:
             await self._ingestion_repo.update_progress(
-                self.current_run_id, documents_total=doc_count
+                self.current_run_id, documents_total=len(documents_to_load)
             )
 
         batch_size = (
@@ -263,7 +301,7 @@ class IngestDocuments:
                     chunks_generated=total_chunks,
                 )
                 if on_progress:
-                    on_progress(docs_processed, total_chunks, doc_count)
+                    on_progress(docs_processed, total_chunks, len(documents_to_load))
 
             log_event(
                 logger,
@@ -275,20 +313,25 @@ class IngestDocuments:
                 chunks=len(rows),
             )
 
+        if force and total_chunks == 0:
+            self._clear_existing_index()
+
         log_event(
             logger,
             logging.INFO,
             "ingestion_all_documents_processed",
             force=force,
-            total_documents=len(all_docs),
+            total_documents=len(registered_documents),
             new_documents=doc_count,
+            selected_documents=len(documents_to_load),
+            skipped_documents=skipped_documents,
             chunks_generated=total_chunks,
         )
 
         if self.current_run_id:
             await self._ingestion_repo.update_progress(
                 self.current_run_id,
-                documents_processed=doc_count,
+                documents_processed=len(documents_to_load),
                 chunks_generated=total_chunks,
             )
 
@@ -310,12 +353,27 @@ class IngestDocuments:
             for row, vector in zip(rows, vectors):
                 row.vector = vector
 
+    def _clear_existing_index(self) -> None:
+        if not self._vector_store.index_exists():
+            return
+        existing_doc_ids = {
+            row.document_id or row.id.split("_", 1)[0]
+            for row in self._vector_store.get_all_rows()
+            if row.document_id or row.id
+        }
+        for doc_id in existing_doc_ids:
+            self._vector_store.delete_by_prefix(f"{doc_id}_")
+        log_event(
+            logger,
+            logging.WARNING,
+            "ingestion_existing_index_cleared",
+            documents=len(existing_doc_ids),
+            reason="force_rebuild_without_chunks",
+        )
+
     def remove_chunks(self, doc_id: str) -> None:
         if self._vector_store.index_exists():
             self._vector_store.delete_by_prefix(f"{doc_id}_")
-
-    async def _get_ingested_doc_ids(self, doc_ids: set[str]) -> set[str]:
-        return await self._ingestion_repo.get_ingested_ids(doc_ids)
 
     async def _mark_as_ingested(self, doc_ids: set[str]) -> None:
         await self._ingestion_repo.mark_as_ingested(doc_ids)

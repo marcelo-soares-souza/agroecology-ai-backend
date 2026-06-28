@@ -914,11 +914,14 @@ class Container:
             config=document_storage_config,
         )
 
-        loader = LocalDocumentLoader()
+        loader = LocalDocumentLoader(
+            file_type_to_ext=document_storage_config.file_type_to_ext
+        )
         self.ingest = IngestDocuments(
             vector_store=self.vector_store,
             embedder=self.embedder,
             ingestion_repo=self.ingestion_repo,
+            document_repo=self.doc_repo,
             loader=loader,
             index_metadata=self.index_metadata,
             config=ingestion_config,

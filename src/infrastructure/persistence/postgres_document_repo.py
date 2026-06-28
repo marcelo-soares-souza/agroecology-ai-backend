@@ -132,6 +132,17 @@ class PostgresDocumentRepository(DocumentRepository):
                     FROM documents d
                     {join_clause}
                     {where_clause}
+                    {self._listing_order_by()}
+                    LIMIT %s OFFSET %s
+                    """,
+                    [*params, limit, offset],
+                )
+                rows = await cur.fetchall()
+                return [self._to_domain(dict(r)) for r in rows], total
+
+    @staticmethod
+    def _listing_order_by() -> str:
+        return """
                     ORDER BY
                         CASE
                             WHEN POSITION(
@@ -143,13 +154,9 @@ class PostgresDocumentRepository(DocumentRepository):
                         dam.reference_count DESC NULLS LAST,
                         d.title ASC NULLS LAST,
                         d.filename ASC,
-                        d.created_at DESC
-                    LIMIT %s OFFSET %s
-                    """,
-                    [*params, limit, offset],
-                )
-                rows = await cur.fetchall()
-                return [self._to_domain(dict(r)) for r in rows], total
+                        d.created_at DESC,
+                        d.id ASC
+        """
 
     async def get_stats(self) -> DocumentStats:
         async with self._pool.connection() as conn:

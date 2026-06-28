@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+from src.domain.models.document import Document
 from src.domain.models.parsed_document import ParsedDocument
 
 
@@ -24,15 +26,18 @@ class DocumentSource:
 
 
 class DocumentLoaderPort(ABC):
-    """Port for loading all documents to be ingested.
+    """Port for loading registered documents to be ingested.
 
-    Iterates over available document sources and yields each one
-    with its parsed content for processing.
+    The database is the source of truth for ingestion. Implementations must
+    only load files for the document records they receive.
     """
 
     @abstractmethod
-    async def load_all(self) -> list[DocumentSource]:
-        """Load all available document sources.
+    async def load(self, documents: Sequence[Document]) -> list[DocumentSource]:
+        """Load registered document sources.
+
+        Args:
+            documents: Document records selected for ingestion.
 
         Returns:
             A list of DocumentSource objects ready for ingestion.

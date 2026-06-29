@@ -29,10 +29,18 @@ class RefreshToken:
         if not stored:
             raise ValueError("Invalid refresh token")
 
-        if stored.expires_at < datetime.now(timezone.utc):
+        now = datetime.now(timezone.utc)
+
+        if stored.expires_at < now:
             raise ValueError("Refresh token expired")
 
         if stored.revoked_at:
+            grace = timedelta(
+                seconds=max(0, self._config.refresh_token_reuse_grace_seconds)
+            )
+            if now - stored.revoked_at <= grace:
+                raise ValueError("Refresh token already rotated")
+
             await self._repo.revoke_all_refresh_tokens(stored.user_id)
             raise ValueError("Token reuse detected")
 

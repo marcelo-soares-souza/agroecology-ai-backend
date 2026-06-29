@@ -223,6 +223,7 @@ from src.shared.config import (
     RERANK_DEVICE,
     RERANK_MODEL,
     RERANK_TOP_K,
+    REFRESH_TOKEN_REUSE_GRACE_SECONDS,
     REFRESH_TOKEN_TTL_DAYS,
     SIMILARITY_TOP_K,
     SYSTEM_PROMPT,
@@ -897,7 +898,10 @@ class Container:
             reranker_device=RERANK_DEVICE,
             rerank_top_k=RERANK_TOP_K,
         )
-        auth_config = AuthConfig(refresh_token_ttl_days=REFRESH_TOKEN_TTL_DAYS)
+        auth_config = AuthConfig(
+            refresh_token_ttl_days=REFRESH_TOKEN_TTL_DAYS,
+            refresh_token_reuse_grace_seconds=REFRESH_TOKEN_REUSE_GRACE_SECONDS,
+        )
 
         # Core RAG services
         self.retriever = RetrieverService(

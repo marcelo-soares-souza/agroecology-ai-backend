@@ -70,4 +70,4 @@ class StatusConfig:
 @dataclass(frozen=True)
 class AuthConfig:
     refresh_token_ttl_days: int
-
+    refresh_token_reuse_grace_seconds: int

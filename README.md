@@ -310,7 +310,8 @@ See `.env.example` for all variables with comments. Key ones:
 |----------|---------|-------------|
 | `JWT_SECRET` | `change-me-in-production` | JWT signing secret |
 | `JWT_TTL_SECONDS` | `900` | Access token lifetime (seconds) |
-| `REFRESH_TOKEN_TTL_DAYS` | `7` | Refresh token lifetime (days) |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh token lifetime (days) |
+| `REFRESH_TOKEN_REUSE_GRACE_SECONDS` | `60` | Grace window for duplicate refresh requests after token rotation |
 | `PASSWORD_PEPPER` | `agroecology-pepper` | Password hashing pepper |
 | `AUTH_RATE_LIMIT_MAX_FAILURES` | `5` | Failed sign-in/sign-up attempts allowed before blocking the email/IP |
 | `AUTH_RATE_LIMIT_BLOCK_SECONDS` | `600` | Sign-in/sign-up block duration in seconds |

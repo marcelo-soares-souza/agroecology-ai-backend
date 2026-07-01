@@ -2,6 +2,14 @@
 
 RAG (Retrieval-Augmented Generation) backend for the Agroecology Map AI platform. Provides an async REST API for document upload, ingestion, semantic + keyword hybrid search, and AI-powered question answering over agroecological knowledge.
 
+## Requirements
+
+- Python 3.13+ for local development
+- PostgreSQL 18-compatible database
+- Valkey/Redis for optional answer caching
+- Ollama, llama.cpp server, or any OpenAI-compatible LLM provider
+- Local disk storage for uploaded files and LanceDB indexes
+
 ## Quick Start
 
 ```bash
@@ -12,14 +20,26 @@ pip install -r requirements.txt
 python main.py db:migrate              # create database and run migrations
 python main.py db:seed                 # create admin user
 python main.py db:mobile               # create common mobile user
-python main.py serve                  # http://localhost:8000 (Swagger: /docs)
+python main.py serve                   # http://localhost:8000 (Swagger: /docs)
 ```
 
-## LLM Backend (Ollama vs DeepSeek)
+## LLM Backend
 
-The LLM client uses the OpenAI-compatible API. Switch by changing `.env`:
+The LLM client can talk to local or cloud providers through OpenAI-compatible
+HTTP APIs. Switch providers by changing `.env`.
 
-### Ollama Local (default)
+### llama.cpp server (Docker stack)
+
+The main Docker stack starts a llama.cpp server container and `infra/.env`
+points the backend at it:
+
+```env
+LLM_API_KEY=llama
+LLM_BASE_URL=http://agroecology-ai-llama:8080/v1
+LLM_MODEL=qwen3.5:4b
+```
+
+### Ollama Local (`.env.example` starter)
 
 ```env
 LLM_API_KEY=ollama
@@ -30,6 +50,9 @@ LLM_MODEL=qwen3:4b
 Make sure the model is pulled first: `ollama pull qwen3:4b`
 
 Any Ollama model works — qwen, llama, mistral, deepseek-r1, phi, etc.
+
+The `.env.example` file uses `qwen3:4b` as a practical local starter model.
+If `LLM_MODEL` is not set at all, the code fallback is `qwen3:14b`.
 
 Model size matters for local Ollama. The default `qwen3:4b` is a practical
 choice for a 6 GB VRAM GPU and RAG prompts. Smaller models such as 0.5B/1B run
@@ -129,6 +152,9 @@ LLM_MODEL=qwen3:4b
 | `GET` | `/api/v1/auth/me` | Get current user profile |
 | `PUT` | `/api/v1/auth/me/profile` | Update own profile (full_name, email, about, link) |
 | `POST` | `/api/v1/auth/me/profile/avatar` | Upload profile avatar |
+| `GET` | `/api/v1/auth/me/export` | Export the authenticated user's account data |
+| `POST` | `/api/v1/auth/me/delete-request` | Request account deletion email |
+| `POST` | `/api/v1/auth/me/delete-confirm` | Confirm account deletion with token |
 | `GET` | `/api/v1/auth/users/by-slug/{slug}` | Lookup user by slug |
 | `GET` | `/api/v1/auth/users` | List active users (public) |
 | `GET` | `/api/v1/users/{slug}/profile/avatar/file` | Get user avatar image |
@@ -171,11 +197,11 @@ See [docs/HOW_AI_FLOW_WORKS.md](../docs/HOW_AI_FLOW_WORKS.md) for the complete q
 ## Docker
 
 ```bash
-cd ../infra
-docker compose up -d --build
+docker compose --env-file infra/.env -f infra/docker-compose.yaml up -d --build
 ```
 
-Starts PostgreSQL 18, Valkey 9, Ollama, and the backend. Migrations run automatically on startup.
+Starts PostgreSQL 18, Valkey 9, llama.cpp server, the backend, and the
+frontend. Migrations run automatically on backend startup.
 
 ## Project Structure
 

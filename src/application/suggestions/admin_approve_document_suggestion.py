@@ -28,8 +28,9 @@ class AdminApproveDocumentSuggestion:
         email_service: EmailPort,
         user_repo: UserRepository,
         config: SuggestionStorageConfig,
-        enqueue_metadata: Callable[[str], object] | None = None,
+        enqueue_metadata: Callable[[str, bool], object] | None = None,
         auto_extract_metadata: bool = False,
+        auto_extract_academic_metadata: bool = False,
     ) -> None:
         self._suggestion_repo = suggestion_repo
         self._doc_repo = doc_repo
@@ -39,6 +40,7 @@ class AdminApproveDocumentSuggestion:
         self._config = config
         self._enqueue_metadata = enqueue_metadata
         self._auto_extract_metadata = auto_extract_metadata
+        self._auto_extract_academic_metadata = auto_extract_academic_metadata
 
     async def execute(
         self,
@@ -135,7 +137,10 @@ class AdminApproveDocumentSuggestion:
 
         if self._auto_extract_metadata and self._enqueue_metadata:
             try:
-                self._enqueue_metadata(document_id)
+                self._enqueue_metadata(
+                    document_id,
+                    self._auto_extract_academic_metadata,
+                )
             except Exception as e:
                 log_event(
                     logger,

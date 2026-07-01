@@ -180,6 +180,7 @@ from src.shared.config import (
     ACADEMIC_METADATA_MIN_DELAY_SECONDS,
     AUTH_RATE_LIMIT_BLOCK_SECONDS,
     AUTH_RATE_LIMIT_MAX_FAILURES,
+    AUTO_EXTRACT_ACADEMIC_METADATA,
     AUTO_EXTRACT_METADATA,
     AVATAR_DIR,
     BM25_TOP_K,
@@ -493,6 +494,7 @@ class Container:
             ingest_use_case=self.ingest,
             ingestion_repo=self.ingestion_repo,
             academic_metadata_use_case=self.run_academic_metadata_extraction,
+            academic_metadata_starter=self.start_document_academic_metadata_extraction,
         )
         log_event(logger, logging.INFO, "job_worker_started")
 
@@ -966,6 +968,7 @@ class Container:
             config=document_storage_config,
             enqueue_metadata=self.enqueue_document_metadata.execute,
             auto_extract_metadata=AUTO_EXTRACT_METADATA,
+            auto_extract_academic_metadata=AUTO_EXTRACT_ACADEMIC_METADATA,
         )
         self.list_documents = ListDocuments(
             doc_repo=self.doc_repo,
@@ -1223,6 +1226,7 @@ class Container:
             config=suggestion_storage_config,
             enqueue_metadata=self.enqueue_document_metadata.execute,
             auto_extract_metadata=AUTO_EXTRACT_METADATA,
+            auto_extract_academic_metadata=AUTO_EXTRACT_ACADEMIC_METADATA,
         )
         self.list_public_suggestions = ListPublicSuggestions(
             suggestion_repo=self.suggestion_repo,

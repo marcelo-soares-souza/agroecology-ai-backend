@@ -42,6 +42,14 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
 AUTO_EXTRACT_METADATA = os.getenv("AUTO_EXTRACT_METADATA", "true").lower() == "true"
+AUTO_EXTRACT_ACADEMIC_METADATA = (
+    os.getenv("AUTO_EXTRACT_ACADEMIC_METADATA", "true").lower()
+    in (
+        "1",
+        "true",
+        "yes",
+    )
+)
 ACADEMIC_METADATA_MIN_DELAY_SECONDS = int(
     os.getenv("ACADEMIC_METADATA_MIN_DELAY_SECONDS", "60")
 )

@@ -15,9 +15,16 @@ class EnqueueDocumentMetadata:
     def __init__(self, queue: Callable[[], JobQueuePort]) -> None:
         self._get_queue = queue
 
-    def execute(self, document_id: str) -> EnqueueMetadataResult:
+    def execute(
+        self,
+        document_id: str,
+        auto_academic_metadata: bool = False,
+    ) -> EnqueueMetadataResult:
         job_id = self._get_queue().enqueue(
             "document.extract_metadata",
-            {"document_id": document_id},
+            {
+                "document_id": document_id,
+                "auto_academic_metadata": auto_academic_metadata,
+            },
         )
         return EnqueueMetadataResult(job_id=job_id)

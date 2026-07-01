@@ -40,18 +40,61 @@ class AcademicMetadataRunUseCase(Protocol):
         pass
 
 
+class AcademicMetadataDocumentStarter(Protocol):
+    async def execute(
+        self,
+        doc_id: str,
+        delay_seconds: int | None = None,
+        force: bool = False,
+    ) -> object | None:
+        pass
+
+
 JobHandler = Callable[
     [
         dict,
+        QueueRepository,
         MetadataExtractionUseCase | None,
         IngestionUseCase | None,
         IngestionRepository | None,
         AcademicMetadataRunUseCase | None,
+        AcademicMetadataDocumentStarter | None,
     ],
     None,
 ]
 
 _HANDLERS: dict[str, JobHandler] = {}
+_AUTO_ACADEMIC_METADATA_JOB_TYPE = "document.enqueue_academic_metadata"
+_AUTO_ACADEMIC_METADATA_MAX_ATTEMPTS = 240
+
+
+def _auto_academic_metadata_retry_delay_seconds() -> int:
+    from src.shared.config import (
+        ACADEMIC_METADATA_DEFAULT_DELAY_SECONDS,
+        ACADEMIC_METADATA_MIN_DELAY_SECONDS,
+    )
+
+    return max(
+        ACADEMIC_METADATA_DEFAULT_DELAY_SECONDS,
+        ACADEMIC_METADATA_MIN_DELAY_SECONDS,
+    )
+
+
+def _enqueue_auto_academic_metadata(
+    queue_repo: QueueRepository,
+    doc_id: str,
+    attempt: int = 1,
+    delay_seconds: int = 0,
+) -> str:
+    return queue_repo.enqueue(
+        _AUTO_ACADEMIC_METADATA_JOB_TYPE,
+        {
+            "document_id": doc_id,
+            "attempt": attempt,
+        },
+        delay_seconds=delay_seconds,
+        max_retries=1,
+    )
 
 
 def _register_handler(job_type: str):
@@ -65,10 +108,12 @@ def _register_handler(job_type: str):
 @_register_handler("documents.ingest")
 def _handle_ingest(
     payload: dict,
+    _queue_repo: QueueRepository,
     _metadata_use_case: MetadataExtractionUseCase | None,
     ingest_use_case: IngestionUseCase | None,
     ingestion_repo: IngestionRepository | None,
     _academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+    _academic_metadata_starter: AcademicMetadataDocumentStarter | None = None,
 ) -> None:
     run_id = payload["run_id"]
     force = payload.get("force", False)
@@ -105,12 +150,15 @@ def _handle_ingest(
 @_register_handler("document.extract_metadata")
 def _handle_extract_metadata(
     payload: dict,
+    queue_repo: QueueRepository,
     metadata_use_case: MetadataExtractionUseCase | None,
     _ingest_use_case: IngestionUseCase | None = None,
     _ingestion_repo: IngestionRepository | None = None,
     _academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+    _academic_metadata_starter: AcademicMetadataDocumentStarter | None = None,
 ) -> None:
     doc_id = payload["document_id"]
+    auto_academic_metadata = bool(payload.get("auto_academic_metadata", False))
     log_event(logger, logging.INFO, "metadata_job_started", document_id=doc_id)
 
     try:
@@ -141,6 +189,16 @@ def _handle_extract_metadata(
                     logger, logging.INFO, "metadata_job_no_update", document_id=doc_id
                 )
 
+            if auto_academic_metadata:
+                job_id = _enqueue_auto_academic_metadata(queue_repo, doc_id)
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "auto_academic_metadata_job_enqueued",
+                    document_id=doc_id,
+                    job_id=job_id,
+                )
+
         asyncio.run(_run())
     except Exception as e:
         log_event(
@@ -152,13 +210,120 @@ def _handle_extract_metadata(
         )
 
 
+@_register_handler(_AUTO_ACADEMIC_METADATA_JOB_TYPE)
+def _handle_enqueue_academic_metadata(
+    payload: dict,
+    queue_repo: QueueRepository,
+    _metadata_use_case: MetadataExtractionUseCase | None,
+    _ingest_use_case: IngestionUseCase | None,
+    _ingestion_repo: IngestionRepository | None,
+    _academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+    academic_metadata_starter: AcademicMetadataDocumentStarter | None = None,
+) -> None:
+    doc_id = payload["document_id"]
+    attempt = int(payload.get("attempt", 1))
+    log_event(
+        logger,
+        logging.INFO,
+        "auto_academic_metadata_start_attempted",
+        document_id=doc_id,
+        attempt=attempt,
+    )
+
+    try:
+
+        async def _run():
+            if academic_metadata_starter is None:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "auto_academic_metadata_job_aborted",
+                    reason="academic_metadata_starter_not_available",
+                    document_id=doc_id,
+                )
+                return
+
+            try:
+                run = await academic_metadata_starter.execute(doc_id, force=False)
+            except LookupError as exc:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "auto_academic_metadata_document_missing",
+                    document_id=doc_id,
+                    error=str(exc),
+                )
+                return
+            except ValueError as exc:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "auto_academic_metadata_skipped",
+                    document_id=doc_id,
+                    reason=str(exc),
+                )
+                return
+
+            if run is not None:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "auto_academic_metadata_enqueued",
+                    document_id=doc_id,
+                    run_id=getattr(run, "id", None),
+                    attempt=attempt,
+                )
+                return
+
+            if attempt >= _AUTO_ACADEMIC_METADATA_MAX_ATTEMPTS:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "auto_academic_metadata_retry_exhausted",
+                    document_id=doc_id,
+                    attempt=attempt,
+                )
+                return
+
+            delay_seconds = _auto_academic_metadata_retry_delay_seconds()
+            job_id = _enqueue_auto_academic_metadata(
+                queue_repo,
+                doc_id,
+                attempt=attempt + 1,
+                delay_seconds=delay_seconds,
+            )
+            log_event(
+                logger,
+                logging.INFO,
+                "auto_academic_metadata_rescheduled",
+                document_id=doc_id,
+                job_id=job_id,
+                next_attempt=attempt + 1,
+                delay_seconds=delay_seconds,
+            )
+
+        asyncio.run(_run())
+    except Exception as e:
+        log_event(
+            logger,
+            logging.ERROR,
+            "auto_academic_metadata_job_failed",
+            document_id=doc_id,
+            attempt=attempt,
+            error=str(e),
+        )
+        raise
+
+
 @_register_handler("documents.extract_academic_metadata")
 def _handle_extract_academic_metadata(
     payload: dict,
+    _queue_repo: QueueRepository,
     _metadata_use_case: MetadataExtractionUseCase | None,
     _ingest_use_case: IngestionUseCase | None,
     _ingestion_repo: IngestionRepository | None,
     academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+    _academic_metadata_starter: AcademicMetadataDocumentStarter | None = None,
 ) -> None:
     run_id = payload["run_id"]
     delay_seconds = int(payload.get("delay_seconds", 60))
@@ -218,6 +383,7 @@ def start_job_worker(
     ingest_use_case: IngestionUseCase | None = None,
     ingestion_repo: IngestionRepository | None = None,
     academic_metadata_use_case: AcademicMetadataRunUseCase | None = None,
+    academic_metadata_starter: AcademicMetadataDocumentStarter | None = None,
 ) -> threading.Thread:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -263,10 +429,12 @@ def start_job_worker(
             logger.info("Processing job %s: %s", job["id"], job_type)
             handler(
                 payload,
+                queue_repo,
                 metadata_use_case,
                 ingest_use_case,
                 ingestion_repo,
                 academic_metadata_use_case,
+                academic_metadata_starter,
             )
             _safe_complete(job["id"])
             logger.info("Job completed: %s", job["id"])

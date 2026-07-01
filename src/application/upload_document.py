@@ -19,14 +19,16 @@ class UploadDocument:
         repo: DocumentRepository,
         storage: FileStoragePort,
         config: DocumentStorageConfig,
-        enqueue_metadata: Callable[[str], object] | None = None,
+        enqueue_metadata: Callable[[str, bool], object] | None = None,
         auto_extract_metadata: bool = False,
+        auto_extract_academic_metadata: bool = False,
     ) -> None:
         self._repo = repo
         self._storage = storage
         self._config = config
         self._enqueue_metadata = enqueue_metadata
         self._auto_extract_metadata = auto_extract_metadata
+        self._auto_extract_academic_metadata = auto_extract_academic_metadata
 
     async def execute(
         self,
@@ -75,7 +77,10 @@ class UploadDocument:
         should_extract = file_type == "pdf"
         if self._auto_extract_metadata and should_extract and self._enqueue_metadata:
             try:
-                self._enqueue_metadata(created.id)
+                self._enqueue_metadata(
+                    created.id,
+                    self._auto_extract_academic_metadata,
+                )
             except Exception:
                 logger.warning("metadata_enqueue_failed", exc_info=True)
 

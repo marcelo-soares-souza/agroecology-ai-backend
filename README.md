@@ -374,6 +374,7 @@ See `.env.example` for all variables with comments. Key ones:
 |----------|---------|-------------|
 | `APP_URL` | `http://localhost:5173` | Frontend URL (used in email links) |
 | `AUTO_EXTRACT_METADATA` | `true` | Auto-extract title/authors from PDFs |
+| `AUTO_EXTRACT_ACADEMIC_METADATA` | `true` | Auto-enrich academic metadata after title/authors extraction |
 
 ### Job Worker
 

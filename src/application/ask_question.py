@@ -581,6 +581,10 @@ class AskQuestion:
                 question_profile=question_profile,
             )
 
+        if answer.strip():
+            answer = self._ensure_answer_language(answer, expected_language)
+            cited_source_ids = self._extract_citation_ids(answer)
+
         _normalize_scores(context_chunks)
 
         sources = self._build_source_results(context_chunks, cited_source_ids)
@@ -872,6 +876,79 @@ class AskQuestion:
             question_intent=question_profile.intent,
         )
         return answer, valid_citations
+
+    def _ensure_answer_language(self, answer: str, expected_language: str) -> str:
+        if expected_language == _LANGUAGE_FALLBACK_LABEL:
+            return answer
+
+        detection = self._detect_question_language_details(answer)
+        if (
+            detection.confidence not in {"high", "medium"}
+            or detection.language == expected_language
+        ):
+            return answer
+
+        log_event(
+            logger,
+            logging.WARNING,
+            "rag_answer_language_mismatch",
+            expected_language=expected_language,
+            detected_language=detection.language,
+            detected_confidence=detection.confidence,
+            detected_source=detection.source,
+        )
+
+        repair_prompt = (
+            f"Translate the draft answer into {expected_language}. "
+            "Preserve every citation marker exactly, such as [1] or [2]. "
+            "Do not add, remove, or change factual claims. Return only the "
+            "translated answer.\n\n"
+            f"Draft answer:\n{answer}"
+        )
+        try:
+            repaired = self._llm.complete(
+                self._config.system_prompt,
+                repair_prompt,
+                history=[],
+            ).strip()
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "rag_answer_language_repair_failed",
+                error=exc,
+                expected_language=expected_language,
+                detected_language=detection.language,
+            )
+            return answer
+
+        if not repaired:
+            return answer
+
+        original_citations = self._extract_citation_ids(answer)
+        repaired_citations = self._extract_citation_ids(repaired)
+        if original_citations and not repaired_citations:
+            log_event(
+                logger,
+                logging.WARNING,
+                "rag_answer_language_repair_discarded",
+                reason="citations_not_preserved",
+                expected_language=expected_language,
+                detected_language=detection.language,
+            )
+            return answer
+
+        repaired_detection = self._detect_question_language_details(repaired)
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_answer_language_repaired",
+            expected_language=expected_language,
+            detected_language=detection.language,
+            repaired_language=repaired_detection.language,
+            repaired_confidence=repaired_detection.confidence,
+        )
+        return repaired
 
     def _repair_citations(
         self,

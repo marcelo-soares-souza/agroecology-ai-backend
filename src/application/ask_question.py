@@ -163,6 +163,7 @@ _QUESTION_INTENT_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
 }
 _CITATION_RE = re.compile(r"\[(\d+)\]")
+_CITATION_GROUP_RE = re.compile(r"\[((?:\s*\d+\s*[,;]\s*)+\d+\s*)\]")
 _INSUFFICIENT_EVIDENCE_PATTERNS = (
     re.compile(r"\b(insufficient|not enough|do(?:es)? not provide|cannot determine)\b"),
     re.compile(r"\b(n[aã]o h[aá]|insuficiente|fontes? n[aã]o|contexto n[aã]o)\b"),
@@ -570,9 +571,9 @@ class AskQuestion:
                 answer = retry_answer
                 context_chunks = retry_chunks
 
-        cited_source_ids: list[int] = []
+        cited_context_source_ids: list[int] = []
         if answer.strip():
-            answer, cited_source_ids = self._validate_answer_citations(
+            answer, cited_context_source_ids = self._validate_answer_citations(
                 answer=answer,
                 question=question,
                 context_chunks=context_chunks,
@@ -583,11 +584,14 @@ class AskQuestion:
 
         if answer.strip():
             answer = self._ensure_answer_language(answer, expected_language)
-            cited_source_ids = self._extract_citation_ids(answer)
+            answer, cited_context_source_ids = self._renumber_answer_citations(
+                answer,
+                valid_source_count=len(context_chunks),
+            )
 
         _normalize_scores(context_chunks)
 
-        sources = self._build_source_results(context_chunks, cited_source_ids)
+        sources = self._build_source_results(context_chunks, cited_context_source_ids)
 
         log_event(
             logger,
@@ -641,20 +645,26 @@ class AskQuestion:
     @staticmethod
     def _build_source_results(
         context_chunks: list[RetrievedChunk],
-        cited_source_ids: list[int],
+        cited_context_source_ids: list[int],
     ) -> list[SourceResult]:
         sources: list[SourceResult] = []
+        seen_context_source_ids: set[int] = set()
 
-        for citation_id in cited_source_ids:
-            if citation_id < 1 or citation_id > len(context_chunks):
+        for context_source_id in cited_context_source_ids:
+            if context_source_id in seen_context_source_ids:
                 continue
+            if context_source_id < 1 or context_source_id > len(context_chunks):
+                continue
+            seen_context_source_ids.add(context_source_id)
 
-            chunk = context_chunks[citation_id - 1]
+            public_rank = len(sources) + 1
+            chunk = context_chunks[context_source_id - 1]
             source = chunk.source or "unknown"
             meta = {
                 "source": source,
                 "chunk_index": chunk.chunk_index,
                 "search_type": chunk.search_type,
+                "context_source_id": context_source_id,
             }
             doc_id = chunk.document_id
             if not doc_id:
@@ -682,7 +692,7 @@ class AskQuestion:
                     text=chunk.text[:300],
                     score=chunk.score,
                     score_type=chunk.score_type,
-                    rank=citation_id,
+                    rank=public_rank,
                     metadata=meta,
                 )
             )
@@ -999,7 +1009,8 @@ class AskQuestion:
     @staticmethod
     def _extract_citation_ids(answer: str) -> list[int]:
         citation_ids: list[int] = []
-        for match in _CITATION_RE.finditer(answer):
+        normalized_answer = AskQuestion._expand_grouped_citations(answer)
+        for match in _CITATION_RE.finditer(normalized_answer):
             citation_id = int(match.group(1))
             if citation_id not in citation_ids:
                 citation_ids.append(citation_id)
@@ -1024,10 +1035,55 @@ class AskQuestion:
                 return match.group(0)
             return ""
 
-        cleaned = _CITATION_RE.sub(replacement, answer)
+        cleaned = _CITATION_RE.sub(
+            replacement,
+            AskQuestion._expand_grouped_citations(answer),
+        )
+        return AskQuestion._clean_citation_spacing(cleaned)
+
+    @staticmethod
+    def _expand_grouped_citations(answer: str) -> str:
+        def replacement(match: re.Match[str]) -> str:
+            citation_ids = re.findall(r"\d+", match.group(1))
+            return " ".join(f"[{citation_id}]" for citation_id in citation_ids)
+
+        return _CITATION_GROUP_RE.sub(replacement, answer)
+
+    @staticmethod
+    def _clean_citation_spacing(answer: str) -> str:
+        cleaned = answer
         cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
         cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
         return cleaned.strip()
+
+    @staticmethod
+    def _renumber_answer_citations(
+        answer: str,
+        valid_source_count: int,
+    ) -> tuple[str, list[int]]:
+        context_to_public: dict[int, int] = {}
+        cited_context_source_ids: list[int] = []
+        removed_invalid_citations = False
+
+        def replacement(match: re.Match[str]) -> str:
+            nonlocal removed_invalid_citations
+            context_source_id = int(match.group(1))
+            if context_source_id < 1 or context_source_id > valid_source_count:
+                removed_invalid_citations = True
+                return ""
+
+            public_id = context_to_public.get(context_source_id)
+            if public_id is None:
+                public_id = len(context_to_public) + 1
+                context_to_public[context_source_id] = public_id
+                cited_context_source_ids.append(context_source_id)
+            return f"[{public_id}]"
+
+        expanded_answer = AskQuestion._expand_grouped_citations(answer)
+        renumbered = _CITATION_RE.sub(replacement, expanded_answer)
+        if removed_invalid_citations:
+            renumbered = AskQuestion._clean_citation_spacing(renumbered)
+        return renumbered.strip(), cited_context_source_ids
 
     @staticmethod
     def _declares_insufficient_evidence(answer: str) -> bool:

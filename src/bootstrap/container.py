@@ -790,7 +790,7 @@ class Container:
             f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v4|"
             f"authority=academic_v2|max_bonus=4|priority=direct_bonus|"
             f"diagnostics=authority_rank_v2|"
-            f"prompt=evidence_chat_v2|citations=validated_v1|"
+            f"prompt=evidence_chat_v3|citations=renumbered_v1|"
             f"answer_language_repair=v1"
         )
 

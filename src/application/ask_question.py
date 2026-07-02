@@ -359,6 +359,8 @@ _QUESTION_STOPWORDS = {
     "es",
     "foi",
     "for",
+    "how",
+    "in",
     "is",
     "la",
     "le",
@@ -378,25 +380,40 @@ _QUESTION_STOPWORDS = {
     "they",
     "the",
     "what",
+    "which",
+    "why",
     "with",
 }
 _QUESTION_GENERIC_TERMS = {
     "achados",
+    "best",
     "beneficios",
     "comparacao",
     "compare",
     "conclusoes",
     "diferenca",
+    "difference",
+    "different",
     "efeito",
     "experimento",
+    "farming",
+    "important",
+    "improve",
     "impacto",
+    "makes",
     "metodologia",
     "metodo",
     "paper",
+    "practice",
+    "practices",
     "resultado",
     "resultados",
     "study",
+    "systems",
+    "them",
     "versus",
+    "work",
+    "working",
     "vs",
 }
 _INTENT_GUIDANCE: dict[str, str] = {
@@ -1307,6 +1324,12 @@ class AskQuestion:
             " ",
             normalized_question,
         )
+        cleaned = re.sub(
+            r"\b(how\s+(?:are|is|does|do)|why\s+(?:are|is|does|do)|"
+            r"which\s+(?:are|is|does|do)|what\s+makes)\b",
+            " ",
+            cleaned,
+        )
         concepts: list[str] = []
 
         for canonical, terms in _CONCEPT_SYNONYMS.items():
@@ -1318,6 +1341,7 @@ class AskQuestion:
             cleaned,
         )
         for phrase in phrases:
+            phrase = cls._strip_existing_concept_terms(phrase, concepts)
             words = [
                 word
                 for word in phrase.split()
@@ -1349,6 +1373,25 @@ class AskQuestion:
         return any(
             concept in cls._concept_terms(existing) for existing in existing_concepts
         )
+
+    @classmethod
+    def _strip_existing_concept_terms(
+        cls,
+        phrase: str,
+        existing_concepts: Sequence[str],
+    ) -> str:
+        stripped = phrase
+        for existing in existing_concepts:
+            for term in cls._concept_terms(existing):
+                normalized_term = cls._normalize_for_matching(term)
+                if not normalized_term:
+                    continue
+                stripped = re.sub(
+                    rf"\b{re.escape(normalized_term)}\b",
+                    " ",
+                    stripped,
+                )
+        return re.sub(r"\s+", " ", stripped).strip()
 
     @staticmethod
     def _detect_requested_scope(normalized_question: str) -> str:

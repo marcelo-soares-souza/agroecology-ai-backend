@@ -431,6 +431,8 @@ logger = logging.getLogger("agroecology.rag")
 _ACADEMIC_AUTHORITY_CONTEXT_BONUS_MAX = 4
 _ACADEMIC_AUTHORITY_CITATION_CAP = 500
 _ACADEMIC_AUTHORITY_REFERENCE_CAP = 150
+_MAX_MISSING_CONCEPT_FALLBACKS = 2
+_MISSING_CONCEPT_FALLBACK_TOP_K = 8
 
 
 @dataclass(frozen=True)
@@ -621,15 +623,52 @@ class AskQuestion:
         answer_history: list[ChatMessage] = normalized_history if follow_up else []
         context_started_at = take_perf_snapshot()
         context_chunks = self._select_context_chunks(retrieved, question_profile)
-        self._log_context_authority_scores(context_chunks)
         covered_concepts = self._covered_concepts(question_profile, context_chunks)
-        missing_concept_count = max(
-            0, len(question_profile.concepts) - len(covered_concepts)
+        missing_concepts = self._missing_concepts(question_profile, covered_concepts)
+        initial_missing_concepts = missing_concepts
+        fallback_searched_concepts: tuple[str, ...] = ()
+        fallback_used = False
+        fallback_added_count = 0
+        if missing_concepts:
+            fallback_searched_concepts = missing_concepts[
+                :_MAX_MISSING_CONCEPT_FALLBACKS
+            ]
+            fallback_used, fallback_added_count = (
+                self._backfill_missing_concept_context(
+                    retrieved=retrieved,
+                    missing_concepts=missing_concepts,
+                    search_query=search_query,
+                    document_metadata_map=document_metadata_map,
+                )
+            )
+            if fallback_added_count:
+                context_chunks = self._select_context_chunks(
+                    retrieved,
+                    question_profile,
+                )
+                covered_concepts = self._covered_concepts(
+                    question_profile, context_chunks
+                )
+                missing_concepts = self._missing_concepts(
+                    question_profile, covered_concepts
+                )
+        self._log_context_authority_scores(context_chunks)
+        missing_concept_count = len(missing_concepts)
+        covered_concept_names = self._format_concept_names(covered_concepts)
+        missing_concept_names = self._format_concept_names(missing_concepts)
+        initial_missing_concept_names = self._format_concept_names(
+            initial_missing_concepts
         )
+        requested_concept_names = self._format_concept_names(question_profile.concepts)
+        fallback_concept_names = self._format_concept_names(fallback_searched_concepts)
         log_event(
             logger,
             logging.INFO,
             "rag_context_selected",
+            fallback_added_count=fallback_added_count,
+            fallback_concept_names=fallback_concept_names,
+            fallback_used=fallback_used,
+            initial_missing_concept_names=initial_missing_concept_names,
             retrieved_count=len(retrieved),
             selected_count=len(context_chunks),
             selected_chars=sum(len(chunk.text) for chunk in context_chunks),
@@ -638,7 +677,10 @@ class AskQuestion:
             question_intent=question_profile.intent,
             question_concepts=len(question_profile.concepts),
             covered_concepts=len(covered_concepts),
+            covered_concept_names=covered_concept_names,
             missing_concepts=missing_concept_count,
+            missing_concept_names=missing_concept_names,
+            requested_concept_names=requested_concept_names,
             context_chunk_limit=question_profile.max_context_chunks,
             **perf_fields(context_started_at, "context_select"),
         )
@@ -649,7 +691,14 @@ class AskQuestion:
             question_intent=question_profile.intent,
             question_concepts=len(question_profile.concepts),
             covered_concepts=len(covered_concepts),
+            covered_concept_names=covered_concept_names,
+            fallback_added_count=fallback_added_count,
+            fallback_concept_names=fallback_concept_names,
+            fallback_used=fallback_used,
+            initial_missing_concept_names=initial_missing_concept_names,
             missing_concepts=missing_concept_count,
+            missing_concept_names=missing_concept_names,
+            requested_concept_names=requested_concept_names,
             selected_count=len(context_chunks),
             requested_scope=question_profile.requested_scope,
             follow_up=question_profile.is_follow_up,
@@ -1397,6 +1446,76 @@ class AskQuestion:
         cls._log_context_candidate_rankings(candidates, final_candidates)
         return [candidate.chunk for candidate in final_candidates]
 
+    def _backfill_missing_concept_context(
+        self,
+        retrieved: list[RetrievedChunk],
+        missing_concepts: tuple[str, ...],
+        search_query: str,
+        document_metadata_map: DocumentMetadataMap | None,
+    ) -> tuple[bool, int]:
+        if not missing_concepts:
+            return False, 0
+
+        concepts_to_backfill = missing_concepts[:_MAX_MISSING_CONCEPT_FALLBACKS]
+        started_at = take_perf_snapshot()
+        existing_keys = {
+            self._retrieved_chunk_key(chunk)
+            for chunk in retrieved
+            if chunk.text.strip()
+        }
+        added_count = 0
+        fallback_result_count = 0
+
+        for concept in concepts_to_backfill:
+            fallback_query = self._missing_concept_query(search_query, concept)
+            fallback_results = self._retriever.hybrid_search(
+                fallback_query,
+                top_k=_MISSING_CONCEPT_FALLBACK_TOP_K,
+            )
+            self._apply_document_metadata(fallback_results, document_metadata_map)
+            fallback_result_count += len(fallback_results)
+
+            for chunk in fallback_results:
+                if concept not in self._matching_concepts((concept,), chunk):
+                    continue
+                chunk_key = self._retrieved_chunk_key(chunk)
+                if chunk_key in existing_keys:
+                    continue
+                retrieved.append(chunk)
+                existing_keys.add(chunk_key)
+                added_count += 1
+
+        log_event(
+            logger,
+            logging.INFO,
+            "rag_missing_concept_fallback",
+            attempted_concepts=len(concepts_to_backfill),
+            requested_concept_names=self._format_concept_names(missing_concepts),
+            searched_concept_names=self._format_concept_names(concepts_to_backfill),
+            fallback_result_count=fallback_result_count,
+            fallback_added_count=added_count,
+            retrieved_count=len(retrieved),
+            **perf_fields(started_at, "concept_fallback"),
+        )
+        return True, added_count
+
+    @classmethod
+    def _missing_concept_query(cls, search_query: str, concept: str) -> str:
+        terms = cls._concept_terms(concept)
+        unique_terms: list[str] = []
+        for term in terms:
+            normalized = " ".join(term.split())
+            if normalized and normalized not in unique_terms:
+                unique_terms.append(normalized)
+            if len(unique_terms) >= 6:
+                break
+        concept_terms = " OR ".join(unique_terms)
+        return f"{search_query}\nMissing concept evidence: {concept_terms}"
+
+    @staticmethod
+    def _retrieved_chunk_key(chunk: RetrievedChunk) -> str:
+        return chunk.id or f"{chunk.source}:{chunk.chunk_index}"
+
     @staticmethod
     def _candidate_key(candidate: _ContextCandidate) -> str:
         chunk = candidate.chunk
@@ -1641,6 +1760,18 @@ class AskQuestion:
                 if concept not in covered:
                     covered.append(concept)
         return tuple(covered)
+
+    @staticmethod
+    def _missing_concepts(
+        profile: QuestionProfile,
+        covered_concepts: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        covered = set(covered_concepts)
+        return tuple(concept for concept in profile.concepts if concept not in covered)
+
+    @staticmethod
+    def _format_concept_names(concepts: Sequence[str]) -> str:
+        return "|".join(re.sub(r"\s+", "_", concept.strip()) for concept in concepts)
 
     @staticmethod
     def _section_matches_intent(section_title: str, intent: str) -> bool:

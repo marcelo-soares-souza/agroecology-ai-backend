@@ -787,9 +787,10 @@ class Container:
             f"rag_k={RAG_RETRIEVAL_TOP_K}|rerank_k={RERANK_TOP_K}|"
             f"mmr={MMR_LAMBDA}|ctx={LLM_CONTEXT_MAX_CHUNKS}|"
             f"chunk_chars={CHUNK_MAX_CHARS}|chunk_overlap={CHUNK_OVERLAP_CHARS}|"
-            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v4|"
+            f"llm_chunk_chars={LLM_CHUNK_MAX_CHARS}|selector=adaptive_v5|"
             f"authority=academic_v2|max_bonus=4|priority=direct_bonus|"
-            f"diagnostics=authority_rank_v2|"
+            f"diagnostics=authority_rank_v2,concept_coverage_v1|"
+            f"concept_fallback=missing_concept_v1|"
             f"prompt=evidence_chat_v3|citations=renumbered_v1|"
             f"answer_language_repair=v1"
         )

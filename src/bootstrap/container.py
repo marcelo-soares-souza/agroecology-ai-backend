@@ -1038,6 +1038,7 @@ class Container:
             StartDocumentAcademicMetadataExtraction(
                 doc_repo=self.doc_repo,
                 enqueue_extraction=self.enqueue_academic_metadata_extraction,
+                attempt_repo=self.academic_metadata_attempt_repo,
             )
         )
         self.get_academic_metadata_run_status = GetAcademicMetadataRunStatus(

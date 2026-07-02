@@ -46,6 +46,7 @@ class AcademicMetadataDocumentStarter(Protocol):
         doc_id: str,
         delay_seconds: int | None = None,
         force: bool = False,
+        batch_missing: bool = False,
     ) -> object | None:
         pass
 
@@ -244,7 +245,11 @@ def _handle_enqueue_academic_metadata(
                 return
 
             try:
-                run = await academic_metadata_starter.execute(doc_id, force=False)
+                run = await academic_metadata_starter.execute(
+                    doc_id,
+                    force=False,
+                    batch_missing=True,
+                )
             except LookupError as exc:
                 log_event(
                     logger,

@@ -52,15 +52,43 @@ class QueueRepository(JobQueuePort):
         with self._pool.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
-                    """UPDATE job_queue SET status = 'running', updated_at = NOW()
-                       WHERE id IN (
-                         SELECT id FROM job_queue
-                         WHERE status = 'pending' AND scheduled_at <= NOW()
-                         ORDER BY created_at
-                         LIMIT %s
-                         FOR UPDATE SKIP LOCKED
-                       )
-                       RETURNING *""",
+                    """
+                    WITH selected AS (
+                        SELECT id
+                        FROM job_queue
+                        WHERE status = 'pending' AND scheduled_at <= NOW()
+                        ORDER BY
+                            CASE job_type
+                                WHEN 'documents.extract_academic_metadata' THEN 0
+                                WHEN 'documents.ingest' THEN 1
+                                WHEN 'document.extract_metadata' THEN 2
+                                WHEN 'document.enqueue_academic_metadata' THEN 3
+                                ELSE 10
+                            END,
+                            scheduled_at,
+                            created_at
+                        LIMIT %s
+                        FOR UPDATE SKIP LOCKED
+                    ),
+                    updated AS (
+                        UPDATE job_queue
+                        SET status = 'running', updated_at = NOW()
+                        WHERE id IN (SELECT id FROM selected)
+                        RETURNING *
+                    )
+                    SELECT *
+                    FROM updated
+                    ORDER BY
+                        CASE job_type
+                            WHEN 'documents.extract_academic_metadata' THEN 0
+                            WHEN 'documents.ingest' THEN 1
+                            WHEN 'document.extract_metadata' THEN 2
+                            WHEN 'document.enqueue_academic_metadata' THEN 3
+                            ELSE 10
+                        END,
+                        scheduled_at,
+                        created_at
+                    """,
                     (limit,),
                 )
                 rows = cur.fetchall()

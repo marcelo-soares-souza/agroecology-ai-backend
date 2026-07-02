@@ -179,17 +179,134 @@ _CONCEPT_SYNONYMS: dict[str, tuple[str, ...]] = {
         "agroforestry system",
         "agroforestry systems",
     ),
+    "permaculture": (
+        "permaculture",
+        "permacultural",
+        "permacultura",
+        "permaculture design",
+        "permaculture systems",
+    ),
     "agricultura organica": (
         "agricultura organica",
         "organic agriculture",
         "organic farming",
         "agricultura ecologica",
     ),
+    "agroecology": (
+        "agroecology",
+        "agroecological",
+        "agroecologia",
+        "agroecologico",
+        "agroecologica",
+    ),
+    "agrobiodiversity": (
+        "agrobiodiversity",
+        "agricultural biodiversity",
+        "biodiversity",
+        "biodiversidade",
+        "biodiversidad",
+        "biodiversite",
+    ),
+    "climate adaptation": (
+        "climate adaptation",
+        "climate change adaptation",
+        "climate resilience",
+        "climate mitigation",
+        "adaptacao climatica",
+        "mitigacao climatica",
+    ),
+    "regenerative agriculture": (
+        "regenerative agriculture",
+        "regenerative farming",
+        "agricultura regenerativa",
+        "regeneracao agricola",
+    ),
+    "syntropic agriculture": (
+        "syntropic agriculture",
+        "syntropic farming",
+        "syntropic agroforestry",
+        "agricultura sintropica",
+        "agrofloresta sintropica",
+        "sintropia",
+    ),
+    "soil health": (
+        "soil health",
+        "soil fertility",
+        "soil organic matter",
+        "soil carbon",
+        "saude do solo",
+        "fertilidade do solo",
+        "materia organica do solo",
+        "carbono do solo",
+    ),
+    "water management": (
+        "water management",
+        "water use efficiency",
+        "soil moisture",
+        "watershed",
+        "manejo da agua",
+        "gestao da agua",
+        "umidade do solo",
+        "bacia hidrografica",
+    ),
+    "ecosystem services": (
+        "ecosystem services",
+        "environmental services",
+        "servicos ecossistemicos",
+        "servicos ambientais",
+        "servicios ecosistemicos",
+    ),
+    "traditional knowledge": (
+        "traditional knowledge",
+        "indigenous knowledge",
+        "local knowledge",
+        "traditional ecological knowledge",
+        "conhecimento tradicional",
+        "conhecimento indigena",
+        "conhecimento local",
+    ),
+    "food systems": (
+        "food systems",
+        "sustainable food systems",
+        "sistemas alimentares",
+        "sistemas alimentarios",
+        "food system",
+    ),
     "seguranca alimentar": (
         "seguranca alimentar",
         "soberania alimentar",
         "food security",
         "food sovereignty",
+    ),
+    "nutrition": (
+        "nutrition",
+        "food and nutrition security",
+        "nutritional security",
+        "nutricao",
+        "seguranca alimentar e nutricional",
+    ),
+    "pollinators": (
+        "pollinators",
+        "pollination",
+        "pollinator conservation",
+        "polinizadores",
+        "polinizacao",
+    ),
+    "pest management": (
+        "pest management",
+        "biological control",
+        "integrated pest management",
+        "natural enemies",
+        "manejo de pragas",
+        "controle biologico",
+    ),
+    "carbon sequestration": (
+        "carbon sequestration",
+        "carbon storage",
+        "carbon stock",
+        "sequestro de carbono",
+        "estoque de carbono",
+        "armazenamento de carbono",
     ),
 }
 _INTENT_SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
@@ -224,6 +341,7 @@ _INTENT_SECTION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
 _QUESTION_STOPWORDS = {
     "a",
     "about",
+    "are",
     "as",
     "com",
     "como",
@@ -255,7 +373,9 @@ _QUESTION_STOPWORDS = {
     "qual",
     "quais",
     "que",
+    "same",
     "sao",
+    "they",
     "the",
     "what",
     "with",
@@ -276,6 +396,8 @@ _QUESTION_GENERIC_TERMS = {
     "resultado",
     "resultados",
     "study",
+    "versus",
+    "vs",
 }
 _INTENT_GUIDANCE: dict[str, str] = {
     "definition": (
@@ -1127,8 +1249,8 @@ class AskQuestion:
                 return intent
         return "overview"
 
-    @staticmethod
-    def _extract_question_concepts(normalized_question: str) -> tuple[str, ...]:
+    @classmethod
+    def _extract_question_concepts(cls, normalized_question: str) -> tuple[str, ...]:
         cleaned = re.sub(
             r"\b(o que e|o que sao|what is|what are|que es|qual a diferenca entre|"
             r"qual e a diferenca entre|compare|comparar|defina|definir|em termos de|"
@@ -1160,12 +1282,24 @@ class AskQuestion:
             if not words:
                 continue
             concept = " ".join(words[:5])
-            if concept not in concepts:
+            if concept not in concepts and not cls._is_known_concept_alias(
+                concept, concepts
+            ):
                 concepts.append(concept)
             if len(concepts) >= 5:
                 break
 
         return tuple(concepts)
+
+    @classmethod
+    def _is_known_concept_alias(
+        cls,
+        concept: str,
+        existing_concepts: Sequence[str],
+    ) -> bool:
+        return any(
+            concept in cls._concept_terms(existing) for existing in existing_concepts
+        )
 
     @staticmethod
     def _detect_requested_scope(normalized_question: str) -> str:

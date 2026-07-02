@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -47,7 +48,9 @@ class RetrieverService:
         if not self._bm25_ready or not self._bm25_all_rows:
             self._bm25_all_rows = self._vector_store.get_all_rows()
             self._bm25_texts = [row.text for row in self._bm25_all_rows]
-            self._bm25_port.build_index([t.lower().split() for t in self._bm25_texts])
+            self._bm25_port.build_index(
+                [self._tokenize_bm25(t) for t in self._bm25_texts]
+            )
             self._bm25_ready = True
             logger.info("event=bm25_cache_built chunks=%d", len(self._bm25_texts))
         return self._bm25_all_rows
@@ -202,7 +205,7 @@ class RetrieverService:
         all_rows = self._get_bm25()
         if not all_rows:
             return []
-        scores = self._bm25_port.get_scores(query.lower().split())
+        scores = self._bm25_port.get_scores(self._tokenize_bm25(query))
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         results: list[RetrievedChunk] = []
         for idx, score in indexed:
@@ -216,6 +219,10 @@ class RetrieverService:
             if len(results) >= top_k:
                 break
         return results
+
+    @staticmethod
+    def _tokenize_bm25(text: str) -> list[str]:
+        return re.findall(r"\w+", text.lower())
 
     @staticmethod
     def _rrf_fusion(

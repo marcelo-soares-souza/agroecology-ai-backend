@@ -50,6 +50,7 @@ from src.adapters.rest.schemas import (
     AcademicMetadataExtractBody,
     AcademicMetadataExtractResponse,
     AcademicMetadataRunStatusResponse,
+    ChatMessageRequest,
     DocumentListResponse,
     DocumentRecord,
     DocumentSkipped,
@@ -76,7 +77,12 @@ from src.application.get_document_file import DocumentFileAccessBlockedError
 from src.bootstrap.container import container
 from src.domain.dto.chat_message import ChatMessage
 from src.domain.models.user import User
-from src.shared.config import APP_URL
+from src.shared.config import (
+    APP_URL,
+    LLM_MAX_HISTORY_MESSAGE_CHARS,
+    LLM_MAX_HISTORY_TOTAL_CHARS,
+    LLM_MAX_HISTORY_TURNS,
+)
 from src.shared.logging_utils import (
     configure_logging,
     header_value,
@@ -89,6 +95,33 @@ configure_logging()
 logger = logging.getLogger("agroecology.http")
 
 PUBLICATION_YEAR_MIN = 1985
+
+
+def _normalize_chat_history(history: list[ChatMessageRequest]) -> list[ChatMessage]:
+    recent = history[-(LLM_MAX_HISTORY_TURNS * 2) :]
+    selected: list[ChatMessage] = []
+    total_chars = 0
+
+    for message in reversed(recent):
+        role = message.role.strip()
+        content = message.content.strip()
+        if not role or not content:
+            continue
+
+        trimmed_content = content[:LLM_MAX_HISTORY_MESSAGE_CHARS].strip()
+        if not trimmed_content:
+            continue
+
+        if (
+            selected
+            and total_chars + len(trimmed_content) > LLM_MAX_HISTORY_TOTAL_CHARS
+        ):
+            break
+
+        selected.append(ChatMessage(role=role, content=trimmed_content))
+        total_chars += len(trimmed_content)
+
+    return list(reversed(selected))
 
 
 @asynccontextmanager
@@ -214,10 +247,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     result = await get_ask_task_service().submit(
         question=body.question,
         top_k=body.top_k,
-        history=[
-            ChatMessage(role=message.role, content=message.content)
-            for message in body.history
-        ],
+        history=_normalize_chat_history(body.history),
         locale=body.locale,
     )
     return AskResponse(task_id=result.task_id, status=result.status)

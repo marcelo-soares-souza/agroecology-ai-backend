@@ -49,8 +49,8 @@ class ChatConversationRepository(ABC):
         """Rename an active conversation owned by a user."""
 
     @abstractmethod
-    async def soft_delete(self, conversation_id: str, user_id: str) -> bool:
-        """Mark a conversation as deleted for its owner."""
+    async def delete(self, conversation_id: str, user_id: str) -> bool:
+        """Delete a conversation owned by a user."""
 
     @abstractmethod
     async def append_user_message(

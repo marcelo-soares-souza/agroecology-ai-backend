@@ -156,17 +156,15 @@ class PostgresChatConversationRepository(ChatConversationRepository):
                 row = await cur.fetchone()
                 return self._to_summary(dict(row)) if row else None
 
-    async def soft_delete(self, conversation_id: str, user_id: str) -> bool:
-        now = utcnow()
+    async def delete(self, conversation_id: str, user_id: str) -> bool:
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE chat_conversations
-                    SET status = 'deleted', deleted_at = %s, updated_at = %s
-                    WHERE id = %s AND user_id = %s AND deleted_at IS NULL
+                    DELETE FROM chat_conversations
+                    WHERE id = %s AND user_id = %s
                     """,
-                    (now, now, conversation_id, user_id),
+                    (conversation_id, user_id),
                 )
                 return cur.rowcount > 0
 

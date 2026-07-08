@@ -400,7 +400,7 @@ async def delete_chat_conversation(
     conversation_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    deleted = await get_chat_conversation_repo().soft_delete(
+    deleted = await get_chat_conversation_repo().delete(
         conversation_id,
         current_user.id,
     )

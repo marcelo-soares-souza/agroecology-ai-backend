@@ -354,6 +354,7 @@ See `.env.example` for all variables with comments. Key ones:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CHAT_MAX_CONVERSATIONS_PER_USER` | `10` | Maximum active saved chat conversations per user |
 | `MAX_HISTORY_TURNS` | `10` | Max conversation turns sent to the LLM |
 | `MAX_HISTORY_MESSAGE_CHARS` | `1000` | Per-message character cap in history |
 | `MAX_HISTORY_TOTAL_CHARS` | `4000` | Total character budget for conversation history |

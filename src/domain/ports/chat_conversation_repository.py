@@ -10,6 +10,15 @@ from src.domain.models.chat_conversation import (
 )
 
 
+class ChatConversationLimitError(Exception):
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        super().__init__(
+            f"You can create up to {limit} chat conversations. "
+            "Delete one to start a new chat."
+        )
+
+
 class ChatConversationRepository(ABC):
     @abstractmethod
     async def list_for_user(

@@ -85,6 +85,7 @@ from src.application.get_document_file import DocumentFileAccessBlockedError
 from src.bootstrap.container import container
 from src.domain.dto.chat_message import ChatMessage
 from src.domain.models.user import User
+from src.domain.ports.chat_conversation_repository import ChatConversationLimitError
 from src.shared.config import (
     APP_URL,
     LLM_MAX_HISTORY_MESSAGE_CHARS,
@@ -103,6 +104,14 @@ configure_logging()
 logger = logging.getLogger("agroecology.http")
 
 PUBLICATION_YEAR_MIN = 1985
+
+
+def _conversation_limit_detail(exc: ChatConversationLimitError) -> dict[str, object]:
+    return {
+        "code": "chat_conversation_limit_reached",
+        "message": str(exc),
+        "limit": exc.limit,
+    }
 
 
 def _normalize_chat_history(history: list[ChatMessageRequest]) -> list[ChatMessage]:
@@ -261,6 +270,11 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
             user_id=current_user.id,
             conversation_id=body.conversation_id,
         )
+    except ChatConversationLimitError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=_conversation_limit_detail(exc),
+        ) from exc
     except ValueError as exc:
         detail = str(exc)
         if detail == "Conversation not found":
@@ -329,10 +343,16 @@ async def create_chat_conversation(
     body: ChatConversationCreateRequest,
     current_user: User = Depends(get_current_user),
 ):
-    conversation = await get_chat_conversation_repo().create(
-        current_user.id,
-        body.title or "New chat",
-    )
+    try:
+        conversation = await get_chat_conversation_repo().create(
+            current_user.id,
+            body.title or "New chat",
+        )
+    except ChatConversationLimitError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=_conversation_limit_detail(exc),
+        ) from exc
     return serialize_chat_conversation_summary(conversation)
 
 

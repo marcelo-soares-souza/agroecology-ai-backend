@@ -11,8 +11,11 @@ from src.domain.models.chat_conversation import (
     ChatConversationMessage,
     ChatConversationSummary,
 )
-from src.domain.ports.chat_conversation_repository import ChatConversationRepository
-from src.shared.config import utcnow
+from src.domain.ports.chat_conversation_repository import (
+    ChatConversationLimitError,
+    ChatConversationRepository,
+)
+from src.shared.config import CHAT_MAX_CONVERSATIONS_PER_USER, utcnow
 from src.shared.uuid7 import uuid7
 
 if TYPE_CHECKING:
@@ -102,6 +105,23 @@ class PostgresChatConversationRepository(ChatConversationRepository):
         clean_title = self._normalize_title(title)
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    "SELECT pg_advisory_xact_lock(1701, hashtext(%s))",
+                    (user_id,),
+                )
+                await cur.execute(
+                    """
+                    SELECT COUNT(*)::int AS total
+                    FROM chat_conversations
+                    WHERE user_id = %s AND deleted_at IS NULL
+                    """,
+                    (user_id,),
+                )
+                total_row = await cur.fetchone()
+                total = int(total_row["total"]) if total_row else 0
+                if total >= CHAT_MAX_CONVERSATIONS_PER_USER:
+                    raise ChatConversationLimitError(CHAT_MAX_CONVERSATIONS_PER_USER)
+
                 await cur.execute(
                     """
                     INSERT INTO chat_conversations (

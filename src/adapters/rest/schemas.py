@@ -20,12 +20,16 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=6, ge=1, le=20)
     history: list[ChatMessageRequest] = Field(default_factory=list)
+    conversation_id: str | None = Field(default=None, max_length=80)
     locale: str | None = Field(default=None, max_length=20)
 
 
 class AskResponse(BaseModel):
     task_id: str
     status: str
+    conversation_id: str | None = None
+    user_message_id: str | None = None
+    assistant_message_id: str | None = None
 
 
 class AnswerResponse(BaseModel):
@@ -34,6 +38,53 @@ class AnswerResponse(BaseModel):
     answer: str | None = None
     sources: list[dict] | None = None
     error: str | None = None
+    conversation_id: str | None = None
+    user_message_id: str | None = None
+    assistant_message_id: str | None = None
+
+
+class ChatConversationCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ChatConversationUpdateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class ChatConversationSummaryResponse(BaseModel):
+    id: str
+    title: str
+    status: str
+    message_count: int
+    last_message_preview: str | None = None
+    created_at: str
+    updated_at: str
+    last_message_at: str
+
+
+class ChatConversationMessageResponse(BaseModel):
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    status: str
+    task_id: str | None = None
+    sources: list[dict] | None = None
+    error: str | None = None
+    duration_ms: int | None = None
+    created_at: str
+
+
+class ChatConversationDetailResponse(BaseModel):
+    conversation: ChatConversationSummaryResponse
+    messages: list[ChatConversationMessageResponse]
+
+
+class ChatConversationListResponse(BaseModel):
+    data: list[ChatConversationSummaryResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class HealthResponse(BaseModel):

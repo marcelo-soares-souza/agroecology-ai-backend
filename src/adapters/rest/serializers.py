@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from src.domain.dto.user_dto import UserDTO
 from src.domain.models.document import Document
+from src.domain.models.chat_conversation import (
+    ChatConversationDetail,
+    ChatConversationMessage,
+    ChatConversationSummary,
+)
 from src.domain.models.document_academic_metadata import (
     AcademicMetadataRun,
     DocumentAcademicMetadata,
@@ -11,6 +16,9 @@ from src.domain.models.ingestion_run import IngestionRun
 from src.domain.models.user import User
 from src.adapters.rest.schemas import (
     AcademicMetadataSchema,
+    ChatConversationDetailResponse,
+    ChatConversationMessageResponse,
+    ChatConversationSummaryResponse,
     DocumentRecord,
     PublicUserResponse,
 )
@@ -43,6 +51,47 @@ def serialize_public_user(user: User | UserDTO) -> PublicUserResponse:
         link=user.link,
         avatar_url=user.avatar_url,
         approved_suggestions_count=user.approved_suggestions_count,
+    )
+
+
+def serialize_chat_conversation_summary(
+    conversation: ChatConversationSummary,
+) -> ChatConversationSummaryResponse:
+    return ChatConversationSummaryResponse(
+        id=conversation.id,
+        title=conversation.title,
+        status=conversation.status,
+        message_count=conversation.message_count,
+        last_message_preview=conversation.last_message_preview,
+        created_at=conversation.created_at.isoformat(),
+        updated_at=conversation.updated_at.isoformat(),
+        last_message_at=conversation.last_message_at.isoformat(),
+    )
+
+
+def serialize_chat_message(
+    message: ChatConversationMessage,
+) -> ChatConversationMessageResponse:
+    return ChatConversationMessageResponse(
+        id=message.id,
+        conversation_id=message.conversation_id,
+        role=message.role,
+        content=message.content,
+        status=message.status,
+        task_id=message.task_id,
+        sources=message.sources,
+        error=message.error,
+        duration_ms=message.duration_ms,
+        created_at=message.created_at.isoformat(),
+    )
+
+
+def serialize_chat_conversation_detail(
+    detail: ChatConversationDetail,
+) -> ChatConversationDetailResponse:
+    return ChatConversationDetailResponse(
+        conversation=serialize_chat_conversation_summary(detail.conversation),
+        messages=[serialize_chat_message(message) for message in detail.messages],
     )
 
 

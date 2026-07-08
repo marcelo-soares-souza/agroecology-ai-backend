@@ -62,10 +62,39 @@ class ExportedExternalIdentityData:
 
 
 @dataclass(frozen=True)
+class ExportedChatMessageData:
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    status: str
+    task_id: str | None
+    sources: list[dict] | None
+    error: str | None
+    duration_ms: int | None
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ExportedChatConversationData:
+    id: str
+    title: str
+    status: str
+    message_count: int
+    last_message_preview: str | None
+    created_at: str
+    updated_at: str
+    last_message_at: str
+    deleted_at: str | None
+    messages: list[ExportedChatMessageData]
+
+
+@dataclass(frozen=True)
 class PersonalDataExport:
     user: ExportedUserData
     suggestions: list[ExportedSuggestionData]
     external_identities: list[ExportedExternalIdentityData]
+    chat_conversations: list[ExportedChatConversationData]
 
     def to_dict(self) -> dict:
         return asdict(self)

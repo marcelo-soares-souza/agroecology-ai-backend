@@ -90,3 +90,6 @@ class TaskSubmissionResult:
 
     task_id: str
     status: str
+    conversation_id: str | None = None
+    user_message_id: str | None = None
+    assistant_message_id: str | None = None

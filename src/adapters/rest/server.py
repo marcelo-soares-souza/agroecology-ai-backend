@@ -18,6 +18,7 @@ from src.adapters.rest.dependencies import (
     get_ask_task_service,
     get_avatar_file,
     get_academic_metadata_run_status,
+    get_chat_conversation_repo,
     get_delete_document,
     get_document_details,
     get_document_file,
@@ -50,6 +51,11 @@ from src.adapters.rest.schemas import (
     AcademicMetadataExtractBody,
     AcademicMetadataExtractResponse,
     AcademicMetadataRunStatusResponse,
+    ChatConversationCreateRequest,
+    ChatConversationDetailResponse,
+    ChatConversationListResponse,
+    ChatConversationSummaryResponse,
+    ChatConversationUpdateRequest,
     ChatMessageRequest,
     DocumentListResponse,
     DocumentRecord,
@@ -68,6 +74,8 @@ from src.adapters.rest.schemas import (
 )
 from src.adapters.rest.serializers import (
     serialize_academic_metadata_run,
+    serialize_chat_conversation_detail,
+    serialize_chat_conversation_summary,
     serialize_document,
     serialize_ingestion_run,
 )
@@ -244,13 +252,28 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
     if not index_ready:
         raise HTTPException(status_code=503, detail=message)
 
-    result = await get_ask_task_service().submit(
-        question=body.question,
-        top_k=body.top_k,
-        history=_normalize_chat_history(body.history),
-        locale=body.locale,
+    try:
+        result = await get_ask_task_service().submit(
+            question=body.question,
+            top_k=body.top_k,
+            history=_normalize_chat_history(body.history),
+            locale=body.locale,
+            user_id=current_user.id,
+            conversation_id=body.conversation_id,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Conversation not found":
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+    return AskResponse(
+        task_id=result.task_id,
+        status=result.status,
+        conversation_id=result.conversation_id,
+        user_message_id=result.user_message_id,
+        assistant_message_id=result.assistant_message_id,
     )
-    return AskResponse(task_id=result.task_id, status=result.status)
 
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
@@ -267,7 +290,103 @@ async def answer(task_id: str, current_user: User = Depends(get_current_user)):
         answer=task.answer,
         sources=task.sources,
         error=task.error,
+        conversation_id=task.conversation_id,
+        user_message_id=task.user_message_id,
+        assistant_message_id=task.assistant_message_id,
     )
+
+
+@app.get(
+    "/api/v1/chat/conversations",
+    response_model=ChatConversationListResponse,
+)
+async def list_chat_conversations(
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
+):
+    conversations, total = await get_chat_conversation_repo().list_for_user(
+        current_user.id,
+        limit,
+        offset,
+    )
+    return ChatConversationListResponse(
+        data=[
+            serialize_chat_conversation_summary(conversation)
+            for conversation in conversations
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.post(
+    "/api/v1/chat/conversations",
+    response_model=ChatConversationSummaryResponse,
+)
+async def create_chat_conversation(
+    body: ChatConversationCreateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    conversation = await get_chat_conversation_repo().create(
+        current_user.id,
+        body.title or "New chat",
+    )
+    return serialize_chat_conversation_summary(conversation)
+
+
+@app.get(
+    "/api/v1/chat/conversations/{conversation_id}",
+    response_model=ChatConversationDetailResponse,
+)
+async def get_chat_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    detail = await get_chat_conversation_repo().get_for_user(
+        conversation_id,
+        current_user.id,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return serialize_chat_conversation_detail(detail)
+
+
+@app.patch(
+    "/api/v1/chat/conversations/{conversation_id}",
+    response_model=ChatConversationSummaryResponse,
+)
+async def rename_chat_conversation(
+    conversation_id: str,
+    body: ChatConversationUpdateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    conversation = await get_chat_conversation_repo().rename(
+        conversation_id,
+        current_user.id,
+        body.title,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return serialize_chat_conversation_summary(conversation)
+
+
+@app.delete(
+    "/api/v1/chat/conversations/{conversation_id}",
+    response_model=MessageResponse,
+)
+async def delete_chat_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    deleted = await get_chat_conversation_repo().soft_delete(
+        conversation_id,
+        current_user.id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return MessageResponse(message="Conversation deleted")
 
 
 # ── status ────────────────────────────────────────────────────────────────

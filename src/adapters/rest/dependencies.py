@@ -86,6 +86,7 @@ from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.container import container
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.domain.ports.auth_rate_limiter_port import AuthRateLimiterPort
+from src.domain.ports.chat_conversation_repository import ChatConversationRepository
 
 logger = logging.getLogger("agroecology.bootstrap")
 
@@ -106,6 +107,11 @@ def get_task_status() -> GetTaskStatus:
 def get_ask_task_service() -> AskTaskService:
     assert container.ask_task_service is not None, "ask_task_service not initialized"
     return container.ask_task_service
+
+
+def get_chat_conversation_repo() -> ChatConversationRepository:
+    assert container.chat_repo is not None, "chat_repo not initialized"
+    return container.chat_repo
 
 
 def get_ingestion_task_service() -> IngestionTaskService:

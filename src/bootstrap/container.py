@@ -160,6 +160,9 @@ from src.infrastructure.persistence.postgres_ingestion_repo import (
 from src.infrastructure.persistence.postgres_academic_metadata_run_repo import (
     PostgresAcademicMetadataRunRepository,
 )
+from src.infrastructure.persistence.postgres_chat_conversation_repo import (
+    PostgresChatConversationRepository,
+)
 from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.infrastructure.rate_limit.in_memory_auth_rate_limiter import (
@@ -283,6 +286,7 @@ class Container:
         ) = None
         self.ingestion_repo: PostgresIngestionRepository | None = None
         self.user_repo: PostgresUserRepository | None = None
+        self.chat_repo: PostgresChatConversationRepository | None = None
         self.external_identity_repo: PostgresExternalIdentityRepository | None = None
         self.suggestion_repo: PostgresDocumentSuggestionRepository | None = None
         self.queue: QueueRepository | None = None
@@ -439,6 +443,9 @@ class Container:
             self.user_repo = PostgresUserRepository(self._db_pool)
             await self.user_repo.initialize()
             log_event(logger, logging.INFO, "user_repo_initialized")
+
+            self.chat_repo = PostgresChatConversationRepository(self._db_pool)
+            log_event(logger, logging.INFO, "chat_conversation_repo_initialized")
 
             self.external_identity_repo = PostgresExternalIdentityRepository(
                 self._db_pool
@@ -1145,6 +1152,7 @@ class Container:
             user_repo=self.user_repo,
             suggestion_repo=self.suggestion_repo,
             external_identity_repo=self.external_identity_repo,
+            chat_repo=self.chat_repo,
         )
         self.request_delete_account = RequestDeleteAccount(
             user_repo=self.user_repo,
@@ -1158,6 +1166,7 @@ class Container:
             storage=self.file_storage,
             avatar_config=avatar_storage_config,
             suggestion_config=suggestion_storage_config,
+            chat_repo=self.chat_repo,
         )
         self.validate_session = ValidateSession(
             token_service=token_service, user_repo=self.user_repo
@@ -1265,6 +1274,7 @@ class Container:
             task_manager=self.task_manager,
             cache=self.cache,
             manage_documents=self.manage_docs,
+            chat_repo=self.chat_repo,
         )
         self.ingestion_task_service = IngestionTaskService(
             ingestion_repo=self.ingestion_repo,

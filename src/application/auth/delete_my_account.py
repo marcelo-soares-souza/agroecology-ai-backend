@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from src.application.config import AvatarStorageConfig, SuggestionStorageConfig
 from src.domain.ports.auth_services_port import EmailPort, PasswordHasherPort
+from src.domain.ports.chat_conversation_repository import ChatConversationRepository
 from src.domain.ports.document_suggestion_repository import DocumentSuggestionRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.user_repository import UserRepository
@@ -59,6 +60,7 @@ class ConfirmDeleteAccount:
         storage: FileStoragePort,
         avatar_config: AvatarStorageConfig,
         suggestion_config: SuggestionStorageConfig,
+        chat_repo: ChatConversationRepository | None = None,
     ) -> None:
         self._user_repo = user_repo
         self._password_hasher = password_hasher
@@ -66,6 +68,7 @@ class ConfirmDeleteAccount:
         self._storage = storage
         self._avatar_config = avatar_config
         self._suggestion_config = suggestion_config
+        self._chat_repo = chat_repo
 
     async def execute(self, token: str) -> None:
         token_hash = self._password_hasher.hash_token(token)
@@ -91,6 +94,8 @@ class ConfirmDeleteAccount:
                 pass
 
         await self._delete_pending_suggestion_files(user_id)
+        if self._chat_repo is not None:
+            await self._chat_repo.delete_for_user(user_id)
         await self._user_repo.anonymize_user(user_id)
         await self._user_repo.mark_confirmation_done(confirmation.id)
 

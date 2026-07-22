@@ -12,7 +12,7 @@ class PdfTextExtractorPort(ABC):
 
     @abstractmethod
     def extract_first_pages_text(
-        self, content: bytes, max_pages: int = 3
+        self, content: bytes, max_pages: int = 5
     ) -> str | None:
         """Extract text from the first pages of a PDF.
 

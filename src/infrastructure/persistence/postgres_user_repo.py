@@ -122,7 +122,9 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute(
                     self._base_select_query(
                         "WHERE u.status = 'active' "
-                        "ORDER BY u.last_login_at DESC NULLS LAST"
+                        "ORDER BY approved_suggestions_count DESC, "
+                        "u.last_login_at DESC NULLS LAST, "
+                        "u.updated_at DESC"
                     )
                 )
                 rows = await cur.fetchall()
@@ -151,7 +153,9 @@ class PostgresUserRepository(UserRepository):
                 await cur.execute(
                     self._base_select_query(
                         f"{where_clause} "
-                        "ORDER BY u.updated_at DESC, u.full_name ASC "
+                        "ORDER BY approved_suggestions_count DESC, "
+                        "u.last_login_at DESC NULLS LAST, "
+                        "u.updated_at DESC "
                         "LIMIT %s OFFSET %s"
                     ),
                     [*params, limit, offset],

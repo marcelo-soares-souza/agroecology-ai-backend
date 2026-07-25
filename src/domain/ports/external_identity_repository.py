@@ -23,7 +23,7 @@ class ExternalIdentityRepository(ABC):
         user_id: str,
         provider: str,
         external_user_id: str,
-        external_email: str,
+        external_email: str | None,
         external_slug: str | None,
     ) -> ExternalIdentity:
         pass

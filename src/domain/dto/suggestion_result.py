@@ -17,3 +17,21 @@ class ApprovalResult:
 
     suggestion: DocumentSuggestion
     document: Document
+
+
+@dataclass(frozen=True)
+class ApprovalFailure:
+    """Failure produced while approving suggestions in bulk."""
+
+    suggestion_id: str
+    error: str
+
+
+@dataclass(frozen=True)
+class BulkApprovalResult:
+    """Result of approving all pending document suggestions."""
+
+    total_pending: int
+    approved_count: int
+    failed_count: int
+    failures: list[ApprovalFailure]

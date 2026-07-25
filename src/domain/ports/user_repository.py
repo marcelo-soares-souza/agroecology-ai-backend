@@ -18,24 +18,26 @@ class UserRepository(ABC):
         self,
         email: str,
         full_name: str,
-        password_hash: str,
+        password_hash: str | None,
         slug: str,
         locale: str,
         role_key: str,
         privacy_policy_accepted: bool = False,
         tos_accepted: bool = False,
+        primary_auth_provider: str = "local",
     ) -> User:
         """Create a new user account.
 
         Args:
             email: The user's email address.
             full_name: The user's full name.
-            password_hash: The hashed password.
+            password_hash: The hashed password, or None for external-only accounts.
             slug: The URL-friendly identifier for the user.
             locale: The user's preferred locale.
             role_key: The initial role to assign.
             privacy_policy_accepted: Whether the privacy policy was accepted.
             tos_accepted: Whether the terms of service were accepted.
+            primary_auth_provider: The primary provider used to create the account.
 
         Returns:
             The newly created user.

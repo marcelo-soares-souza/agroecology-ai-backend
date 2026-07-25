@@ -91,6 +91,14 @@ class DocumentSuggestionRepository(ABC):
         """
 
     @abstractmethod
+    async def list_pending_ids(self) -> list[str]:
+        """List all pending suggestion IDs.
+
+        Returns:
+            Suggestion IDs ordered by creation time.
+        """
+
+    @abstractmethod
     async def update(
         self, suggestion_id: str, data: DocumentSuggestionUpdate
     ) -> DocumentSuggestion | None:

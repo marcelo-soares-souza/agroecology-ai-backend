@@ -318,6 +318,32 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class AuthProvidersResponse(BaseModel):
+    orcid_enabled: bool
+
+
+class OrcidExchangeRequest(BaseModel):
+    auth_code: str = Field(..., min_length=1, max_length=200)
+
+
+class OrcidCompleteEmailRequest(BaseModel):
+    completion_token: str = Field(..., min_length=1, max_length=200)
+    email: str = Field(..., min_length=1, max_length=320)
+    full_name: str = Field(..., min_length=1, max_length=200)
+    locale: str = Field(default="pt-BR", max_length=20)
+    privacy_policy_accepted: bool = Field(..., description="Must be True")
+    tos_accepted: bool = Field(..., description="Must be True")
+
+
+class OrcidConfirmLinkRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=200)
+
+
+class OrcidCompletionResponse(BaseModel):
+    status: str
+    message: str
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -405,6 +431,18 @@ class DocumentSuggestionResponse(BaseModel):
     reviewed_at: str | None = None
     created_at: str
     updated_at: str
+
+
+class AdminBulkSuggestionFailureResponse(BaseModel):
+    suggestion_id: str
+    error: str
+
+
+class AdminBulkApproveSuggestionsResponse(BaseModel):
+    total_pending: int
+    approved_count: int
+    failed_count: int
+    failures: list[AdminBulkSuggestionFailureResponse]
 
 
 class DocumentSuggestionUpdateBody(BaseModel):

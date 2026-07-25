@@ -29,12 +29,13 @@ class PostgresUserRepository(UserRepository):
         self,
         email: str,
         full_name: str,
-        password_hash: str,
+        password_hash: str | None,
         slug: str,
         locale: str,
         role_key: str,
         privacy_policy_accepted: bool = False,
         tos_accepted: bool = False,
+        primary_auth_provider: str = "local",
     ) -> User:
         user_id = uuid7()
         now = utcnow()
@@ -48,10 +49,11 @@ class PostgresUserRepository(UserRepository):
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
                     """INSERT INTO users (id, email, full_name, password_hash, slug, locale, status,
+                              primary_auth_provider,
                               privacy_policy_accepted, privacy_policy_accepted_at,
                               privacy_policy_version, tos_accepted, tos_accepted_at,
                               tos_version, created_at, updated_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                     (
                         user_id,
                         email,
@@ -60,6 +62,7 @@ class PostgresUserRepository(UserRepository):
                         slug,
                         locale,
                         "pending",
+                        primary_auth_provider,
                         privacy_policy_accepted,
                         now if privacy_policy_accepted else None,
                         PRIVACY_POLICY_VERSION if privacy_policy_accepted else None,
@@ -172,6 +175,13 @@ class PostgresUserRepository(UserRepository):
                 "about",
                 "link",
                 "avatar_path",
+                "primary_auth_provider",
+                "privacy_policy_accepted",
+                "privacy_policy_accepted_at",
+                "privacy_policy_version",
+                "tos_accepted",
+                "tos_accepted_at",
+                "tos_version",
             ):
                 sets.append(f"{key} = %s")
                 params.append(value)
@@ -540,4 +550,5 @@ class PostgresUserRepository(UserRepository):
             deleted_at=row.get("deleted_at"),
             erased_at=row.get("erased_at"),
             erasure_status=row.get("erasure_status", "none"),
+            primary_auth_provider=row.get("primary_auth_provider"),
         )

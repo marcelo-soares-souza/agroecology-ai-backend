@@ -103,3 +103,10 @@ class SmtpEmailService(EmailPort):
         return await smtp_service.send_delete_account_confirmation_email(
             to_email, token, locale
         )
+
+    async def send_orcid_link_confirmation(
+        self, to_email: str, token: str, locale: str = "pt-BR"
+    ) -> bool:
+        return await smtp_service.send_orcid_link_confirmation_email(
+            to_email, token, locale
+        )

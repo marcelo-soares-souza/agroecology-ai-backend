@@ -62,6 +62,7 @@ class ProvisionExternalUser:
             role_key=role_key,
             privacy_policy_accepted=False,
             tos_accepted=False,
+            primary_auth_provider=self._provider,
         )
         if remote_identity.is_confirmed:
             await self._user_repo.confirm_email(user.id)

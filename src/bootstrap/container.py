@@ -34,6 +34,8 @@ from src.application.auth.get_user_by_slug import GetUserBySlug
 from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
+from src.application.auth.issue_auth_tokens import IssueAuthTokens
+from src.application.auth.orcid_auth import OrcidAuthService
 from src.application.auth.provision_external_user import ProvisionExternalUser
 from src.application.auth.refresh_token import RefreshToken
 from src.application.auth.register_user import RegisterUser
@@ -77,6 +79,9 @@ from src.application.start_document_academic_metadata_extraction import (
 )
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
+)
+from src.application.suggestions.admin_approve_all_pending_document_suggestions import (
+    AdminApproveAllPendingDocumentSuggestions,
 )
 from src.application.suggestions.admin_delete_document_suggestion import (
     AdminDeleteDocumentSuggestion,
@@ -133,6 +138,7 @@ from src.infrastructure.cache.valkey_cache import ValkeyCache
 from src.infrastructure.identity.agroecology_identity_client import (
     AgroecologyIdentityClient,
 )
+from src.infrastructure.identity.orcid_oauth_client import OrcidOAuthClient
 from src.infrastructure.jobs.worker import start_job_worker
 from src.infrastructure.academic_metadata.crossref_provider import CrossrefProvider
 from src.infrastructure.academic_metadata.openalex_provider import OpenAlexProvider
@@ -154,6 +160,9 @@ from src.infrastructure.persistence.postgres_document_suggestion_repo import (
 from src.infrastructure.persistence.postgres_external_identity_repo import (
     PostgresExternalIdentityRepository,
 )
+from src.infrastructure.persistence.postgres_external_login_completion_repo import (
+    PostgresExternalLoginCompletionRepository,
+)
 from src.infrastructure.persistence.postgres_ingestion_repo import (
     PostgresIngestionRepository,
 )
@@ -164,6 +173,9 @@ from src.infrastructure.persistence.postgres_chat_conversation_repo import (
     PostgresChatConversationRepository,
 )
 from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
+from src.infrastructure.persistence.postgres_oauth_state_repo import (
+    PostgresOAuthStateRepository,
+)
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.infrastructure.rate_limit.in_memory_auth_rate_limiter import (
     InMemoryAuthRateLimiter,
@@ -207,6 +219,14 @@ from src.shared.config import (
     IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED,
     IDENTITY_SERVER_ENABLED,
     IDENTITY_SERVER_URL,
+    ORCID_AUTHORIZE_URL,
+    ORCID_CLIENT_ID,
+    ORCID_CLIENT_SECRET,
+    ORCID_COMPLETION_TTL_MINUTES,
+    ORCID_ENABLED,
+    ORCID_REDIRECT_URI,
+    ORCID_TOKEN_URL,
+    ORCID_USERINFO_URL,
     FILE_EXTENSIONS,
     FILE_TYPE_TO_EXT,
     MMR_LAMBDA,
@@ -288,6 +308,10 @@ class Container:
         self.user_repo: PostgresUserRepository | None = None
         self.chat_repo: PostgresChatConversationRepository | None = None
         self.external_identity_repo: PostgresExternalIdentityRepository | None = None
+        self.oauth_state_repo: PostgresOAuthStateRepository | None = None
+        self.external_login_completion_repo: (
+            PostgresExternalLoginCompletionRepository | None
+        ) = None
         self.suggestion_repo: PostgresDocumentSuggestionRepository | None = None
         self.queue: QueueRepository | None = None
         self.task_manager: TaskManager | None = None
@@ -340,6 +364,7 @@ class Container:
         self.get_human_challenge: GetHumanChallenge | None = None
         self.register_user: RegisterUser | None = None
         self.login_user: LoginUser | None = None
+        self.orcid_auth_service: OrcidAuthService | None = None
         self.refresh_token: RefreshToken | None = None
         self.logout_user: LogoutUser | None = None
         self.confirm_email: ConfirmEmail | None = None
@@ -371,6 +396,9 @@ class Container:
         )
         self.admin_approve_document_suggestion: (
             AdminApproveDocumentSuggestion | None
+        ) = None
+        self.admin_approve_all_pending_document_suggestions: (
+            AdminApproveAllPendingDocumentSuggestions | None
         ) = None
         self.admin_delete_document_suggestion: AdminDeleteDocumentSuggestion | None = (
             None
@@ -451,6 +479,18 @@ class Container:
                 self._db_pool
             )
             log_event(logger, logging.INFO, "external_identity_repo_initialized")
+
+            self.oauth_state_repo = PostgresOAuthStateRepository(self._db_pool)
+            log_event(logger, logging.INFO, "oauth_state_repo_initialized")
+
+            self.external_login_completion_repo = (
+                PostgresExternalLoginCompletionRepository(self._db_pool)
+            )
+            log_event(
+                logger,
+                logging.INFO,
+                "external_login_completion_repo_initialized",
+            )
 
             self.suggestion_repo = PostgresDocumentSuggestionRepository(self._db_pool)
             await self.suggestion_repo.initialize()
@@ -624,6 +664,10 @@ class Container:
             "academic_metadata_run_repo",
             "ingestion_repo",
             "user_repo",
+            "chat_repo",
+            "external_identity_repo",
+            "oauth_state_repo",
+            "external_login_completion_repo",
             "suggestion_repo",
             "queue",
             "task_manager",
@@ -665,10 +709,12 @@ class Container:
             "admin_update_document_suggestion",
             "admin_reject_document_suggestion",
             "admin_approve_document_suggestion",
+            "admin_approve_all_pending_document_suggestions",
             "admin_delete_document_suggestion",
             "get_human_challenge",
             "register_user",
             "login_user",
+            "orcid_auth_service",
             "refresh_token",
             "logout_user",
             "confirm_email",
@@ -1069,6 +1115,12 @@ class Container:
         token_service = JwtTokenService()
         human_check = JwtHumanCheck()
         email_service = SmtpEmailService()
+        token_issuer = IssueAuthTokens(
+            repo=self.user_repo,
+            password_hasher=password_hasher,
+            token_service=token_service,
+            config=auth_config,
+        )
         identity_client = (
             AgroecologyIdentityClient(IDENTITY_SERVER_URL)
             if IDENTITY_SERVER_ENABLED
@@ -1108,10 +1160,41 @@ class Container:
         self.login_user = LoginUser(
             repo=self.user_repo,
             password_hasher=password_hasher,
-            token_service=token_service,
-            config=auth_config,
+            token_issuer=token_issuer,
             identity_client=identity_client,
             provision_external_user=provision_external_user,
+        )
+        assert self.oauth_state_repo is not None
+        assert self.external_login_completion_repo is not None
+        assert self.external_identity_repo is not None
+        orcid_client = (
+            OrcidOAuthClient(
+                client_id=ORCID_CLIENT_ID,
+                client_secret=ORCID_CLIENT_SECRET,
+                redirect_uri=ORCID_REDIRECT_URI,
+                token_url=ORCID_TOKEN_URL,
+                userinfo_url=ORCID_USERINFO_URL,
+            )
+            if ORCID_ENABLED
+            and ORCID_CLIENT_ID
+            and ORCID_CLIENT_SECRET
+            and ORCID_REDIRECT_URI
+            else None
+        )
+        self.orcid_auth_service = OrcidAuthService(
+            enabled=ORCID_ENABLED,
+            client_id=ORCID_CLIENT_ID,
+            redirect_uri=ORCID_REDIRECT_URI,
+            authorize_url=ORCID_AUTHORIZE_URL,
+            completion_ttl_minutes=ORCID_COMPLETION_TTL_MINUTES,
+            oauth_state_repo=self.oauth_state_repo,
+            completion_repo=self.external_login_completion_repo,
+            external_identity_repo=self.external_identity_repo,
+            user_repo=self.user_repo,
+            password_hasher=password_hasher,
+            email_service=email_service,
+            token_issuer=token_issuer,
+            orcid_client=orcid_client,
         )
         self.refresh_token = RefreshToken(
             repo=self.user_repo,
@@ -1238,6 +1321,12 @@ class Container:
             enqueue_metadata=self.enqueue_document_metadata.execute,
             auto_extract_metadata=AUTO_EXTRACT_METADATA,
             auto_extract_academic_metadata=AUTO_EXTRACT_ACADEMIC_METADATA,
+        )
+        self.admin_approve_all_pending_document_suggestions = (
+            AdminApproveAllPendingDocumentSuggestions(
+                suggestion_repo=self.suggestion_repo,
+                approve_suggestion=self.admin_approve_document_suggestion,
+            )
         )
         self.list_public_suggestions = ListPublicSuggestions(
             suggestion_repo=self.suggestion_repo,

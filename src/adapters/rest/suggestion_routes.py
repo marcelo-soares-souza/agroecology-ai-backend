@@ -10,6 +10,7 @@ from src.adapters.rest.auth_middleware import (
     require_role,
 )
 from src.adapters.rest.dependencies import (
+    get_admin_approve_all_pending_document_suggestions,
     get_admin_approve_document_suggestion,
     get_admin_delete_document_suggestion,
     get_admin_list_document_suggestions,
@@ -25,6 +26,8 @@ from src.adapters.rest.dependencies import (
     get_update_document_suggestion,
 )
 from src.adapters.rest.schemas import (
+    AdminBulkApproveSuggestionsResponse,
+    AdminBulkSuggestionFailureResponse,
     AdminDocumentSuggestionDecisionBody,
     AdminDocumentSuggestionUpdateBody,
     DocumentSuggestionResponse,
@@ -241,6 +244,36 @@ async def admin_list_suggestions(
         raise _error(e)
 
     return [serialize_document_suggestion(s) for s in results]
+
+
+@admin_router.post(
+    "/approve-pending", response_model=AdminBulkApproveSuggestionsResponse
+)
+async def admin_approve_pending_suggestions(
+    current_user: User = Depends(require_role("admin")),
+):
+    log_event(
+        logger,
+        logging.INFO,
+        "admin_action",
+        action="approve_all_pending_suggestions",
+        admin_id=current_user.id,
+    )
+    result = await get_admin_approve_all_pending_document_suggestions().execute(
+        reviewed_by=current_user.id,
+    )
+    return AdminBulkApproveSuggestionsResponse(
+        total_pending=result.total_pending,
+        approved_count=result.approved_count,
+        failed_count=result.failed_count,
+        failures=[
+            AdminBulkSuggestionFailureResponse(
+                suggestion_id=failure.suggestion_id,
+                error=failure.error,
+            )
+            for failure in result.failures
+        ],
+    )
 
 
 @admin_router.get("/{suggestion_id}", response_model=DocumentSuggestionResponse)

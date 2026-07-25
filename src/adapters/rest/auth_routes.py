@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from starlette.responses import RedirectResponse
 
 from src.adapters.rest.auth_middleware import get_current_user
 from src.adapters.rest.dependencies import get_confirm_email, get_confirm_password_reset
@@ -18,6 +19,7 @@ from src.adapters.rest.dependencies import (
 from src.adapters.rest.dependencies import (
     get_login_user,
     get_logout_user,
+    get_orcid_auth_service,
     get_refresh_token,
     get_register_user,
     get_request_delete_account,
@@ -36,8 +38,13 @@ from src.adapters.rest.schemas import (
     ConfirmEmailRequest,
     DeleteAccountConfirmRequest,
     ExportDataResponse,
+    AuthProvidersResponse,
     LoginRequest,
     MessageResponse,
+    OrcidCompleteEmailRequest,
+    OrcidCompletionResponse,
+    OrcidConfirmLinkRequest,
+    OrcidExchangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     PublicUserResponse,
@@ -97,6 +104,103 @@ async def human_challenge(request: Request, locale: str = "pt-BR"):
         locale=locale,
     )
     return get_human_challenge_use_case().execute(locale)
+
+
+@router.get("/providers", response_model=AuthProvidersResponse)
+async def auth_providers():
+    status = get_orcid_auth_service().provider_status()
+    return AuthProvidersResponse(orcid_enabled=status.enabled)
+
+
+@router.get("/orcid/start")
+async def orcid_start(return_to: str | None = Query(default=None)):
+    try:
+        url = await get_orcid_auth_service().start(return_to=return_to)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(url)
+
+
+@router.get("/orcid/callback")
+async def orcid_callback(code: str, state: str, request: Request):
+    try:
+        result = await get_orcid_auth_service().handle_callback(code, state)
+    except ValueError as e:
+        if "ORCID sign-in" in str(e):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "password_login_unavailable",
+                    "message": str(e),
+                },
+            )
+        log_event(
+            logger,
+            logging.WARNING,
+            "orcid_callback_failed",
+            reason=str(e),
+            ip=_client_ip(request),
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(result.redirect_url)
+
+
+@router.post("/orcid/exchange", response_model=TokenResponse)
+async def orcid_exchange(body: OrcidExchangeRequest, request: Request):
+    try:
+        result = await get_orcid_auth_service().exchange_auth_code(body.auth_code)
+    except ValueError as e:
+        log_event(
+            logger,
+            logging.WARNING,
+            "orcid_exchange_failed",
+            reason=str(e),
+            ip=_client_ip(request),
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    return TokenResponse(
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
+    )
+
+
+@router.post("/orcid/complete-email", response_model=OrcidCompletionResponse)
+async def orcid_complete_email(body: OrcidCompleteEmailRequest, request: Request):
+    try:
+        result = await get_orcid_auth_service().complete_email(
+            completion_token=body.completion_token,
+            email=body.email,
+            full_name=body.full_name,
+            locale=body.locale,
+            privacy_policy_accepted=body.privacy_policy_accepted,
+            tos_accepted=body.tos_accepted,
+        )
+    except ValueError as e:
+        log_event(
+            logger,
+            logging.WARNING,
+            "orcid_complete_email_failed",
+            reason=str(e),
+            ip=_client_ip(request),
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    return OrcidCompletionResponse(status=result.status, message=result.message)
+
+
+@router.post("/orcid/confirm-link", response_model=OrcidCompletionResponse)
+async def orcid_confirm_link(body: OrcidConfirmLinkRequest, request: Request):
+    try:
+        result = await get_orcid_auth_service().confirm_link(body.token)
+    except ValueError as e:
+        log_event(
+            logger,
+            logging.WARNING,
+            "orcid_confirm_link_failed",
+            reason=str(e),
+            ip=_client_ip(request),
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    return OrcidCompletionResponse(status=result.status, message=result.message)
 
 
 @router.post("/register", response_model=MessageResponse)
@@ -227,6 +331,21 @@ async def login(body: LoginRequest, request: Request):
             email=body.email, password=body.password
         )
     except ValueError as e:
+        if "ORCID sign-in" in str(e):
+            log_event(
+                logger,
+                logging.WARNING,
+                "login_failed",
+                reason="password_login_unavailable",
+                ip=_client_ip(request),
+            )
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "password_login_unavailable",
+                    "message": str(e),
+                },
+            )
         log_event(
             logger,
             logging.WARNING,

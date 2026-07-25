@@ -26,6 +26,14 @@ class RequestPasswordReset:
         user = await self._repo.get_by_email(email)
         if not user:
             raise ValueError("Email not found")
+        if user.password_hash is None:
+            log_event(
+                logger,
+                logging.INFO,
+                "password_reset_skipped_external_only_account",
+                email=mask_email(user.email),
+            )
+            return MessageResult(message="Password reset email sent")
 
         token = self._password_hasher.generate_token()
         token_hash = self._password_hasher.hash_token(token)

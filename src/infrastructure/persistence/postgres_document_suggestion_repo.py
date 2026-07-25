@@ -180,6 +180,20 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 rows = await cur.fetchall()
                 return [self._to_domain(dict(r)) for r in rows]
 
+    async def list_pending_ids(self) -> list[str]:
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT id
+                    FROM document_suggestions
+                    WHERE status = 'pending'
+                    ORDER BY created_at ASC
+                    """
+                )
+                rows = await cur.fetchall()
+                return [row[0] for row in rows]
+
     async def update(
         self, suggestion_id: str, data: DocumentSuggestionUpdate
     ) -> DocumentSuggestion | None:

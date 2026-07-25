@@ -269,3 +269,32 @@ async def send_delete_account_confirmation_email(
 <p><small>Agroecology Map AI — Free Software (GPLv3)</small></p>"""
 
     return await send_email(to_email, subject, body)
+
+
+async def send_orcid_link_confirmation_email(
+    to_email: str, token: str, locale: str = "pt-BR"
+) -> bool:
+    from src.shared.config import APP_URL
+
+    link = f"{APP_URL}/auth/orcid/confirm-link?token={token}"
+
+    if locale.startswith("pt"):
+        subject = "Confirme o vinculo com ORCID"
+        body = f"""<h2>Vincular ORCID</h2>
+<p>Recebemos uma solicitação para vincular uma conta ORCID ao seu perfil no Agroecology Map AI.</p>
+<p>Clique no link abaixo para confirmar o vinculo:</p>
+<p><a href="{link}">{link}</a></p>
+<p>Este link expira em breve. Se voce nao solicitou isso, ignore este email.</p>
+<hr>
+<p><small>Agroecology Map AI - Free Software (GPLv3)</small></p>"""
+    else:
+        subject = "Confirm ORCID account linking"
+        body = f"""<h2>Link ORCID</h2>
+<p>We received a request to link an ORCID account to your Agroecology Map AI profile.</p>
+<p>Click the link below to confirm the link:</p>
+<p><a href="{link}">{link}</a></p>
+<p>This link expires soon. If you did not request this, ignore this email.</p>
+<hr>
+<p><small>Agroecology Map AI - Free Software (GPLv3)</small></p>"""
+
+    return await send_email(to_email, subject, body)

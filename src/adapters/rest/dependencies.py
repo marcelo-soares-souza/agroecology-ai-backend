@@ -19,6 +19,7 @@ from src.application.auth.get_user_by_slug import GetUserBySlug
 from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
+from src.application.auth.orcid_auth import OrcidAuthService
 from src.application.auth.refresh_token import RefreshToken
 from src.application.auth.register_user import RegisterUser
 from src.application.auth.request_password_reset import RequestPasswordReset
@@ -48,6 +49,9 @@ from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
 from src.application.suggestions.admin_approve_document_suggestion import (
     AdminApproveDocumentSuggestion,
+)
+from src.application.suggestions.admin_approve_all_pending_document_suggestions import (
+    AdminApproveAllPendingDocumentSuggestions as AdminApproveAllPending,
 )
 from src.application.suggestions.admin_delete_document_suggestion import (
     AdminDeleteDocumentSuggestion,
@@ -142,6 +146,11 @@ def get_auth_rate_limiter() -> AuthRateLimiterPort:
 def get_login_user() -> LoginUser:
     assert container.login_user is not None
     return container.login_user
+
+
+def get_orcid_auth_service() -> OrcidAuthService:
+    assert container.orcid_auth_service is not None
+    return container.orcid_auth_service
 
 
 def get_refresh_token() -> RefreshToken:
@@ -371,6 +380,11 @@ def get_admin_reject_document_suggestion() -> AdminRejectDocumentSuggestion:
 def get_admin_approve_document_suggestion() -> AdminApproveDocumentSuggestion:
     assert container.admin_approve_document_suggestion is not None
     return container.admin_approve_document_suggestion
+
+
+def get_admin_approve_all_pending_document_suggestions() -> AdminApproveAllPending:
+    assert container.admin_approve_all_pending_document_suggestions is not None
+    return container.admin_approve_all_pending_document_suggestions
 
 
 def get_admin_delete_document_suggestion() -> AdminDeleteDocumentSuggestion:

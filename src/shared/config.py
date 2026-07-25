@@ -84,6 +84,30 @@ IDENTITY_SERVER_ENABLED = bool(IDENTITY_SERVER_URL)
 IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED = os.getenv(
     "IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED", "false"
 ).lower() in ("1", "true", "yes")
+ORCID_ENABLED = os.getenv("ORCID_ENABLED", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+ORCID_ENV = os.getenv("ORCID_ENV", "sandbox").strip().lower()
+_ORCID_BASE_URL = (
+    "https://orcid.org"
+    if ORCID_ENV == "production"
+    else "https://sandbox.orcid.org"
+)
+ORCID_CLIENT_ID = os.getenv("ORCID_CLIENT_ID", "").strip()
+ORCID_CLIENT_SECRET = os.getenv("ORCID_CLIENT_SECRET", "").strip()
+ORCID_REDIRECT_URI = os.getenv("ORCID_REDIRECT_URI", "").strip()
+ORCID_AUTHORIZE_URL = os.getenv(
+    "ORCID_AUTHORIZE_URL", f"{_ORCID_BASE_URL}/oauth/authorize"
+).strip()
+ORCID_TOKEN_URL = os.getenv(
+    "ORCID_TOKEN_URL", f"{_ORCID_BASE_URL}/oauth/token"
+).strip()
+ORCID_USERINFO_URL = os.getenv(
+    "ORCID_USERINFO_URL", f"{_ORCID_BASE_URL}/oauth/userinfo"
+).strip()
+ORCID_COMPLETION_TTL_MINUTES = int(os.getenv("ORCID_COMPLETION_TTL_MINUTES", "30"))
 PRIVACY_POLICY_VERSION = os.getenv("PRIVACY_POLICY_VERSION", "2026-06-25")
 TOS_VERSION = os.getenv("TOS_VERSION", "2026-06-25")
 TRUSTED_PROXY_HOSTS = tuple(

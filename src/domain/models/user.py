@@ -33,7 +33,7 @@ class User:
     status: str
     slug: str
     locale: str
-    password_hash: str
+    password_hash: str | None
     created_at: datetime
     updated_at: datetime
     email_confirmed_at: datetime | None = None
@@ -52,3 +52,4 @@ class User:
     deleted_at: datetime | None = None
     erased_at: datetime | None = None
     erasure_status: str = "none"
+    primary_auth_provider: str | None = None

@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from src.domain.models.document import Document
 from src.domain.ports.document_loader_port import DocumentLoaderPort, DocumentSource
 from src.domain.ports.document_parser_port import DocumentParserPort
+from src.domain.ports.ocr_port import OcrPort
 from src.infrastructure.parsers.markdown_parser import MarkdownDocumentParser
 from src.infrastructure.parsers.pymupdf_parser import PyMuPdfDocumentParser
 from src.infrastructure.parsers.text_parser import TextDocumentParser
@@ -15,9 +16,11 @@ logger = logging.getLogger("agroecology.ingestion")
 
 
 class LocalDocumentLoader(DocumentLoaderPort):
-    def __init__(self, file_type_to_ext: Mapping[str, str]) -> None:
+    def __init__(
+        self, file_type_to_ext: Mapping[str, str], ocr: OcrPort | None = None
+    ) -> None:
         self._file_type_to_ext = file_type_to_ext
-        self._pdf_parser = PyMuPdfDocumentParser()
+        self._pdf_parser = PyMuPdfDocumentParser(ocr=ocr)
         self._md_parser = MarkdownDocumentParser()
         self._txt_parser = TextDocumentParser()
 

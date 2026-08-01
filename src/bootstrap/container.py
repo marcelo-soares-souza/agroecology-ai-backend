@@ -143,6 +143,7 @@ from src.infrastructure.jobs.worker import start_job_worker
 from src.infrastructure.academic_metadata.crossref_provider import CrossrefProvider
 from src.infrastructure.academic_metadata.openalex_provider import OpenAlexProvider
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
+from src.infrastructure.ocr.rapid_ocr import RapidOcrService
 from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
 from src.infrastructure.persistence.lancedb_vector_store import LanceDBVectorStore
 from src.infrastructure.persistence.postgres_document_repo import (
@@ -977,8 +978,10 @@ class Container:
             config=document_storage_config,
         )
 
+        ocr_service = RapidOcrService()
         loader = LocalDocumentLoader(
-            file_type_to_ext=document_storage_config.file_type_to_ext
+            file_type_to_ext=document_storage_config.file_type_to_ext,
+            ocr=ocr_service,
         )
         self.ingest = IngestDocuments(
             vector_store=self.vector_store,
@@ -1044,7 +1047,7 @@ class Container:
         self.extract_document_metadata = ExtractDocumentMetadata(
             repo=self.doc_repo,
             storage=self.file_storage,
-            pdf_text_extractor=PyMuPdfTextExtractor(),
+            pdf_text_extractor=PyMuPdfTextExtractor(ocr=ocr_service),
             metadata_extractor=self.extract_metadata,
             config=document_storage_config,
         )

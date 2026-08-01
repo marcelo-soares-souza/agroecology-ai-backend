@@ -132,6 +132,10 @@ SMTP_FROM = os.getenv("SMTP_FROM", "noreply@agroecologymap.org")
 
 APP_URL = os.getenv("APP_URL", "http://localhost:5173")
 
+OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() in ("true", "1", "yes")
+OCR_DPI = int(os.getenv("OCR_DPI", "200"))
+OCR_MAX_WORKERS = int(os.getenv("OCR_MAX_WORKERS", "0"))
+
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
 CHUNK_MAX_CHARS = int(os.getenv("CHUNK_MAX_CHARS", "1200"))

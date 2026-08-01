@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from src.domain.models.parsed_document import BlockType, ParsedBlock, ParsedDocument
 from src.domain.ports.document_parser_port import DocumentParserPort
+from src.domain.ports.ocr_port import OcrPort
+from src.shared.config import OCR_DPI
 from src.shared.logging_utils import log_event
 
 logger = logging.getLogger("agroecology.parsers")
@@ -64,7 +67,7 @@ _ACADEMIC_SECTIONS = {
 }
 
 _HEADING_PATTERNS = [
-    re.compile(r"^\s*(\d+(?:\.\d+)*)\s+(.+)", re.IGNORECASE),
+    re.compile(r"^\s*(\d+(?:\.\d+)*)[.\s]+(.+)", re.IGNORECASE),
     re.compile(r"^\s*([IVXLCDM]+)\.\s+(.+)", re.IGNORECASE),
 ]
 
@@ -95,7 +98,7 @@ def _is_heading(text: str, font_size: float, base_size: float, is_bold: bool) ->
 
 def _detect_section(text: str) -> str | None:
     clean = _clean_text(text).lower().rstrip(".")
-    clean = re.sub(r"^\d+(?:\.\d+)*\s+", "", clean)
+    clean = re.sub(r"^\d+(?:\.\d+)*[.\s]+", "", clean)
     clean = re.sub(r"^[ivxlcdm]+\.\s+", "", clean)
     if clean in _ACADEMIC_SECTIONS:
         return text.strip()
@@ -128,8 +131,9 @@ def _classify_block(
             return _ACADEMIC_SECTIONS.get(section_lower, BlockType.SECTION_HEADING)
         return BlockType.SECTION_HEADING
 
-    if _ACADEMIC_SECTIONS.get(clean) == BlockType.ABSTRACT:
-        return BlockType.ABSTRACT
+    section_kind = _ACADEMIC_SECTIONS.get(clean)
+    if section_kind is not None and len(clean) <= 60:
+        return section_kind
 
     if _FIGURE_START_RE.match(clean):
         return BlockType.FIGURE_CAPTION
@@ -160,7 +164,13 @@ def _extract_meta(text: str) -> dict:
     return result
 
 
+_OCR_BLOCK_FONT_SIZE = 12.0
+
+
 class PyMuPdfDocumentParser(DocumentParserPort):
+    def __init__(self, ocr: OcrPort | None = None) -> None:
+        self._ocr = ocr
+
     def parse(self, content: bytes, document_id: str, source: str) -> ParsedDocument:
         import fitz
 
@@ -172,9 +182,10 @@ class PyMuPdfDocumentParser(DocumentParserPort):
 
         pdf = fitz.open(stream=content, filetype="pdf")
         doc.total_pages = len(pdf)
-        raw_blocks: list[tuple[int, float, float, bool, tuple, str]] = []
+        raw_blocks: list[tuple[int, float, float, bool, tuple, str, bool]] = []
         page_header_texts: dict[str, list[str]] = {}
         page_footer_texts: dict[str, list[str]] = {}
+        pages_with_text: set[int] = set()
 
         try:
             for page_num in range(len(pdf)):
@@ -203,6 +214,8 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                     if not block_text or len(block_text) < 2:
                         continue
 
+                    pages_with_text.add(page_num)
+
                     avg_font = sum(fonts) / len(fonts) if fonts else page_base_font
                     is_bold = (
                         bold_count / total_spans > 0.5 if total_spans > 0 else False
@@ -222,8 +235,19 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                             )
 
                     raw_blocks.append(
-                        (page_num, avg_font, page_base_font, is_bold, bbox, block_text)
+                        (
+                            page_num,
+                            avg_font,
+                            page_base_font,
+                            is_bold,
+                            bbox,
+                            block_text,
+                            False,
+                        )
                     )
+
+            ocr_blocks = self._ocr_missing_pages(pdf, pages_with_text)
+            raw_blocks.extend(ocr_blocks)
 
             # Identify recurring headers/footers to filter out
             recurring = self._find_recurring(page_header_texts, page_footer_texts)
@@ -239,8 +263,9 @@ class PyMuPdfDocumentParser(DocumentParserPort):
                 is_bold,
                 bbox,
                 text,
+                is_ocr,
             ) in enumerate(raw_blocks):
-                if self._is_recurring(text, recurring):
+                if not is_ocr and self._is_recurring(text, recurring):
                     continue
 
                 block_type = _classify_block(
@@ -320,6 +345,47 @@ class PyMuPdfDocumentParser(DocumentParserPort):
             title=doc.title or "(none)",
         )
         return doc
+
+    def _ocr_missing_pages(
+        self, pdf: Any, pages_with_text: set[int]
+    ) -> list[tuple[int, float, float, bool, tuple, str, bool]]:
+        """Run OCR on pages without a text layer and synthesize blocks.
+
+        OCR blocks carry no font metadata, so they use the default base
+        font size; classification still recognizes section headings and
+        abstracts via keyword/pattern heuristics.
+        """
+        if self._ocr is None or len(pages_with_text) >= len(pdf):
+            return []
+
+        missing_pages = [p for p in range(len(pdf)) if p not in pages_with_text]
+        images: list[bytes] = []
+        for page_num in missing_pages:
+            pix = pdf[page_num].get_pixmap(dpi=OCR_DPI)
+            images.append(pix.tobytes("png"))
+
+        ocr_texts = self._ocr.ocr_images(images)
+
+        blocks: list[tuple[int, float, float, bool, tuple, str, bool]] = []
+        for page_num, page_text in zip(missing_pages, ocr_texts):
+            if not page_text:
+                continue
+            for line in page_text.splitlines():
+                line = _clean_text(line)
+                if not line or len(line) < 2:
+                    continue
+                blocks.append(
+                    (
+                        page_num,
+                        _OCR_BLOCK_FONT_SIZE,
+                        _OCR_BLOCK_FONT_SIZE,
+                        False,
+                        (0, 0, 0, 0),
+                        line,
+                        True,
+                    )
+                )
+        return blocks
 
     @staticmethod
     def _compute_base_font_size(blocks: list[dict]) -> float:

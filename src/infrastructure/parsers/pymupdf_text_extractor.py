@@ -25,7 +25,9 @@ class PyMuPdfTextExtractor(PdfTextExtractorPort):
                     page_texts.append((i, text))
 
             if len(page_texts) < pages and self._ocr is not None:
-                missing = [i for i in range(pages) if i not in {p for p, _ in page_texts}]
+                missing = [
+                    i for i in range(pages) if i not in {p for p, _ in page_texts}
+                ]
                 images = [
                     pdf_doc[i].get_pixmap(dpi=OCR_DPI).tobytes("png") for i in missing
                 ]
@@ -39,6 +41,19 @@ class PyMuPdfTextExtractor(PdfTextExtractorPort):
             return "\n".join(texts) if texts else None
         except Exception:
             return None
+        finally:
+            if pdf_doc is not None:
+                pdf_doc.close()
+
+    def extract_pdf_metadata(self, content: bytes) -> dict[str, str]:
+        import fitz
+
+        pdf_doc = None
+        try:
+            pdf_doc = fitz.open(stream=content, filetype="pdf")
+            return {k: str(v or "") for k, v in dict(pdf_doc.metadata).items()}
+        except Exception:
+            return {}
         finally:
             if pdf_doc is not None:
                 pdf_doc.close()

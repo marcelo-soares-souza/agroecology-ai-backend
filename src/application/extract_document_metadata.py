@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from src.application.config import DocumentStorageConfig
 from src.application.extract_metadata import ExtractMetadata
 from src.domain.dto.document_result import MetadataExtractionResult
@@ -7,6 +9,11 @@ from src.domain.models.document import DocumentUpdate
 from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.file_storage_port import FileStoragePort
 from src.domain.ports.pdf_text_extractor_port import PdfTextExtractorPort
+from src.shared.logging_utils import log_event
+
+logger = logging.getLogger("agroecology.metadata")
+
+_UNKNOWN_AUTHORS = "Unknown"
 
 
 class ExtractDocumentMetadata:
@@ -37,13 +44,34 @@ class ExtractDocumentMetadata:
             return None
 
         content = await self._storage.read(doc.directory, doc.id, ext)
-        first_page_text = self._pdf_text_extractor.extract_first_pages_text(content)
-        if not first_page_text:
-            return None
 
-        result = self._metadata_extractor.execute(first_page_text)
-        ext_title = result.title.strip()
-        ext_authors = result.authors.strip()
+        first_page_text = self._pdf_text_extractor.extract_first_pages_text(content)
+        result = None
+        if first_page_text:
+            result = self._metadata_extractor.execute(first_page_text)
+
+        ext_title = result.title.strip() if result else ""
+        ext_authors = result.authors.strip() if result else ""
+
+        if not ext_authors:
+            pdf_metadata = self._pdf_text_extractor.extract_pdf_metadata(content)
+            ext_authors = (pdf_metadata.get("author") or "").strip()
+            if ext_authors:
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "metadata_authors_pdf_metadata_used",
+                    document_id=doc_id,
+                )
+
+        if not ext_authors:
+            ext_authors = _UNKNOWN_AUTHORS
+            log_event(
+                logger,
+                logging.INFO,
+                "metadata_authors_defaulted_unknown",
+                document_id=doc_id,
+            )
 
         if not ext_title and not ext_authors:
             return None

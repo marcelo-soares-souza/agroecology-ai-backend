@@ -23,3 +23,15 @@ class PdfTextExtractorPort(ABC):
         Returns:
             The extracted text, or None if extraction fails.
         """
+
+    @abstractmethod
+    def extract_pdf_metadata(self, content: bytes) -> dict[str, str]:
+        """Extract embedded PDF file metadata.
+
+        Args:
+            content: The raw PDF file bytes.
+
+        Returns:
+            A mapping of metadata keys (e.g. "author", "title") to values,
+            or an empty dict when the PDF cannot be read or has no metadata.
+        """

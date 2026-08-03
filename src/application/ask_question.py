@@ -776,6 +776,7 @@ class AskQuestion:
                 answer,
                 valid_source_count=len(context_chunks),
             )
+            answer = self._repair_collapsed_markdown_tables(answer)
 
         _normalize_scores(context_chunks)
 
@@ -1243,6 +1244,64 @@ class AskQuestion:
         cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
         cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
         return cleaned.strip()
+
+    @staticmethod
+    def _repair_collapsed_markdown_tables(answer: str) -> str:
+        def parse_row(fragment: str) -> list[str]:
+            row = fragment.strip()
+            if row.startswith("|"):
+                row = row[1:]
+            if row.endswith("|"):
+                row = row[:-1]
+            return [cell.strip() for cell in row.split("|")]
+
+        def normalize_delimiter(cell: str) -> str:
+            if re.fullmatch(r":?-{3,}:?", cell):
+                return cell
+            if cell.startswith(":") and cell.endswith(":") and len(cell) > 1:
+                return ":---:"
+            if cell.startswith(":"):
+                return ":---"
+            if cell.endswith(":"):
+                return "---:"
+            return "---"
+
+        repaired_lines: list[str] = []
+        for line in answer.splitlines():
+            stripped = line.strip()
+            if (
+                not stripped.startswith("|")
+                or not stripped.endswith("|")
+                or not re.search(r"\|\s+\|", stripped)
+            ):
+                repaired_lines.append(line)
+                continue
+
+            fragments = re.split(r"\|\s+\|", stripped)
+            if len(fragments) < 3:
+                repaired_lines.append(line)
+                continue
+
+            header = parse_row(fragments[0])
+            delimiter = parse_row(fragments[1])
+            data_rows = [parse_row(fragment) for fragment in fragments[2:]]
+            delimiter_is_table = (
+                len(header) >= 2
+                and len(delimiter) == len(header)
+                and all(cell and re.fullmatch(r":?-*:?", cell) for cell in delimiter)
+                and any(re.fullmatch(r":?-{3,}:?", cell) for cell in delimiter)
+                and all(len(row) == len(header) for row in data_rows)
+            )
+            if not delimiter_is_table:
+                repaired_lines.append(line)
+                continue
+
+            delimiter = [normalize_delimiter(cell) for cell in delimiter]
+            indent = line[: len(line) - len(line.lstrip())]
+            rows = [header, delimiter, *data_rows]
+            repaired_lines.extend(f"{indent}| {' | '.join(row)} |" for row in rows)
+
+        return "\n".join(repaired_lines)
 
     @staticmethod
     def _renumber_answer_citations(

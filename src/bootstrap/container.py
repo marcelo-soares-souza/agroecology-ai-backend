@@ -845,8 +845,8 @@ class Container:
             f"authority=academic_v2|max_bonus=4|priority=direct_bonus|"
             f"diagnostics=authority_rank_v2,concept_coverage_v2|"
             f"concept_fallback=missing_concept_v1|"
-            f"prompt=evidence_chat_v3|citations=renumbered_v1|"
-            f"answer_language_repair=v1"
+            f"prompt=evidence_chat_v4|citations=renumbered_v1|"
+            f"answer_language_repair=v1|markdown_table_repair=v1"
         )
 
         self.cache.configure(

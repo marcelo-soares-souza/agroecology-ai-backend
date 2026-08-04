@@ -114,6 +114,7 @@ from src.application.suggestions.update_document_suggestion import (
 from src.application.upload_document import UploadDocument
 from src.application.update_document_metadata import UpdateDocumentMetadata
 from src.bootstrap.ask_task_service import AskTaskService
+from src.bootstrap.bm25_prewarm_service import BM25PrewarmService
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.bootstrap.task_manager import TaskManager
 from src.domain.services.retriever import RetrieverService
@@ -323,6 +324,7 @@ class Container:
         # Use cases / services
         self.ingest: IngestDocuments | None = None
         self.retriever: RetrieverService | None = None
+        self.bm25_prewarmer: BM25PrewarmService | None = None
         self.ask_question: AskQuestion | None = None
         self.manage_docs: ManageDocuments | None = None
         self.get_status: GetStatus | None = None
@@ -508,6 +510,7 @@ class Container:
             self._create_use_cases()
             if self.retriever is not None:
                 self.retriever.prewarm_bm25()
+                self.bm25_prewarmer = BM25PrewarmService(self.retriever)
             self._initialized = True
             log_event(logger, logging.INFO, "container_init_completed")
         except Exception:
@@ -566,6 +569,11 @@ class Container:
                 self._job_worker_stop = None
                 self._job_worker_thread = None
                 log_event(logger, logging.INFO, "job_worker_stopped")
+
+            if self.bm25_prewarmer is not None:
+                self.bm25_prewarmer.shutdown()
+                self.bm25_prewarmer = None
+                log_event(logger, logging.INFO, "bm25_prewarmer_stopped")
 
             if self.task_manager is not None:
                 self.task_manager.shutdown()
@@ -677,6 +685,7 @@ class Container:
             "web_scraper",
             "ingest",
             "retriever",
+            "bm25_prewarmer",
             "ask_question",
             "manage_docs",
             "get_status",
@@ -965,7 +974,7 @@ class Container:
         self.retriever = RetrieverService(
             vector_store=self.vector_store,
             embedder=self.embedder,
-            bm25=BM25Impl(),
+            bm25_factory=BM25Impl,
             reranker=self.reranker,
             bm25_top_k=BM25_TOP_K,
             hybrid_top_k=HYBRID_TOP_K,
@@ -1000,6 +1009,7 @@ class Container:
             cache=self.cache,
             ingestion_repo=self.ingestion_repo,
             doc_repo=self.doc_repo,
+            retriever=self.retriever,
             llm_provider=self.llm_provider,
             llm_transport=self.llm_transport,
             index_metadata=self.index_metadata,
@@ -1377,9 +1387,20 @@ class Container:
         assert self.queue is not None, "queue not initialized"
         return self.queue
 
-    def _on_ingestion_complete(self) -> None:
-        if self.retriever is not None:
-            self.retriever.invalidate_bm25_cache()
+    def _on_ingestion_complete(self, chunks_indexed: int, force: bool) -> None:
+        bm25_generation = None
+        index_changed = chunks_indexed > 0 or force
+        if index_changed and self.bm25_prewarmer is not None:
+            bm25_generation = self.bm25_prewarmer.request()
+        elif index_changed and self.retriever is not None:
+            bm25_generation = self.retriever.invalidate_bm25_cache()
+        else:
+            log_event(
+                logger,
+                logging.INFO,
+                "bm25_prewarm_skipped",
+                reason="index_unchanged",
+            )
         new_version = (
             self.index_metadata.read_index_version()
             if self.index_metadata is not None
@@ -1392,6 +1413,9 @@ class Container:
             logging.INFO,
             "ingestion_callback_cache_updated",
             index_version=new_version,
+            bm25_generation=bm25_generation,
+            chunks_indexed=chunks_indexed,
+            force=force,
         )
 
 

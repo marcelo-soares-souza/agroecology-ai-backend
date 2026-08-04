@@ -81,6 +81,11 @@ class StatusResult:
     embedding_device: str
     similarity_top_k: int
     bm25_top_k: int
+    bm25_status: str
+    bm25_chunks: int
+    bm25_generation: int
+    bm25_last_prewarm_ms: float | None
+    bm25_error: str | None
     hybrid_top_k: int
     reranker_enabled: bool
     reranker_model: str | None

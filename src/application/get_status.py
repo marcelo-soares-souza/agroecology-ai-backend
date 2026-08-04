@@ -8,6 +8,7 @@ from src.domain.ports.document_repository import DocumentRepository
 from src.domain.ports.index_metadata_port import IndexMetadataPort
 from src.domain.ports.ingestion_repository import IngestionRepository
 from src.domain.ports.vector_store_port import VectorStorePort
+from src.domain.services.retriever import RetrieverService
 
 
 class GetStatus:
@@ -18,6 +19,7 @@ class GetStatus:
         cache: CachePort,
         ingestion_repo: IngestionRepository,
         doc_repo: DocumentRepository,
+        retriever: RetrieverService,
         llm_provider: str,
         llm_transport: str,
         index_metadata: IndexMetadataPort,
@@ -28,6 +30,7 @@ class GetStatus:
         self._cache = cache
         self._ingestion_repo = ingestion_repo
         self._doc_repo = doc_repo
+        self._retriever = retriever
         self._llm_provider = llm_provider
         self._llm_transport = llm_transport
         self._index_metadata = index_metadata
@@ -73,6 +76,7 @@ class GetStatus:
             self._index_metadata.check_schema_version()
         )
         index_ready = self._vector_store.index_exists()
+        bm25_status = self._retriever.get_bm25_status()
 
         return StatusResult(
             index_ready=index_ready and schema_ok,
@@ -98,6 +102,11 @@ class GetStatus:
             embedding_device=self._config.embedding_device,
             similarity_top_k=self._config.similarity_top_k,
             bm25_top_k=self._config.bm25_top_k,
+            bm25_status=bm25_status.state,
+            bm25_chunks=bm25_status.chunks,
+            bm25_generation=bm25_status.generation,
+            bm25_last_prewarm_ms=bm25_status.last_prewarm_ms,
+            bm25_error=bm25_status.error,
             hybrid_top_k=self._config.hybrid_top_k,
             reranker_enabled=bool(self._config.reranker_model),
             reranker_model=self._config.reranker_model or None,

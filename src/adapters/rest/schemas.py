@@ -126,6 +126,11 @@ class StatusResponse(BaseModel):
     embedding_device: str
     similarity_top_k: int
     bm25_top_k: int
+    bm25_status: str = "cold"
+    bm25_chunks: int = 0
+    bm25_generation: int = 0
+    bm25_last_prewarm_ms: float | None = None
+    bm25_error: str | None = None
     hybrid_top_k: int
     reranker_enabled: bool
     reranker_model: str | None = None

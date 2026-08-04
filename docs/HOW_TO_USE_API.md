@@ -213,7 +213,12 @@ curl http://localhost:8000/api/v1/status
   "active_tasks": 0,
   "cache_enabled": true,
   "cache_hits": 3,
-  "pending_docs": 0
+  "pending_docs": 0,
+  "bm25_status": "ready",
+  "bm25_chunks": 180395,
+  "bm25_generation": 2,
+  "bm25_last_prewarm_ms": 68241.37,
+  "bm25_error": null
 }
 ```
 
@@ -221,11 +226,16 @@ curl http://localhost:8000/api/v1/status
 |---|---|---|
 | `index_ready` | boolean | Índice LanceDB disponível |
 | `ingest_status` | string | Estado da ingestão: `"idle"`, `"processing"`, `"done"`, ou `"error"` |
-| `chunks_indexed` | integer | Total de chunks na última ingestão concluída |
+| `chunks_indexed` | integer | Total atual de chunks no LanceDB |
 | `active_tasks` | integer | Tarefas de query em processamento |
 | `cache_enabled` | boolean | Cache Valkey/Redis ativo |
 | `cache_hits` | integer | Total de cache hits desde o startup |
 | `pending_docs` | integer | Documentos ainda não indexados |
+| `bm25_status` | string | Estado do índice lexical: `cold`, `warming`, `ready` ou `error` |
+| `bm25_chunks` | integer | Chunks disponíveis no snapshot BM25 atual |
+| `bm25_generation` | integer | Geração interna usada para descartar prewarms obsoletos |
+| `bm25_last_prewarm_ms` | number \| null | Duração do último prewarm BM25 concluído |
+| `bm25_error` | string \| null | Erro do prewarm atual, quando houver |
 
 ---
 

@@ -50,15 +50,15 @@ class IngestDocuments:
         self.chunks_indexed: int = 0
         self.error: str | None = None
         self.current_run_id: str | None = None
-        self._on_complete_callbacks: list = []
+        self._on_complete_callbacks: list[Callable[[int, bool], None]] = []
 
-    def register_on_complete(self, callback) -> None:
+    def register_on_complete(self, callback: Callable[[int, bool], None]) -> None:
         self._on_complete_callbacks.append(callback)
 
-    def _notify_complete(self) -> None:
+    def _notify_complete(self, chunks_indexed: int, force: bool) -> None:
         for cb in self._on_complete_callbacks:
             try:
-                cb()
+                cb(chunks_indexed, force)
             except Exception as e:
                 logger.warning("ingestion_callback_failed error=%s", e)
 
@@ -93,7 +93,7 @@ class IngestDocuments:
             self.status = "done"
             self.chunks_indexed = count
             self.error = None
-            self._notify_complete()
+            self._notify_complete(count, force)
             duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             log_event(
                 logger,

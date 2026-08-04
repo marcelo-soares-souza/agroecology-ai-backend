@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from src.domain.dto.retrieval_result import RetrievedChunk
@@ -12,6 +15,22 @@ from src.domain.ports.reranker_port import RerankerPort
 from src.domain.ports.vector_store_port import VectorStorePort
 
 logger = logging.getLogger("agroecology.retrieval")
+
+
+@dataclass(frozen=True)
+class BM25RuntimeStatus:
+    state: str
+    chunks: int
+    generation: int
+    last_prewarm_ms: float | None
+    error: str | None
+
+
+@dataclass(frozen=True)
+class _BM25Snapshot:
+    port: BM25Port
+    rows: list[RetrievedChunk]
+    generation: int
 
 
 class RetrieverService:
@@ -26,7 +45,7 @@ class RetrieverService:
         self,
         vector_store: VectorStorePort,
         embedder: EmbeddingPort,
-        bm25: BM25Port,
+        bm25_factory: Callable[[], BM25Port],
         reranker: RerankerPort | None = None,
         bm25_top_k: int = 5,
         hybrid_top_k: int = 10,
@@ -35,37 +54,101 @@ class RetrieverService:
     ) -> None:
         self._vector_store = vector_store
         self._embedder = embedder
-        self._bm25_port = bm25
+        self._bm25_factory = bm25_factory
         self._reranker = reranker
-        self._bm25_all_rows: list[RetrievedChunk] = []
-        self._bm25_ready = False
+        self._bm25_lock = threading.Lock()
+        self._bm25_snapshot: _BM25Snapshot | None = None
+        self._bm25_state = "cold"
+        self._bm25_generation = 0
+        self._bm25_last_prewarm_ms: float | None = None
+        self._bm25_error: str | None = None
         self._bm25_top_k = bm25_top_k
         self._hybrid_top_k = hybrid_top_k
         self._mmr_lambda = mmr_lambda
         self._similarity_top_k = similarity_top_k
 
-    def _get_bm25(self) -> list[RetrievedChunk]:
-        if not self._bm25_ready or not self._bm25_all_rows:
-            self._bm25_all_rows = self._vector_store.get_all_rows()
-            self._bm25_texts = [row.text for row in self._bm25_all_rows]
-            self._bm25_port.build_index(
-                [self._tokenize_bm25(t) for t in self._bm25_texts]
+    def prewarm_bm25(self, generation: int | None = None) -> bool:
+        with self._bm25_lock:
+            target_generation = (
+                self._bm25_generation if generation is None else generation
             )
-            self._bm25_ready = True
-            logger.info("event=bm25_cache_built chunks=%d", len(self._bm25_texts))
-        return self._bm25_all_rows
+            if target_generation != self._bm25_generation:
+                return False
+            self._bm25_state = "warming"
+            self._bm25_error = None
 
-    def prewarm_bm25(self) -> None:
         started_at = time.perf_counter()
-        self._get_bm25()
-        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        logger.info("event=bm25_cache_prewarmed duration_ms=%s", duration_ms)
+        logger.info(
+            "event=bm25_prewarm_started generation=%d",
+            target_generation,
+        )
+        try:
+            rows = self._vector_store.get_all_rows()
+            bm25_port = self._bm25_factory()
+            bm25_port.build_index([self._tokenize_bm25(row.text) for row in rows])
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            snapshot = _BM25Snapshot(
+                port=bm25_port,
+                rows=rows,
+                generation=target_generation,
+            )
 
-    def invalidate_bm25_cache(self) -> None:
-        self._bm25_ready = False
-        self._bm25_texts = []
-        self._bm25_all_rows = []
-        logger.info("event=bm25_cache_invalidated")
+            with self._bm25_lock:
+                if target_generation != self._bm25_generation:
+                    logger.info(
+                        "event=bm25_prewarm_discarded generation=%d current_generation=%d chunks=%d duration_ms=%s",
+                        target_generation,
+                        self._bm25_generation,
+                        len(rows),
+                        duration_ms,
+                    )
+                    return False
+                self._bm25_snapshot = snapshot
+                self._bm25_state = "ready"
+                self._bm25_last_prewarm_ms = duration_ms
+                self._bm25_error = None
+
+            logger.info(
+                "event=bm25_prewarm_completed generation=%d chunks=%d duration_ms=%s",
+                target_generation,
+                len(rows),
+                duration_ms,
+            )
+            return True
+        except Exception as exc:
+            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            with self._bm25_lock:
+                if target_generation == self._bm25_generation:
+                    self._bm25_state = "error"
+                    self._bm25_error = str(exc)
+            logger.error(
+                "event=bm25_prewarm_failed generation=%d duration_ms=%s error=%s",
+                target_generation,
+                duration_ms,
+                exc,
+            )
+            raise
+
+    def invalidate_bm25_cache(self) -> int:
+        with self._bm25_lock:
+            self._bm25_generation += 1
+            generation = self._bm25_generation
+            self._bm25_snapshot = None
+            self._bm25_state = "warming"
+            self._bm25_error = None
+        logger.info("event=bm25_cache_invalidated generation=%d", generation)
+        return generation
+
+    def get_bm25_status(self) -> BM25RuntimeStatus:
+        with self._bm25_lock:
+            snapshot = self._bm25_snapshot
+            return BM25RuntimeStatus(
+                state=self._bm25_state,
+                chunks=len(snapshot.rows) if snapshot is not None else 0,
+                generation=self._bm25_generation,
+                last_prewarm_ms=self._bm25_last_prewarm_ms,
+                error=self._bm25_error,
+            )
 
     def hybrid_search(
         self,
@@ -202,10 +285,20 @@ class RetrieverService:
     def _bm25_search(
         self, query: str, top_k: int, filters: dict[str, Any] | None = None
     ) -> list[RetrievedChunk]:
-        all_rows = self._get_bm25()
-        if not all_rows:
+        with self._bm25_lock:
+            snapshot = self._bm25_snapshot
+            state = self._bm25_state
+            generation = self._bm25_generation
+
+        if snapshot is None:
+            logger.info(
+                "event=bm25_vector_fallback_used state=%s generation=%d",
+                state,
+                generation,
+            )
             return []
-        scores = self._bm25_port.get_scores(self._tokenize_bm25(query))
+        all_rows = snapshot.rows
+        scores = snapshot.port.get_scores(self._tokenize_bm25(query))
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         results: list[RetrievedChunk] = []
         for idx, score in indexed:

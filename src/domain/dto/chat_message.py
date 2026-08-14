@@ -10,7 +10,7 @@ class ChatMessage:
     content: str
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> "ChatMessage | None":
+    def from_mapping(cls, value: Mapping[str, object]) -> ChatMessage | None:
         role = value.get("role")
         content = value.get("content")
         if not isinstance(role, str) or not isinstance(content, str):

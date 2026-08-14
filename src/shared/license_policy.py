@@ -4,7 +4,6 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-
 BLOCK_FULL_PDF_LICENSE_URL_PATTERNS = (
     re.compile(r"elsevier\.com", re.IGNORECASE),
     re.compile(r"springer", re.IGNORECASE),

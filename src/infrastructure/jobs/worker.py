@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Callable, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from src.domain.dto.document_result import MetadataExtractionResult
 from src.domain.ports.ingestion_repository import IngestionRepository

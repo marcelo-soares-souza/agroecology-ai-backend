@@ -13,6 +13,7 @@ from src.shared.uuid7 import uuid7
 
 logger = logging.getLogger("agroecology.upload")
 
+
 class UploadDocument:
     def __init__(
         self,

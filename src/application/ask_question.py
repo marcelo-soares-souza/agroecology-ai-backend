@@ -23,9 +23,7 @@ from src.domain.services.conversation_history import (
 from src.domain.services.retriever import RetrieverService
 from src.shared.logging_utils import log_event, perf_fields, take_perf_snapshot
 
-_LANGUAGE_STRONG_PATTERN_RULES: tuple[
-    tuple[str, tuple[re.Pattern[str], ...]], ...
-] = (
+_LANGUAGE_STRONG_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "English",
         (
@@ -71,9 +69,7 @@ _LANGUAGE_STRONG_PATTERN_RULES: tuple[
         ),
     ),
 )
-_LANGUAGE_WEAK_PATTERN_RULES: tuple[
-    tuple[str, tuple[re.Pattern[str], ...]], ...
-] = (
+_LANGUAGE_WEAK_PATTERN_RULES: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "Portuguese",
         (
@@ -1249,10 +1245,8 @@ class AskQuestion:
     def _repair_collapsed_markdown_tables(answer: str) -> str:
         def parse_row(fragment: str) -> list[str]:
             row = fragment.strip()
-            if row.startswith("|"):
-                row = row[1:]
-            if row.endswith("|"):
-                row = row[:-1]
+            row = row.removeprefix("|")
+            row = row.removesuffix("|")
             return [cell.strip() for cell in row.split("|")]
 
         def normalize_delimiter(cell: str) -> str:
@@ -1762,8 +1756,7 @@ class AskQuestion:
     @staticmethod
     def _academic_authority_bonus(authority_score: float) -> int:
         return round(
-            max(0.0, min(1.0, authority_score))
-            * _ACADEMIC_AUTHORITY_CONTEXT_BONUS_MAX
+            max(0.0, min(1.0, authority_score)) * _ACADEMIC_AUTHORITY_CONTEXT_BONUS_MAX
         )
 
     @staticmethod

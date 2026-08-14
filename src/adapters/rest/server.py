@@ -15,9 +15,9 @@ from src.adapters.rest.admin_routes import router as admin_router
 from src.adapters.rest.auth_middleware import get_current_user, require_role
 from src.adapters.rest.auth_routes import router as auth_router
 from src.adapters.rest.dependencies import (
+    get_academic_metadata_run_status,
     get_ask_task_service,
     get_avatar_file,
-    get_academic_metadata_run_status,
     get_chat_conversation_repo,
     get_delete_document,
     get_document_details,
@@ -31,8 +31,8 @@ from src.adapters.rest.dependencies import (
     get_list_ingestion_runs,
     get_manage_docs,
     get_metadata_job_status,
-    get_status_service,
     get_start_document_academic_metadata_extraction,
+    get_status_service,
     get_task_status,
     get_update_document_metadata,
     get_upload_document,
@@ -45,12 +45,12 @@ from src.adapters.rest.openapi_docs import (
     apply_openapi_docs,
 )
 from src.adapters.rest.schemas import (
-    AnswerResponse,
-    AskRequest,
-    AskResponse,
     AcademicMetadataExtractBody,
     AcademicMetadataExtractResponse,
     AcademicMetadataRunStatusResponse,
+    AnswerResponse,
+    AskRequest,
+    AskResponse,
     ChatConversationCreateRequest,
     ChatConversationDetailResponse,
     ChatConversationListResponse,

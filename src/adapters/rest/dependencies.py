@@ -32,11 +32,11 @@ from src.application.enqueue_academic_metadata_extraction import (
     EnqueueAcademicMetadataExtraction,
 )
 from src.application.enqueue_pending_metadata import EnqueuePendingMetadata
+from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.get_academic_metadata_run_status import (
     GetAcademicMetadataRunStatus,
 )
 from src.application.get_document_details import GetDocumentDetails
-from src.application.extract_document_metadata import ExtractDocumentMetadata
 from src.application.get_document_file import GetDocumentFile
 from src.application.get_metadata_job_status import GetMetadataJobStatus
 from src.application.get_status import GetStatus
@@ -47,11 +47,14 @@ from src.application.list_document_publication_years import (
 from src.application.list_documents import ListDocuments
 from src.application.list_ingestion_runs import ListIngestionRuns
 from src.application.manage_documents import ManageDocuments
-from src.application.suggestions.admin_approve_document_suggestion import (
-    AdminApproveDocumentSuggestion,
+from src.application.start_document_academic_metadata_extraction import (
+    StartDocumentAcademicMetadataExtraction,
 )
 from src.application.suggestions.admin_approve_all_pending_document_suggestions import (
     AdminApproveAllPendingDocumentSuggestions as AdminApproveAllPending,
+)
+from src.application.suggestions.admin_approve_document_suggestion import (
+    AdminApproveDocumentSuggestion,
 )
 from src.application.suggestions.admin_delete_document_suggestion import (
     AdminDeleteDocumentSuggestion,
@@ -81,11 +84,8 @@ from src.application.suggestions.replace_suggestion_file import ReplaceSuggestio
 from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
-from src.application.start_document_academic_metadata_extraction import (
-    StartDocumentAcademicMetadataExtraction,
-)
-from src.application.upload_document import UploadDocument
 from src.application.update_document_metadata import UpdateDocumentMetadata
+from src.application.upload_document import UploadDocument
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.container import container
 from src.bootstrap.ingestion_task_service import IngestionTaskService
@@ -314,7 +314,9 @@ def get_enqueue_academic_metadata_extraction() -> EnqueueAcademicMetadataExtract
     return container.enqueue_academic_metadata_extraction
 
 
-def get_start_document_academic_metadata_extraction() -> StartDocumentAcademicMetadataExtraction:
+def get_start_document_academic_metadata_extraction() -> (
+    StartDocumentAcademicMetadataExtraction
+):
     assert container.start_document_academic_metadata_extraction is not None
     return container.start_document_academic_metadata_extraction
 

@@ -787,11 +787,15 @@ import requests
 
 BASE = "http://localhost:8000"
 
+
 def ask(question: str, top_k: int = 5, poll_interval: float = 1.0) -> dict:
-    resp = requests.post(f"{BASE}/api/v1/ask", json={
-        "question": question,
-        "top_k": top_k,
-    })
+    resp = requests.post(
+        f"{BASE}/api/v1/ask",
+        json={
+            "question": question,
+            "top_k": top_k,
+        },
+    )
     resp.raise_for_status()
     task = resp.json()
 
@@ -802,6 +806,7 @@ def ask(question: str, top_k: int = 5, poll_interval: float = 1.0) -> dict:
         if result["status"] in ("done", "error"):
             return result
         time.sleep(poll_interval)
+
 
 result = ask("O que é agroecologia?")
 print(result["answer"])

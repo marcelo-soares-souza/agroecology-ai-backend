@@ -69,7 +69,7 @@ class _BlockPart:
     page_end: int
     block_types: set[str]
 
-    def merge(self, other: "_BlockPart") -> "_BlockPart":
+    def merge(self, other: _BlockPart) -> _BlockPart:
         return _BlockPart(
             text=f"{self.text} {other.text}".strip(),
             page_start=min(self.page_start, other.page_start),

@@ -164,7 +164,7 @@ async def send_suggestion_approved_email(
     user_email: str, title: str, locale: str = "pt-BR"
 ) -> bool:
     display_title = title or "Untitled"
-    if locale.startswith("pt") or locale.startswith("es"):
+    if locale.startswith(("pt", "es")):
         if locale.startswith("pt"):
             subject = "Sua sugestão foi aprovada"
             body = f"""<h2>Sugestão Aprovada</h2>
@@ -204,7 +204,7 @@ async def send_suggestion_rejected_email(
     user_email: str, title: str, admin_comment: str, locale: str = "pt-BR"
 ) -> bool:
     display_title = title or "Untitled"
-    if locale.startswith("pt") or locale.startswith("es"):
+    if locale.startswith(("pt", "es")):
         if locale.startswith("pt"):
             subject = "Sua sugestão foi revisada"
             body = f"""<h2>Sugestão Revisada</h2>

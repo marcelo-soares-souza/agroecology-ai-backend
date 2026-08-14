@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 import re
+from collections.abc import Sequence
 
 from src.domain.dto.chat_message import ChatMessage
 

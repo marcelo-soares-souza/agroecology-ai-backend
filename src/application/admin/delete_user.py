@@ -70,9 +70,7 @@ class DeleteUser:
                     error=exc,
                 )
 
-        user = await self._repo.anonymize_user(
-            user_id, request_source="admin_delete"
-        )
+        user = await self._repo.anonymize_user(user_id, request_source="admin_delete")
         if not user:
             return None
         avatar_url = (

@@ -12,7 +12,7 @@ class PyMuPdfTextExtractor(PdfTextExtractorPort):
     def extract_first_pages_text(
         self, content: bytes, max_pages: int = 5
     ) -> str | None:
-        import fitz
+        import pymupdf as fitz
 
         pdf_doc = None
         try:
@@ -33,7 +33,9 @@ class PyMuPdfTextExtractor(PdfTextExtractorPort):
                 ]
                 ocr_texts = self._ocr.ocr_images(images)
                 page_texts.extend(
-                    (i, text) for i, text in zip(missing, ocr_texts) if text
+                    (i, text)
+                    for i, text in zip(missing, ocr_texts, strict=False)
+                    if text
                 )
                 page_texts.sort(key=lambda item: item[0])
 
@@ -46,7 +48,7 @@ class PyMuPdfTextExtractor(PdfTextExtractorPort):
                 pdf_doc.close()
 
     def extract_pdf_metadata(self, content: bytes) -> dict[str, str]:
-        import fitz
+        import pymupdf as fitz
 
         pdf_doc = None
         try:

@@ -87,9 +87,8 @@ def _is_heading(text: str, font_size: float, base_size: float, is_bold: bool) ->
     clean = text.strip().rstrip(".")
     if not clean or len(clean) > 150:
         return False
-    if font_size > base_size * 1.15 or is_bold:
-        if len(clean.split()) <= 20:
-            return True
+    if (font_size > base_size * 1.15 or is_bold) and len(clean.split()) <= 20:
+        return True
     for pattern in _HEADING_PATTERNS:
         if pattern.match(clean):
             return True
@@ -143,9 +142,7 @@ def _classify_block(
     ):
         return BlockType.TABLE
 
-    if len(clean) < 30 and (
-        clean.startswith("*") or clean.startswith("†") or clean.startswith("‡")
-    ):
+    if len(clean) < 30 and (clean.startswith(("*", "†", "‡"))):
         return BlockType.FOOTNOTE
 
     return BlockType.PARAGRAPH
@@ -172,7 +169,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
         self._ocr = ocr
 
     def parse(self, content: bytes, document_id: str, source: str) -> ParsedDocument:
-        import fitz
+        import pymupdf as fitz
 
         doc = ParsedDocument(
             document_id=document_id,
@@ -367,7 +364,7 @@ class PyMuPdfDocumentParser(DocumentParserPort):
         ocr_texts = self._ocr.ocr_images(images)
 
         blocks: list[tuple[int, float, float, bool, tuple, str, bool]] = []
-        for page_num, page_text in zip(missing_pages, ocr_texts):
+        for page_num, page_text in zip(missing_pages, ocr_texts, strict=False):
             if not page_text:
                 continue
             for line in page_text.splitlines():

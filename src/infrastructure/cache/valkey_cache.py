@@ -17,14 +17,14 @@ if TYPE_CHECKING:
     import redis
 else:
     try:
-        import redis  # noqa: F811
+        import redis
     except ImportError:
         redis = None  # type: ignore[assignment]
 
 _KEY_PREFIX = "rag:cache:v"
 
 
-class ValkeyCache(CachePort):  # noqa: F811
+class ValkeyCache(CachePort):
     def __init__(self, url: str, ttl: int = 3600) -> None:
         self.enabled = False
         self._client: redis.Redis | None = None  # type: ignore[name-defined]

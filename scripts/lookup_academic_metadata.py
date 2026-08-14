@@ -26,6 +26,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from typing_extensions import Self
 
 DEFAULT_DATABASE_URL = "postgresql://postgres@localhost:5432/agroecology_ai"
 DEFAULT_LIMIT = 5
@@ -37,50 +38,9 @@ REQUEST_TIMEOUT_SECONDS = 25.0
 DEFAULT_SOURCE_ORDER = ("openalex", "crossref")
 SUPPORTED_SOURCES = ("openalex", "crossref")
 
-SEMANTIC_SCHOLAR_FIELDS = ",".join(
-    [
-        "paperId",
-        "corpusId",
-        "title",
-        "abstract",
-        "year",
-        "authors",
-        "externalIds",
-        "url",
-        "venue",
-        "publicationVenue",
-        "journal",
-        "citationCount",
-        "influentialCitationCount",
-        "referenceCount",
-        "isOpenAccess",
-        "openAccessPdf",
-        "publicationTypes",
-        "fieldsOfStudy",
-    ]
-)
+SEMANTIC_SCHOLAR_FIELDS = "paperId,corpusId,title,abstract,year,authors,externalIds,url,venue,publicationVenue,journal,citationCount,influentialCitationCount,referenceCount,isOpenAccess,openAccessPdf,publicationTypes,fieldsOfStudy"
 
-OPENALEX_FIELDS = ",".join(
-    [
-        "id",
-        "doi",
-        "display_name",
-        "publication_year",
-        "publication_date",
-        "cited_by_count",
-        "referenced_works_count",
-        "authorships",
-        "primary_location",
-        "best_oa_location",
-        "open_access",
-        "type",
-        "language",
-        "topics",
-        "keywords",
-        "abstract_inverted_index",
-        "relevance_score",
-    ]
-)
+OPENALEX_FIELDS = "id,doi,display_name,publication_year,publication_date,cited_by_count,referenced_works_count,authorships,primary_location,best_oa_location,open_access,type,language,topics,keywords,abstract_inverted_index,relevance_score"
 
 
 class SimpleResponse:
@@ -108,10 +68,10 @@ class SimpleHttpClient:
         self.timeout = timeout
         self.headers = headers
 
-    async def __aenter__(self) -> SimpleHttpClient:
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(self, *args: object) -> None:
         return None
 
     async def get(
@@ -124,6 +84,9 @@ class SimpleHttpClient:
         request_url = f"{url}?{query}" if query else url
         request_headers = {**self.headers, **(headers or {})}
         request = Request(request_url, headers=request_headers)
+        return await asyncio.to_thread(self._get_sync, request, request_url)
+
+    def _get_sync(self, request: Request, request_url: str) -> SimpleResponse:
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 return SimpleResponse(
@@ -427,7 +390,7 @@ def clean_doi(value: str | None) -> str | None:
     if not value:
         return None
     value = value.strip()
-    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value, flags=re.I)
+    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value, flags=re.IGNORECASE)
     return value or None
 
 
@@ -963,7 +926,7 @@ def main() -> None:
         raise SystemExit(asyncio.run(async_main()))
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None
 
 
 if __name__ == "__main__":

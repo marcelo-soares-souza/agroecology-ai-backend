@@ -1,3 +1,11 @@
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "ASYNC"]
+# FastAPI dependency injection intentionally calls Depends in function defaults.
+ignore = ["B008"]
+
 [tool.mypy]
 python_version = "3.13"
 ignore_missing_imports = true

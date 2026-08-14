@@ -112,9 +112,7 @@ class ExportMyData:
                     created_at=identity.created_at.isoformat(),
                     updated_at=identity.updated_at.isoformat(),
                     deleted_at=(
-                        identity.deleted_at.isoformat()
-                        if identity.deleted_at
-                        else None
+                        identity.deleted_at.isoformat() if identity.deleted_at else None
                     ),
                 )
                 for identity in external_identities

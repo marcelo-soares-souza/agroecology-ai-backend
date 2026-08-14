@@ -349,12 +349,11 @@ class PostgresUserRepository(UserRepository):
 
     async def update_last_login(self, user_id: str) -> None:
         now = utcnow()
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "UPDATE users SET last_login_at = %s, updated_at = %s WHERE id = %s",
-                    (now, now, user_id),
-                )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE users SET last_login_at = %s, updated_at = %s WHERE id = %s",
+                (now, now, user_id),
+            )
 
     async def create_confirmation(
         self,
@@ -397,12 +396,11 @@ class PostgresUserRepository(UserRepository):
 
     async def mark_confirmation_done(self, confirmation_id: str) -> None:
         now = utcnow()
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "UPDATE email_confirmations SET confirmed_at = %s WHERE id = %s",
-                    (now, confirmation_id),
-                )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE email_confirmations SET confirmed_at = %s WHERE id = %s",
+                (now, confirmation_id),
+            )
 
     async def store_refresh_token(
         self, user_id: str, token_hash: str, expires_at
@@ -418,12 +416,11 @@ class PostgresUserRepository(UserRepository):
 
     async def revoke_refresh_token(self, token_hash: str) -> None:
         now = utcnow()
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "UPDATE refresh_tokens SET revoked_at = %s WHERE token_hash = %s",
-                    (now, token_hash),
-                )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE refresh_tokens SET revoked_at = %s WHERE token_hash = %s",
+                (now, token_hash),
+            )
 
     async def revoke_all_refresh_tokens(self, user_id: str) -> None:
         now = utcnow()

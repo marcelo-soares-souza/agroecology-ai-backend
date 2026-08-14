@@ -19,4 +19,3 @@ class IndexMetadataPort(ABC):
     @abstractmethod
     def check_schema_version(self) -> tuple[bool, str, str]:
         """Return whether expected and actual schema versions match."""
-

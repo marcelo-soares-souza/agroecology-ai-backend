@@ -6,17 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFil
 from starlette.responses import RedirectResponse
 
 from src.adapters.rest.auth_middleware import get_current_user
-from src.adapters.rest.dependencies import get_confirm_email, get_confirm_password_reset
-from src.adapters.rest.dependencies import (
-    get_human_challenge as get_human_challenge_use_case,
-)
 from src.adapters.rest.dependencies import (
     get_auth_rate_limiter,
     get_confirm_delete_account,
+    get_confirm_email,
+    get_confirm_password_reset,
     get_export_my_data,
-    get_list_active_users as get_list_active_users_use_case,
-)
-from src.adapters.rest.dependencies import (
     get_login_user,
     get_logout_user,
     get_orcid_auth_service,
@@ -27,6 +22,12 @@ from src.adapters.rest.dependencies import (
     get_resend_confirmation_email,
 )
 from src.adapters.rest.dependencies import (
+    get_human_challenge as get_human_challenge_use_case,
+)
+from src.adapters.rest.dependencies import (
+    get_list_active_users as get_list_active_users_use_case,
+)
+from src.adapters.rest.dependencies import (
     get_update_my_profile as get_update_my_profile_use_case,
 )
 from src.adapters.rest.dependencies import (
@@ -34,11 +35,11 @@ from src.adapters.rest.dependencies import (
 )
 from src.adapters.rest.dependencies import get_user_by_slug as get_user_by_slug_use_case
 from src.adapters.rest.schemas import (
+    AuthProvidersResponse,
     ChallengeResponse,
     ConfirmEmailRequest,
     DeleteAccountConfirmRequest,
     ExportDataResponse,
-    AuthProvidersResponse,
     LoginRequest,
     MessageResponse,
     OrcidCompleteEmailRequest,
@@ -47,8 +48,8 @@ from src.adapters.rest.schemas import (
     OrcidExchangeRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
-    PublicUserResponse,
     PublicUserListResponse,
+    PublicUserResponse,
     RefreshRequest,
     RegisterRequest,
     ResendConfirmationRequest,
@@ -117,7 +118,7 @@ async def orcid_start(return_to: str | None = Query(default=None)):
     try:
         url = await get_orcid_auth_service().start(return_to=return_to)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return RedirectResponse(url)
 
 
@@ -133,7 +134,7 @@ async def orcid_callback(code: str, state: str, request: Request):
                     "code": "password_login_unavailable",
                     "message": str(e),
                 },
-            )
+            ) from e
         log_event(
             logger,
             logging.WARNING,
@@ -141,7 +142,7 @@ async def orcid_callback(code: str, state: str, request: Request):
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return RedirectResponse(result.redirect_url)
 
 
@@ -157,7 +158,7 @@ async def orcid_exchange(body: OrcidExchangeRequest, request: Request):
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return TokenResponse(
         access_token=result.access_token,
         refresh_token=result.refresh_token,
@@ -183,7 +184,7 @@ async def orcid_complete_email(body: OrcidCompleteEmailRequest, request: Request
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return OrcidCompletionResponse(status=result.status, message=result.message)
 
 
@@ -199,7 +200,7 @@ async def orcid_confirm_link(body: OrcidConfirmLinkRequest, request: Request):
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return OrcidCompletionResponse(status=result.status, message=result.message)
 
 
@@ -255,7 +256,7 @@ async def register(body: RegisterRequest, request: Request):
                 retry_after_seconds=block.retry_after_seconds,
             )
             _raise_auth_rate_limited(block)
-        raise HTTPException(status_code=400, detail="Registration failed")
+        raise HTTPException(status_code=400, detail="Registration failed") from e
 
     rate_limiter.reset(_PUBLIC_AUTH_RATE_LIMIT_ACTION, [_email_identifier(body.email)])
     log_event(
@@ -286,7 +287,7 @@ async def resend_confirmation(body: ResendConfirmationRequest, request: Request)
         log_event(logger, logging.WARNING, "confirm_email_resend_failed", reason=str(e))
         raise HTTPException(
             status_code=400, detail="Confirmation email could not be sent"
-        )
+        ) from e
 
     return MessageResponse(message=result.message)
 
@@ -303,7 +304,7 @@ async def confirm_email(body: ConfirmEmailRequest, request: Request):
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return MessageResponse(message="Email confirmed successfully. You can now login.")
 
@@ -345,7 +346,7 @@ async def login(body: LoginRequest, request: Request):
                     "code": "password_login_unavailable",
                     "message": str(e),
                 },
-            )
+            ) from e
         log_event(
             logger,
             logging.WARNING,
@@ -366,7 +367,7 @@ async def login(body: LoginRequest, request: Request):
                 retry_after_seconds=block.retry_after_seconds,
             )
             _raise_auth_rate_limited(block)
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
     rate_limiter.reset(_PUBLIC_AUTH_RATE_LIMIT_ACTION, [_email_identifier(body.email)])
     log_event(
@@ -393,7 +394,7 @@ async def refresh(body: RefreshRequest, request: Request):
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
     return TokenResponse(
         access_token=result.access_token, refresh_token=result.refresh_token
@@ -437,7 +438,7 @@ async def confirm_password_reset(body: PasswordResetConfirmRequest, request: Req
             reason=str(e),
             ip=_client_ip(request),
         )
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return MessageResponse(message="Password reset successfully")
 
@@ -461,7 +462,7 @@ async def update_my_profile(
             link=body.link,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     if result is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -481,7 +482,7 @@ async def upload_my_avatar(
             content_type=file.content_type or "",
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return serialize_user(result)
 
@@ -516,7 +517,7 @@ async def export_my_data(user: User = Depends(get_current_user)):
     try:
         data = await get_export_my_data().execute(user_id=user.id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return ExportDataResponse(**data.to_dict())
 
 
@@ -527,7 +528,7 @@ async def request_delete_account(
     try:
         await get_request_delete_account().execute(user_id=user.id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return MessageResponse(
         message="Confirmation email sent. Check your inbox to complete account deletion."
     )
@@ -538,5 +539,5 @@ async def confirm_delete_account(body: DeleteAccountConfirmRequest, request: Req
     try:
         await get_confirm_delete_account().execute(token=body.token)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return MessageResponse(message="Account deleted successfully.")

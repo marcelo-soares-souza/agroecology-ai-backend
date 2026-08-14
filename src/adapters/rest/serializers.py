@@ -1,19 +1,5 @@
 from __future__ import annotations
 
-from src.domain.dto.user_dto import UserDTO
-from src.domain.models.document import Document
-from src.domain.models.chat_conversation import (
-    ChatConversationDetail,
-    ChatConversationMessage,
-    ChatConversationSummary,
-)
-from src.domain.models.document_academic_metadata import (
-    AcademicMetadataRun,
-    DocumentAcademicMetadata,
-)
-from src.domain.models.document_suggestion import DocumentSuggestion
-from src.domain.models.ingestion_run import IngestionRun
-from src.domain.models.user import User
 from src.adapters.rest.schemas import (
     AcademicMetadataSchema,
     ChatConversationDetailResponse,
@@ -22,6 +8,20 @@ from src.adapters.rest.schemas import (
     DocumentRecord,
     PublicUserResponse,
 )
+from src.domain.dto.user_dto import UserDTO
+from src.domain.models.chat_conversation import (
+    ChatConversationDetail,
+    ChatConversationMessage,
+    ChatConversationSummary,
+)
+from src.domain.models.document import Document
+from src.domain.models.document_academic_metadata import (
+    AcademicMetadataRun,
+    DocumentAcademicMetadata,
+)
+from src.domain.models.document_suggestion import DocumentSuggestion
+from src.domain.models.ingestion_run import IngestionRun
+from src.domain.models.user import User
 from src.shared.license_policy import is_full_file_access_blocked
 
 

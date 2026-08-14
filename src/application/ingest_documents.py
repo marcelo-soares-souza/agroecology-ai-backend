@@ -346,11 +346,11 @@ class IngestDocuments:
                 sub = rows[i : i + batch_size]
                 sub_texts = texts_to_embed[i : i + batch_size]
                 vectors = self._embedder.embed_texts(sub_texts)
-                for row, vector in zip(sub, vectors):
+                for row, vector in zip(sub, vectors, strict=False):
                     row.vector = vector
         else:
             vectors = self._embedder.embed_texts(texts_to_embed)
-            for row, vector in zip(rows, vectors):
+            for row, vector in zip(rows, vectors, strict=False):
                 row.vector = vector
 
     def _clear_existing_index(self) -> None:

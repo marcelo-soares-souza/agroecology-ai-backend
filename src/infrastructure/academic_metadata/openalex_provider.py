@@ -17,27 +17,7 @@ from src.shared.logging_utils import hash_for_log, log_event, preview_for_log
 
 logger = logging.getLogger("agroecology.academic_metadata")
 
-OPENALEX_FIELDS = ",".join(
-    [
-        "id",
-        "doi",
-        "display_name",
-        "publication_year",
-        "publication_date",
-        "cited_by_count",
-        "referenced_works_count",
-        "authorships",
-        "primary_location",
-        "best_oa_location",
-        "open_access",
-        "type",
-        "language",
-        "topics",
-        "keywords",
-        "abstract_inverted_index",
-        "relevance_score",
-    ]
-)
+OPENALEX_FIELDS = "id,doi,display_name,publication_year,publication_date,cited_by_count,referenced_works_count,authorships,primary_location,best_oa_location,open_access,type,language,topics,keywords,abstract_inverted_index,relevance_score"
 
 
 class OpenAlexProvider(AcademicMetadataProvider):

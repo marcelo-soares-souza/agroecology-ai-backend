@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import re
 import unicodedata
+from datetime import datetime, timezone
 
 import psycopg
 
@@ -18,7 +18,6 @@ from src.shared.config import (
     MOBILE_SLUG,
 )
 from src.shared.uuid7 import uuid7
-
 
 ROLE_ADMIN_ID = "00000000-0000-0000-0000-000000000001"
 ROLE_USER_ID = "00000000-0000-0000-0000-000000000002"

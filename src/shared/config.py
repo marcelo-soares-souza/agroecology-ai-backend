@@ -42,13 +42,12 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
 AUTO_EXTRACT_METADATA = os.getenv("AUTO_EXTRACT_METADATA", "true").lower() == "true"
-AUTO_EXTRACT_ACADEMIC_METADATA = (
-    os.getenv("AUTO_EXTRACT_ACADEMIC_METADATA", "true").lower()
-    in (
-        "1",
-        "true",
-        "yes",
-    )
+AUTO_EXTRACT_ACADEMIC_METADATA = os.getenv(
+    "AUTO_EXTRACT_ACADEMIC_METADATA", "true"
+).lower() in (
+    "1",
+    "true",
+    "yes",
 )
 ACADEMIC_METADATA_MIN_DELAY_SECONDS = int(
     os.getenv("ACADEMIC_METADATA_MIN_DELAY_SECONDS", "60")
@@ -78,7 +77,9 @@ REFRESH_TOKEN_REUSE_GRACE_SECONDS = int(
 PASSWORD_PEPPER = os.getenv("PASSWORD_PEPPER", "agroecology-pepper")
 AUTH_RATE_LIMIT_MAX_FAILURES = int(os.getenv("AUTH_RATE_LIMIT_MAX_FAILURES", "5"))
 AUTH_RATE_LIMIT_BLOCK_SECONDS = int(os.getenv("AUTH_RATE_LIMIT_BLOCK_SECONDS", "600"))
-CHAT_MAX_CONVERSATIONS_PER_USER = int(os.getenv("CHAT_MAX_CONVERSATIONS_PER_USER", "10"))
+CHAT_MAX_CONVERSATIONS_PER_USER = int(
+    os.getenv("CHAT_MAX_CONVERSATIONS_PER_USER", "10")
+)
 IDENTITY_SERVER_URL = os.getenv("IDENTITY_SERVER_URL", "").strip()
 IDENTITY_SERVER_ENABLED = bool(IDENTITY_SERVER_URL)
 IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED = os.getenv(
@@ -91,9 +92,7 @@ ORCID_ENABLED = os.getenv("ORCID_ENABLED", "false").lower() in (
 )
 ORCID_ENV = os.getenv("ORCID_ENV", "sandbox").strip().lower()
 _ORCID_BASE_URL = (
-    "https://orcid.org"
-    if ORCID_ENV == "production"
-    else "https://sandbox.orcid.org"
+    "https://orcid.org" if ORCID_ENV == "production" else "https://sandbox.orcid.org"
 )
 ORCID_CLIENT_ID = os.getenv("ORCID_CLIENT_ID", "").strip()
 ORCID_CLIENT_SECRET = os.getenv("ORCID_CLIENT_SECRET", "").strip()
@@ -101,9 +100,7 @@ ORCID_REDIRECT_URI = os.getenv("ORCID_REDIRECT_URI", "").strip()
 ORCID_AUTHORIZE_URL = os.getenv(
     "ORCID_AUTHORIZE_URL", f"{_ORCID_BASE_URL}/oauth/authorize"
 ).strip()
-ORCID_TOKEN_URL = os.getenv(
-    "ORCID_TOKEN_URL", f"{_ORCID_BASE_URL}/oauth/token"
-).strip()
+ORCID_TOKEN_URL = os.getenv("ORCID_TOKEN_URL", f"{_ORCID_BASE_URL}/oauth/token").strip()
 ORCID_USERINFO_URL = os.getenv(
     "ORCID_USERINFO_URL", f"{_ORCID_BASE_URL}/oauth/userinfo"
 ).strip()

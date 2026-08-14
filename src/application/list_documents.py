@@ -60,4 +60,3 @@ class ListDocuments:
             limit=limit,
             offset=offset,
         )
-

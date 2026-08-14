@@ -72,7 +72,9 @@ class PostgresChatConversationRepository(ChatConversationRepository):
         self, conversation_id: str, user_id: str
     ) -> ChatConversationDetail | None:
         async with self._pool.connection() as conn:
-            summary = await self._get_summary_on_connection(conn, conversation_id, user_id)
+            summary = await self._get_summary_on_connection(
+                conn, conversation_id, user_id
+            )
             if summary is None:
                 return None
 
@@ -157,16 +159,15 @@ class PostgresChatConversationRepository(ChatConversationRepository):
                 return self._to_summary(dict(row)) if row else None
 
     async def delete(self, conversation_id: str, user_id: str) -> bool:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     DELETE FROM chat_conversations
                     WHERE id = %s AND user_id = %s
                     """,
-                    (conversation_id, user_id),
-                )
-                return cur.rowcount > 0
+                (conversation_id, user_id),
+            )
+            return cur.rowcount > 0
 
     async def append_user_message(
         self, conversation_id: str, user_id: str, content: str
@@ -298,12 +299,11 @@ class PostgresChatConversationRepository(ChatConversationRepository):
         return list(reversed(selected))
 
     async def delete_for_user(self, user_id: str) -> None:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "DELETE FROM chat_conversations WHERE user_id = %s",
-                    (user_id,),
-                )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM chat_conversations WHERE user_id = %s",
+                (user_id,),
+            )
 
     async def _append_message(
         self,

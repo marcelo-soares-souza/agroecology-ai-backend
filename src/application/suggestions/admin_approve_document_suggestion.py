@@ -105,7 +105,7 @@ class AdminApproveDocumentSuggestion:
                 )
                 raise ValueError("Failed to update suggestion after approval")
 
-        except Exception:
+        except Exception as exc:
             try:
                 await self._storage.delete(
                     self._config.approved_pdf_directory, document_id, ".pdf"
@@ -118,7 +118,7 @@ class AdminApproveDocumentSuggestion:
                     document_id=document_id,
                     error=cleanup_error,
                 )
-            raise ValueError("Failed to approve suggestion")
+            raise ValueError("Failed to approve suggestion") from exc
 
         try:
             await self._storage.delete(

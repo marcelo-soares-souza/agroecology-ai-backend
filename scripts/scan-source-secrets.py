@@ -48,11 +48,7 @@ def scan_file(filepath: Path) -> list[str]:
                     continue
                 # Check if this is in a comment or docstring
                 stripped = line.strip()
-                if (
-                    stripped.startswith("#")
-                    or stripped.startswith('"""')
-                    or stripped.startswith("'''")
-                ):
+                if stripped.startswith(("#", '"""', "'''")):
                     continue
                 issues.append(
                     f"{filepath.relative_to(ROOT)}:{i}: potential {name} — "

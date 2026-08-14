@@ -34,4 +34,3 @@ class UpdateDocumentMetadata:
             document=doc,
             academic_metadata=await self._academic_metadata_repo.get(doc_id),
         )
-

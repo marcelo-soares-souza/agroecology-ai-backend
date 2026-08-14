@@ -121,13 +121,12 @@ class PostgresIngestionRepository(IngestionRepository):
                 return self._to_domain(dict(row)) if row else None
 
     async def has_active_run(self) -> bool:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """SELECT 1 FROM ingestion_runs
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """SELECT 1 FROM ingestion_runs
                        WHERE phase IN ('queued', 'processing') LIMIT 1"""
-                )
-                return await cur.fetchone() is not None
+            )
+            return await cur.fetchone() is not None
 
     async def get_active_run(self) -> IngestionRun | None:
         async with self._pool.connection() as conn:
@@ -142,18 +141,17 @@ class PostgresIngestionRepository(IngestionRepository):
 
     async def clear_stale_runs(self) -> int:
         now = utcnow()
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """UPDATE ingestion_runs
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """UPDATE ingestion_runs
                        SET phase = 'error',
                            status = 'error',
                            error = COALESCE(error, 'stale run cleared by force'),
                            finished_at = %s
                        WHERE phase IN ('queued', 'processing')""",
-                    (now,),
-                )
-                return cur.rowcount
+                (now,),
+            )
+            return cur.rowcount
 
     async def insert(self) -> IngestionRun:
         run_id = uuid7()
@@ -228,26 +226,23 @@ class PostgresIngestionRepository(IngestionRepository):
     async def get_ingested_ids(self, doc_ids: set[str]) -> set[str]:
         if not doc_ids:
             return set()
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT id FROM documents WHERE id = ANY(%s) AND ingested = TRUE",
-                    (list(doc_ids),),
-                )
-                rows = await cur.fetchall()
-                return {r[0] for r in rows}
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "SELECT id FROM documents WHERE id = ANY(%s) AND ingested = TRUE",
+                (list(doc_ids),),
+            )
+            rows = await cur.fetchall()
+            return {r[0] for r in rows}
 
     async def mark_as_ingested(self, doc_ids: set[str]) -> None:
         if not doc_ids:
             return
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "UPDATE documents SET ingested = TRUE WHERE id = ANY(%s)",
-                    (list(doc_ids),),
-                )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE documents SET ingested = TRUE WHERE id = ANY(%s)",
+                (list(doc_ids),),
+            )
 
     async def mark_all_not_ingested(self) -> None:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("UPDATE documents SET ingested = FALSE")
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute("UPDATE documents SET ingested = FALSE")

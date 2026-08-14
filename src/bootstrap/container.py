@@ -7,15 +7,6 @@ from urllib.parse import urlparse
 
 from psycopg_pool import AsyncConnectionPool
 
-from src.application.config import (
-    AuthConfig,
-    AvatarStorageConfig,
-    DocumentStorageConfig,
-    IngestionConfig,
-    RagConfig,
-    StatusConfig,
-    SuggestionStorageConfig,
-)
 from src.application.admin.delete_user import DeleteUser
 from src.application.admin.get_user import GetUser as AdminGetUser
 from src.application.admin.list_users import ListUsers
@@ -31,10 +22,10 @@ from src.application.auth.export_my_data import ExportMyData
 from src.application.auth.get_avatar_file import GetAvatarFile
 from src.application.auth.get_human_challenge import GetHumanChallenge
 from src.application.auth.get_user_by_slug import GetUserBySlug
+from src.application.auth.issue_auth_tokens import IssueAuthTokens
 from src.application.auth.list_active_users import ListActiveUsers
 from src.application.auth.login_user import LoginUser
 from src.application.auth.logout_user import LogoutUser
-from src.application.auth.issue_auth_tokens import IssueAuthTokens
 from src.application.auth.orcid_auth import OrcidAuthService
 from src.application.auth.provision_external_user import ProvisionExternalUser
 from src.application.auth.refresh_token import RefreshToken
@@ -44,6 +35,15 @@ from src.application.auth.resend_confirmation import ResendConfirmationEmail
 from src.application.auth.update_my_profile import UpdateMyProfile
 from src.application.auth.upload_my_avatar import UploadMyAvatar
 from src.application.auth.validate_session import ValidateSession
+from src.application.config import (
+    AuthConfig,
+    AvatarStorageConfig,
+    DocumentStorageConfig,
+    IngestionConfig,
+    RagConfig,
+    StatusConfig,
+    SuggestionStorageConfig,
+)
 from src.application.delete_document import DeleteDocument
 from src.application.enqueue_academic_metadata_extraction import (
     EnqueueAcademicMetadataExtraction,
@@ -77,11 +77,11 @@ from src.application.scrape_urls import ScrapeUrls
 from src.application.start_document_academic_metadata_extraction import (
     StartDocumentAcademicMetadataExtraction,
 )
-from src.application.suggestions.admin_approve_document_suggestion import (
-    AdminApproveDocumentSuggestion,
-)
 from src.application.suggestions.admin_approve_all_pending_document_suggestions import (
     AdminApproveAllPendingDocumentSuggestions,
+)
+from src.application.suggestions.admin_approve_document_suggestion import (
+    AdminApproveDocumentSuggestion,
 )
 from src.application.suggestions.admin_delete_document_suggestion import (
     AdminDeleteDocumentSuggestion,
@@ -111,13 +111,15 @@ from src.application.suggestions.replace_suggestion_file import ReplaceSuggestio
 from src.application.suggestions.update_document_suggestion import (
     UpdateDocumentSuggestion,
 )
-from src.application.upload_document import UploadDocument
 from src.application.update_document_metadata import UpdateDocumentMetadata
+from src.application.upload_document import UploadDocument
 from src.bootstrap.ask_task_service import AskTaskService
 from src.bootstrap.bm25_prewarm_service import BM25PrewarmService
 from src.bootstrap.ingestion_task_service import IngestionTaskService
 from src.bootstrap.task_manager import TaskManager
 from src.domain.services.retriever import RetrieverService
+from src.infrastructure.academic_metadata.crossref_provider import CrossrefProvider
+from src.infrastructure.academic_metadata.openalex_provider import OpenAlexProvider
 from src.infrastructure.ai.bm25_impl import BM25Impl
 from src.infrastructure.ai.llm_query_rewriter import LLMQueryRewriter
 from src.infrastructure.ai.ollama_embedder import OllamaEmbedder
@@ -141,20 +143,24 @@ from src.infrastructure.identity.agroecology_identity_client import (
 )
 from src.infrastructure.identity.orcid_oauth_client import OrcidOAuthClient
 from src.infrastructure.jobs.worker import start_job_worker
-from src.infrastructure.academic_metadata.crossref_provider import CrossrefProvider
-from src.infrastructure.academic_metadata.openalex_provider import OpenAlexProvider
 from src.infrastructure.loaders.local_document_loader import LocalDocumentLoader
 from src.infrastructure.ocr.rapid_ocr import RapidOcrService
 from src.infrastructure.parsers.pymupdf_text_extractor import PyMuPdfTextExtractor
 from src.infrastructure.persistence.lancedb_vector_store import LanceDBVectorStore
-from src.infrastructure.persistence.postgres_document_repo import (
-    PostgresDocumentRepository,
+from src.infrastructure.persistence.postgres_academic_metadata_run_repo import (
+    PostgresAcademicMetadataRunRepository,
+)
+from src.infrastructure.persistence.postgres_chat_conversation_repo import (
+    PostgresChatConversationRepository,
+)
+from src.infrastructure.persistence.postgres_document_academic_metadata_attempt_repo import (
+    PostgresDocumentAcademicMetadataAttemptRepository,
 )
 from src.infrastructure.persistence.postgres_document_academic_metadata_repo import (
     PostgresDocumentAcademicMetadataRepository,
 )
-from src.infrastructure.persistence.postgres_document_academic_metadata_attempt_repo import (
-    PostgresDocumentAcademicMetadataAttemptRepository,
+from src.infrastructure.persistence.postgres_document_repo import (
+    PostgresDocumentRepository,
 )
 from src.infrastructure.persistence.postgres_document_suggestion_repo import (
     PostgresDocumentSuggestionRepository,
@@ -168,16 +174,10 @@ from src.infrastructure.persistence.postgres_external_login_completion_repo impo
 from src.infrastructure.persistence.postgres_ingestion_repo import (
     PostgresIngestionRepository,
 )
-from src.infrastructure.persistence.postgres_academic_metadata_run_repo import (
-    PostgresAcademicMetadataRunRepository,
-)
-from src.infrastructure.persistence.postgres_chat_conversation_repo import (
-    PostgresChatConversationRepository,
-)
-from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.postgres_oauth_state_repo import (
     PostgresOAuthStateRepository,
 )
+from src.infrastructure.persistence.postgres_user_repo import PostgresUserRepository
 from src.infrastructure.persistence.queue_repository import QueueRepository
 from src.infrastructure.rate_limit.in_memory_auth_rate_limiter import (
     InMemoryAuthRateLimiter,
@@ -212,26 +212,17 @@ from src.shared.config import (
     DATABASE_URL,
     DB_POOL_MAX_SIZE,
     DB_POOL_MIN_SIZE,
-    EMBEDDING_BATCH_SIZE,
     EMBEDDING_BACKEND,
+    EMBEDDING_BATCH_SIZE,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
     EXTERNAL_AI_ENABLED,
+    FILE_EXTENSIONS,
+    FILE_TYPE_TO_EXT,
     HYBRID_TOP_K,
     IDENTITY_SERVER_AUTO_PROVISIONING_ENABLED,
     IDENTITY_SERVER_ENABLED,
     IDENTITY_SERVER_URL,
-    ORCID_AUTHORIZE_URL,
-    ORCID_CLIENT_ID,
-    ORCID_CLIENT_SECRET,
-    ORCID_COMPLETION_TTL_MINUTES,
-    ORCID_ENABLED,
-    ORCID_REDIRECT_URI,
-    ORCID_TOKEN_URL,
-    ORCID_USERINFO_URL,
-    FILE_EXTENSIONS,
-    FILE_TYPE_TO_EXT,
-    MMR_LAMBDA,
     INGEST_BATCH_SIZE,
     LLM_CHUNK_MAX_CHARS,
     LLM_CONTEXT_CHARS_BUDGET,
@@ -240,17 +231,26 @@ from src.shared.config import (
     LLM_MODEL,
     LLM_THINK_ENABLE,
     MAX_FILE_SIZE,
+    MMR_LAMBDA,
     OLLAMA_BASE_URL,
     OLLAMA_EMBEDDING_MODEL,
     OLLAMA_LLM_HOSTS,
     OPENALEX_API_KEY,
     OPENALEX_MAILTO,
+    ORCID_AUTHORIZE_URL,
+    ORCID_CLIENT_ID,
+    ORCID_CLIENT_SECRET,
+    ORCID_COMPLETION_TTL_MINUTES,
+    ORCID_ENABLED,
+    ORCID_REDIRECT_URI,
+    ORCID_TOKEN_URL,
+    ORCID_USERINFO_URL,
     RAG_RETRIEVAL_TOP_K,
+    REFRESH_TOKEN_REUSE_GRACE_SECONDS,
+    REFRESH_TOKEN_TTL_DAYS,
     RERANK_DEVICE,
     RERANK_MODEL,
     RERANK_TOP_K,
-    REFRESH_TOKEN_REUSE_GRACE_SECONDS,
-    REFRESH_TOKEN_TTL_DAYS,
     SIMILARITY_TOP_K,
     SYSTEM_PROMPT,
     USER_PROMPT,
@@ -274,9 +274,7 @@ def _is_ollama_base_url(base_url: str) -> bool:
     hostname = (parsed.hostname or "").lower()
     if hostname not in OLLAMA_LLM_HOSTS:
         return False
-    if parsed.port is not None and parsed.port != 11434:
-        return False
-    return True
+    return not (parsed.port is not None and parsed.port != 11434)
 
 
 class Container:

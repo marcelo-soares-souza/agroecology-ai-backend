@@ -76,10 +76,7 @@ class OrcidOAuthClient:
     @staticmethod
     def _identity_from_token_payload(payload: dict[str, Any]) -> OrcidIdentity:
         orcid_id = str(
-            payload.get("orcid")
-            or payload.get("orcid_id")
-            or payload.get("sub")
-            or ""
+            payload.get("orcid") or payload.get("orcid_id") or payload.get("sub") or ""
         ).strip()
         if not orcid_id:
             identifier = payload.get("orcid-identifier")

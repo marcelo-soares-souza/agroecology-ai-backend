@@ -9,11 +9,11 @@ from src.application.extract_document_academic_metadata import (
 from src.domain.ports.academic_metadata_run_repository import (
     AcademicMetadataRunRepository,
 )
-from src.domain.ports.document_academic_metadata_repository import (
-    DocumentAcademicMetadataRepository,
-)
 from src.domain.ports.document_academic_metadata_attempt_repository import (
     DocumentAcademicMetadataAttemptRepository,
+)
+from src.domain.ports.document_academic_metadata_repository import (
+    DocumentAcademicMetadataRepository,
 )
 from src.domain.ports.document_repository import DocumentRepository
 from src.shared.logging_utils import log_event

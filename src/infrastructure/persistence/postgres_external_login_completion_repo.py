@@ -15,9 +15,7 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-class PostgresExternalLoginCompletionRepository(
-    ExternalLoginCompletionRepository
-):
+class PostgresExternalLoginCompletionRepository(ExternalLoginCompletionRepository):
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
@@ -85,16 +83,15 @@ class PostgresExternalLoginCompletionRepository(
                 return self._to_completion(dict(row)) if row else None
 
     async def consume(self, completion_id: str) -> None:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     UPDATE external_login_completions
                     SET consumed_at = %s
                     WHERE id = %s AND consumed_at IS NULL
                     """,
-                    (utcnow(), completion_id),
-                )
+                (utcnow(), completion_id),
+            )
 
     @staticmethod
     def _to_completion(row: dict) -> ExternalLoginCompletion:

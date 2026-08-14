@@ -87,9 +87,9 @@ def header_value(headers: Mapping[str, str], name: str) -> str:
 def _trusted_proxy_hosts() -> set[str]:
     return {
         host.strip().lower()
-        for host in os.getenv(
-            "TRUSTED_PROXY_HOSTS", "127.0.0.1,::1,localhost"
-        ).split(",")
+        for host in os.getenv("TRUSTED_PROXY_HOSTS", "127.0.0.1,::1,localhost").split(
+            ","
+        )
         if host.strip()
     }
 

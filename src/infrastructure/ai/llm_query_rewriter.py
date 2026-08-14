@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 from collections.abc import Sequence
+from typing import Any
 
 from src.domain.dto.chat_message import ChatMessage
 from src.domain.ports.query_rewrite_port import QueryRewritePort

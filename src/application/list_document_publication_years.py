@@ -21,4 +21,3 @@ class ListDocumentPublicationYears:
             self._publication_year_min,
             datetime.now(UTC).year,
         )
-

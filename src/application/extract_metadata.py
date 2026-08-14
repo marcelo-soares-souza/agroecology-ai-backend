@@ -79,8 +79,7 @@ class ExtractMetadata:
                 idx = cleaned.find("\n")
                 if idx != -1:
                     cleaned = cleaned[idx + 1 :]
-                if cleaned.endswith("```"):
-                    cleaned = cleaned[:-3]
+                cleaned = cleaned.removesuffix("```")
             result = json.loads(cleaned.strip())
             extracted = MetadataResult(
                 title=str(result.get("title", "") or "").strip(),

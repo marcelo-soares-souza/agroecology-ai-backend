@@ -251,8 +251,7 @@ class RetrieverService:
                 for s in selected:
                     same_doc = candidate.source == s.source
                     sim = 1.0 if same_doc else 0.0
-                    if sim > max_sim:
-                        max_sim = sim
+                    max_sim = max(max_sim, sim)
 
                 mmr = lam * relevance - (1.0 - lam) * max_sim
                 if mmr > best_score:

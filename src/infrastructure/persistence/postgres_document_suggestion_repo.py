@@ -181,18 +181,17 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 return [self._to_domain(dict(r)) for r in rows]
 
     async def list_pending_ids(self) -> list[str]:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     SELECT id
                     FROM document_suggestions
                     WHERE status = 'pending'
                     ORDER BY created_at ASC
                     """
-                )
-                rows = await cur.fetchall()
-                return [row[0] for row in rows]
+            )
+            rows = await cur.fetchall()
+            return [row[0] for row in rows]
 
     async def update(
         self, suggestion_id: str, data: DocumentSuggestionUpdate
@@ -265,13 +264,12 @@ class PostgresDocumentSuggestionRepository(DocumentSuggestionRepository):
                 return self._to_domain(dict(row)) if row else None
 
     async def sha256_exists(self, sha256: str) -> bool:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT 1 FROM document_suggestions WHERE sha256 = %s LIMIT 1",
-                    (sha256,),
-                )
-                return await cur.fetchone() is not None
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "SELECT 1 FROM document_suggestions WHERE sha256 = %s LIMIT 1",
+                (sha256,),
+            )
+            return await cur.fetchone() is not None
 
     async def mark_approved(
         self,

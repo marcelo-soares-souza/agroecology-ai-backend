@@ -88,7 +88,7 @@ class LoginUser:
                 email=mask_email(email),
                 reason="email_not_confirmed",
             )
-            raise ValueError("Email not confirmed")
+            raise ValueError("Email not confirmed") from None
         except IdentityServerInvalidCredentials:
             log_event(
                 logger,
@@ -97,7 +97,7 @@ class LoginUser:
                 email=mask_email(email),
                 reason="invalid_credentials",
             )
-            raise ValueError("Invalid email or password")
+            raise ValueError("Invalid email or password") from None
         except IdentityServerUnavailable as exc:
             log_event(
                 logger,
@@ -107,7 +107,7 @@ class LoginUser:
                 reason="unavailable",
                 error=str(exc),
             )
-            raise ValueError("Invalid email or password")
+            raise ValueError("Invalid email or password") from exc
 
         if not remote_identity.is_confirmed:
             raise ValueError("Email not confirmed")

@@ -94,7 +94,7 @@ async def create_suggestion(
             original_filename=original_filename,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -109,7 +109,7 @@ async def list_my_suggestions(
             user_id=current_user.id, status=status
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return [serialize_document_suggestion(s) for s in results]
 
@@ -174,7 +174,7 @@ async def update_suggestion(
             user_comment=body.user_comment,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -189,7 +189,7 @@ async def delete_suggestion(
             suggestion_id=suggestion_id, user_id=current_user.id
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -213,7 +213,7 @@ async def replace_suggestion_file(
             original_filename=file.filename,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -241,7 +241,7 @@ async def admin_list_suggestions(
             offset=offset,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return [serialize_document_suggestion(s) for s in results]
 
@@ -340,7 +340,7 @@ async def admin_update_suggestion(
             admin_comment=body.admin_comment,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -368,7 +368,7 @@ async def admin_approve_suggestion(
             admin_comment=body.admin_comment,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result.suggestion)
 
@@ -394,7 +394,7 @@ async def admin_reject_suggestion(
             admin_comment=body.admin_comment,
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)
 
@@ -417,6 +417,6 @@ async def admin_delete_suggestion(
             suggestion_id=suggestion_id
         )
     except ValueError as e:
-        raise _error(e)
+        raise _error(e) from e
 
     return serialize_document_suggestion(result)

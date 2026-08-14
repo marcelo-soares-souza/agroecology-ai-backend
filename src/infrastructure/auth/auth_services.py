@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from src.domain.dto.auth_result import ChallengeResult, TokenPayload
 from src.domain.ports.auth_services_port import (
     EmailPort,
     HumanCheckPort,
     PasswordHasherPort,
     TokenServicePort,
 )
-from src.domain.dto.auth_result import ChallengeResult, TokenPayload
 from src.infrastructure.auth import human_check, jwt_handler, password_hasher
 from src.infrastructure.email import smtp_service
 

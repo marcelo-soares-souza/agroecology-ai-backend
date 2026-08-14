@@ -36,7 +36,7 @@ class UploadMyAvatar:
         try:
             processed = self._process_avatar(content)
         except Exception as e:
-            raise ValueError(f"Invalid image: {e}")
+            raise ValueError(f"Invalid image: {e}") from e
 
         directory = self._config.storage_directory(user_id)
         await self._storage.save(

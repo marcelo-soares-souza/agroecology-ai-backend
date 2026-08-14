@@ -49,4 +49,3 @@ class LocalIndexMetadata(IndexMetadataPort):
         except (FileNotFoundError, OSError):
             return False, expected, "(no version file)"
         return actual == expected, expected, actual
-

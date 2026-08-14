@@ -22,7 +22,7 @@ def clean_doi(value: str | None) -> str | None:
     if not value:
         return None
     value = value.strip()
-    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value, flags=re.I)
+    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value, flags=re.IGNORECASE)
     return value or None
 
 

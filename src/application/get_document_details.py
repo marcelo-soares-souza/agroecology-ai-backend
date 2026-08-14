@@ -33,4 +33,3 @@ class GetDocumentDetails:
             suggested_by_user_name=suggestion.user_name if suggestion else None,
             suggested_by_user_slug=suggestion.user_slug if suggestion else None,
         )
-

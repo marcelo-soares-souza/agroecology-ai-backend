@@ -151,17 +151,16 @@ class PostgresAcademicMetadataRunRepository(AcademicMetadataRunRepository):
                 return self._to_domain(dict(row)) if row else None
 
     async def has_active_run(self) -> bool:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     SELECT 1
                     FROM academic_metadata_runs
                     WHERE status IN ('queued', 'processing')
                     LIMIT 1
                     """
-                )
-                return await cur.fetchone() is not None
+            )
+            return await cur.fetchone() is not None
 
     async def get_active_run(self) -> AcademicMetadataRun | None:
         async with self._pool.connection() as conn:

@@ -16,14 +16,14 @@ if TYPE_CHECKING:
     import redis
 else:
     try:
-        import redis  # noqa: F401
+        import redis
     except ImportError:
         redis = None  # type: ignore[assignment]
 
 _KEY_PREFIX = "auth:rate-limit"
 
 
-class ValkeyAuthRateLimiter(AuthRateLimiterPort):  # noqa: F811
+class ValkeyAuthRateLimiter(AuthRateLimiterPort):
     """Valkey-backed rate limiter for public authentication endpoints."""
 
     def __init__(self, url: str, max_failures: int, block_seconds: int) -> None:
@@ -157,7 +157,7 @@ class ValkeyAuthRateLimiter(AuthRateLimiterPort):  # noqa: F811
 
 
 def _digest(action: str, identifier: str) -> str:
-    return hashlib.sha256(f"{action}:{identifier}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{action}:{identifier}".encode()).hexdigest()
 
 
 def _latest_block(

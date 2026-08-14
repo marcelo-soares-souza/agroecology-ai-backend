@@ -24,10 +24,9 @@ class PostgresDocumentAcademicMetadataAttemptRepository(
         self._pool = pool
 
     async def count_pending(self) -> int:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     SELECT COUNT(*)
                     FROM documents d
                     LEFT JOIN document_academic_metadata_attempts a
@@ -36,9 +35,9 @@ class PostgresDocumentAcademicMetadataAttemptRepository(
                         AND NULLIF(BTRIM(COALESCE(d.title, '')), '') IS NOT NULL
                         AND NULLIF(BTRIM(COALESCE(d.authors, '')), '') IS NOT NULL
                     """
-                )
-                result = await cur.fetchone()
-                return int(result[0]) if result else 0
+            )
+            result = await cur.fetchone()
+            return int(result[0]) if result else 0
 
     async def count_totals(self) -> AcademicMetadataStatusTotals:
         pending = await self.count_pending()
@@ -67,18 +66,17 @@ class PostgresDocumentAcademicMetadataAttemptRepository(
         )
 
     async def exists(self, document_id: str) -> bool:
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     SELECT 1
                     FROM document_academic_metadata_attempts
                     WHERE document_id = %s
                     LIMIT 1
                     """,
-                    (document_id,),
-                )
-                return await cur.fetchone() is not None
+                (document_id,),
+            )
+            return await cur.fetchone() is not None
 
     async def record(
         self,

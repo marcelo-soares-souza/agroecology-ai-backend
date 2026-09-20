@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+
+from src.shared.email_utils import validate_email
 
 MAX_HISTORY_REQUEST_MESSAGE_CHARS = 16000
+
+EmailValue = Annotated[str, AfterValidator(validate_email)]
 
 
 class ChatMessageRequest(BaseModel):
@@ -280,7 +284,7 @@ class AcademicMetadataExtractResponse(BaseModel):
 
 class RegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=200)
-    email: str = Field(..., min_length=1, max_length=320)
+    email: EmailValue
     password: str = Field(
         ..., min_length=8, max_length=128, description="Minimum 8 characters"
     )
@@ -292,7 +296,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailValue
     password: str
 
 
@@ -306,7 +310,7 @@ class PasswordResetConfirmRequest(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
-    email: str
+    email: EmailValue
 
 
 class ConfirmEmailRequest(BaseModel):
@@ -314,7 +318,7 @@ class ConfirmEmailRequest(BaseModel):
 
 
 class ResendConfirmationRequest(BaseModel):
-    email: str
+    email: EmailValue
 
 
 class TokenResponse(BaseModel):
@@ -333,7 +337,7 @@ class OrcidExchangeRequest(BaseModel):
 
 class OrcidCompleteEmailRequest(BaseModel):
     completion_token: str = Field(..., min_length=1, max_length=200)
-    email: str = Field(..., min_length=1, max_length=320)
+    email: EmailValue
     full_name: str = Field(..., min_length=1, max_length=200)
     locale: str = Field(default="pt-BR", max_length=20)
     privacy_policy_accepted: bool = Field(..., description="Must be True")
@@ -387,7 +391,7 @@ class PublicUserListResponse(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     full_name: str | None = None
-    email: str | None = None
+    email: EmailValue | None = None
     about: str | None = None
     link: str | None = None
     status: str | None = None

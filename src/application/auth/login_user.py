@@ -14,6 +14,7 @@ from src.domain.ports.identity_server_client import (
     IdentityServerUnavailable,
 )
 from src.domain.ports.user_repository import UserRepository
+from src.shared.email_utils import normalize_email
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -35,6 +36,7 @@ class LoginUser:
         self._provision_external_user = provision_external_user
 
     async def execute(self, email: str, password: str) -> LoginResult:
+        email = normalize_email(email)
         user = await self._repo.get_by_email(email)
         if not user:
             return await self._login_with_external_identity(email, password)

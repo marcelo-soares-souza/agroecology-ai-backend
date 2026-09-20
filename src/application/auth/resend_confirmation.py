@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from src.domain.dto.message_result import MessageResult
 from src.domain.ports.auth_services_port import EmailPort, PasswordHasherPort
 from src.domain.ports.user_repository import UserRepository
+from src.shared.email_utils import normalize_email
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -23,6 +24,7 @@ class ResendConfirmationEmail:
         self._email_service = email_service
 
     async def execute(self, email: str) -> MessageResult:
+        email = normalize_email(email)
         user = await self._repo.get_by_email(email)
         if not user:
             raise ValueError("Email not found")

@@ -24,6 +24,7 @@ from src.infrastructure.identity.orcid_oauth_client import (
     OrcidOAuthError,
 )
 from src.shared.config import APP_URL, PRIVACY_POLICY_VERSION, TOS_VERSION
+from src.shared.email_utils import validate_email
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -202,10 +203,8 @@ class OrcidAuthService:
         if not tos_accepted:
             raise ValueError("Terms of Service must be accepted")
 
-        clean_email = email.strip().lower()
+        clean_email = validate_email(email)
         clean_name = " ".join(full_name.strip().split())
-        if not clean_email or "@" not in clean_email:
-            raise ValueError("A valid email is required")
         if not clean_name:
             clean_name = completion.display_name or clean_email.split("@", 1)[0]
 

@@ -8,6 +8,7 @@ from src.domain.models.auth_token import ConfirmationTokenRecord, RefreshTokenRe
 from src.domain.models.user import User
 from src.domain.ports.user_repository import UserRepository
 from src.shared.config import PRIVACY_POLICY_VERSION, TOS_VERSION, utcnow
+from src.shared.email_utils import normalize_email
 from src.shared.uuid7 import uuid7
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ class PostgresUserRepository(UserRepository):
         tos_accepted: bool = False,
         primary_auth_provider: str = "local",
     ) -> User:
+        email = normalize_email(email)
         user_id = uuid7()
         now = utcnow()
         role_id = (
@@ -93,8 +95,8 @@ class PostgresUserRepository(UserRepository):
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(
-                    self._base_select_query("WHERE u.email = %s"),
-                    (email,),
+                    self._base_select_query("WHERE lower(u.email) = %s"),
+                    (normalize_email(email),),
                 )
                 row = await cur.fetchone()
                 return self._to_user(dict(row)) if row else None

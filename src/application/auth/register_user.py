@@ -12,6 +12,7 @@ from src.domain.ports.auth_services_port import (
     PasswordHasherPort,
 )
 from src.domain.ports.user_repository import UserRepository
+from src.shared.email_utils import validate_email
 from src.shared.logging_utils import log_event, mask_email
 
 logger = logging.getLogger("agroecology.auth")
@@ -41,6 +42,8 @@ class RegisterUser:
         privacy_policy_accepted: bool = False,
         tos_accepted: bool = False,
     ) -> UserDTO:
+        email = validate_email(email)
+
         if not self._human_check.verify_challenge(challenge_id, challenge_answer):
             raise ValueError("Human verification failed")
 

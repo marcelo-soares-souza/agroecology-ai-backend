@@ -2,17 +2,25 @@
 """Delete documents listed in a text file.
 
 The file must contain one document id per line. Blank lines, lines starting
-with ``#``, and duplicate ids are ignored. Each id is removed with the same
-use case used by the admin API, so the PostgreSQL row (with cascades), the
-stored file, and the LanceDB chunks are all removed. After the batch the
-answer cache is invalidated and the index version is bumped.
+with ``#``, and duplicate ids are ignored.
 
-The backend must be restarted afterwards so the in-memory BM25 snapshot
-drops the deleted chunks. Run it while no ingestion is in progress.
+By default each id is removed with the same use case used by the admin API,
+so the PostgreSQL row (with cascades), the stored file, and the LanceDB
+chunks are all removed. After the batch the answer cache is invalidated and
+the index version is bumped. The backend must be restarted afterwards so the
+in-memory BM25 snapshot drops the deleted chunks.
+
+With ``--db-only`` only the PostgreSQL row (with cascades) is removed. The
+stored file and the LanceDB chunks are kept, so answers keep citing the
+document while its detail page returns 404. No cache or index refresh is
+performed in this mode.
+
+Run it while no ingestion is in progress.
 
 Usage:
     python backend/scripts/delete_documents.py ids.txt --dry-run
     python backend/scripts/delete_documents.py ids.txt
+    python backend/scripts/delete_documents.py ids.txt --db-only
     python backend/scripts/delete_documents.py ids.txt --report report.json
 """
 
@@ -47,6 +55,11 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Report what would be deleted without changing anything",
+    )
+    parser.add_argument(
+        "--db-only",
+        action="store_true",
+        help="Delete only the PostgreSQL rows, keeping stored files and LanceDB chunks",
     )
     parser.add_argument(
         "--report",
@@ -113,6 +126,7 @@ async def _execute(args: argparse.Namespace) -> int:
     try:
         delete_document = container.delete_document
         manage_docs = container.manage_docs
+        doc_repo = container.doc_repo
         ingestion_repo = container.ingestion_repo
         vector_store = container.vector_store
         cache = container.cache
@@ -120,6 +134,10 @@ async def _execute(args: argparse.Namespace) -> int:
 
         if delete_document is None or manage_docs is None or ingestion_repo is None:
             print("Service container is not initialized")
+            return 1
+
+        if args.db_only and doc_repo is None:
+            print("Document repository is not initialized")
             return 1
 
         if await ingestion_repo.has_active_run() and not args.force:
@@ -148,7 +166,11 @@ async def _execute(args: argparse.Namespace) -> int:
                 continue
 
             try:
-                document = await delete_document.execute(document_id)
+                document = (
+                    await doc_repo.delete(document_id)
+                    if args.db_only and doc_repo is not None
+                    else await delete_document.execute(document_id)
+                )
             except Exception as exc:
                 failed.append({"document_id": document_id, "error": str(exc)})
                 print(f"[failed]       {document_id}  {exc}")
@@ -162,7 +184,7 @@ async def _execute(args: argparse.Namespace) -> int:
                 print(f"[deleted]      {document_id}  {document.filename}")
 
         vector_cleanup: list[str] = []
-        if not args.dry_run and vector_store is not None:
+        if not args.dry_run and not args.db_only and vector_store is not None:
             for document_id in [*not_found, *(item["document_id"] for item in failed)]:
                 try:
                     vector_store.delete_by_prefix(f"{document_id}_")
@@ -174,7 +196,7 @@ async def _execute(args: argparse.Namespace) -> int:
                     print(f"[failed]       {document_id}  vector cleanup: {exc}")
 
         index_version: str | None = None
-        if not args.dry_run and (deleted or vector_cleanup):
+        if not args.dry_run and not args.db_only and (deleted or vector_cleanup):
             if cache is not None:
                 cache.invalidate_all()
             if index_metadata is not None:
@@ -191,6 +213,7 @@ async def _execute(args: argparse.Namespace) -> int:
         report: dict[str, object] = {
             "generated_at": datetime.now(UTC).isoformat(),
             "input_file": str(args.file),
+            "mode": "db-only" if args.db_only else "full",
             "dry_run": args.dry_run,
             "requested": len(document_ids),
             "invalid": invalid,
@@ -226,10 +249,13 @@ async def _execute(args: argparse.Namespace) -> int:
                 f"Chunks: {chunks_before} -> {chunks_after} "
                 f"(index version {index_version})"
             )
-            print(
-                "Restart the backend so the in-memory BM25 index drops "
-                "the deleted chunks"
-            )
+            if args.db_only:
+                print("Database rows deleted; stored files and LanceDB chunks kept")
+            else:
+                print(
+                    "Restart the backend so the in-memory BM25 index drops "
+                    "the deleted chunks"
+                )
 
         return 1 if failed or invalid else 0
     finally:

@@ -84,6 +84,16 @@ Use this endpoint for load balancers, uptime checks, and deployment smoke tests.
 It does not require authentication.
 """,
     },
+    ("GET", "/api/v1/public-config"): {
+        "tags": ["health"],
+        "summary": "Get public feature availability",
+        "description": """
+Returns public feature flags used by web and mobile clients.
+
+When `chat_enabled` is false, clients must not submit questions or request chat
+conversations. The document database remains available.
+""",
+    },
     ("GET", "/api/v1/auth/human-challenge"): {
         "summary": "Create a human challenge",
         "description": """

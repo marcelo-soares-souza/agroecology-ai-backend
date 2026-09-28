@@ -70,6 +70,7 @@ from src.adapters.rest.schemas import (
     IngestStatusResponse,
     MessageResponse,
     MetadataExtractionStatusResponse,
+    PublicConfigResponse,
     StatusResponse,
 )
 from src.adapters.rest.serializers import (
@@ -88,6 +89,7 @@ from src.domain.models.user import User
 from src.domain.ports.chat_conversation_repository import ChatConversationLimitError
 from src.shared.config import (
     APP_URL,
+    CHAT_ENABLED,
     LLM_MAX_HISTORY_MESSAGE_CHARS,
     LLM_MAX_HISTORY_TOTAL_CHARS,
     LLM_MAX_HISTORY_TURNS,
@@ -112,6 +114,17 @@ def _conversation_limit_detail(exc: ChatConversationLimitError) -> dict[str, obj
         "message": str(exc),
         "limit": exc.limit,
     }
+
+
+def _ensure_chat_enabled() -> None:
+    if not CHAT_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "chat_temporarily_unavailable",
+                "message": "Chat is temporarily unavailable while infrastructure funding is secured.",
+            },
+        )
 
 
 def _normalize_chat_history(history: list[ChatMessageRequest]) -> list[ChatMessage]:
@@ -206,6 +219,11 @@ async def health():
     return HealthResponse(status="ok")
 
 
+@app.get("/api/v1/public-config", response_model=PublicConfigResponse)
+async def public_config():
+    return PublicConfigResponse(chat_enabled=CHAT_ENABLED)
+
+
 @app.middleware("http")
 async def log_http_requests(request: Request, call_next):
     started_at = time.perf_counter()
@@ -253,6 +271,7 @@ async def log_http_requests(request: Request, call_next):
 
 @app.post("/api/v1/ask", response_model=AskResponse)
 async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
+    _ensure_chat_enabled()
     status_svc = get_status_service()
     if status_svc is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -292,6 +311,7 @@ async def ask(body: AskRequest, current_user: User = Depends(get_current_user)):
 
 @app.get("/api/v1/answer/{task_id}", response_model=AnswerResponse)
 async def answer(task_id: str, current_user: User = Depends(get_current_user)):
+    _ensure_chat_enabled()
     task = get_task_status().get(task_id)
     if task is None:
         raise HTTPException(
@@ -319,6 +339,7 @@ async def list_chat_conversations(
     offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_chat_enabled()
     conversations, total = await get_chat_conversation_repo().list_for_user(
         current_user.id,
         limit,
@@ -343,6 +364,7 @@ async def create_chat_conversation(
     body: ChatConversationCreateRequest,
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_chat_enabled()
     try:
         conversation = await get_chat_conversation_repo().create(
             current_user.id,
@@ -364,6 +386,7 @@ async def get_chat_conversation(
     conversation_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_chat_enabled()
     detail = await get_chat_conversation_repo().get_for_user(
         conversation_id,
         current_user.id,
@@ -382,6 +405,7 @@ async def rename_chat_conversation(
     body: ChatConversationUpdateRequest,
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_chat_enabled()
     conversation = await get_chat_conversation_repo().rename(
         conversation_id,
         current_user.id,
@@ -400,6 +424,7 @@ async def delete_chat_conversation(
     conversation_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    _ensure_chat_enabled()
     deleted = await get_chat_conversation_repo().delete(
         conversation_id,
         current_user.id,

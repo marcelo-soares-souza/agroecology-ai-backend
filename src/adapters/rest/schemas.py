@@ -95,6 +95,10 @@ class HealthResponse(BaseModel):
     status: str
 
 
+class PublicConfigResponse(BaseModel):
+    chat_enabled: bool
+
+
 class IngestionRunSchema(BaseModel):
     id: str
     status: str

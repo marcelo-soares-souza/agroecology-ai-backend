@@ -54,6 +54,20 @@ Any Ollama model works — qwen, llama, mistral, deepseek-r1, phi, etc.
 The `.env.example` file uses `qwen3:4b` as a practical local starter model.
 If `LLM_MODEL` is not set at all, the code fallback is `qwen3:14b`.
 
+## Chat Availability
+
+Set `CHAT_ENABLED=false` to temporarily pause the AI chat while keeping the
+document database, accounts, suggestions, and administration features available.
+The public configuration endpoint informs clients about the current state, and
+the question, answer, and conversation endpoints return `503` while paused.
+
+```env
+CHAT_ENABLED=false
+```
+
+Set it back to `true` and restart the backend to restore the chat. Existing
+conversations and all chat code remain intact.
+
 Model size matters for local Ollama. The default `qwen3:4b` is a practical
 choice for a 6 GB VRAM GPU and RAG prompts. Smaller models such as 0.5B/1B run
 faster but often produce weaker answers. 7B/8B models may work on 6 GB VRAM,
@@ -116,6 +130,7 @@ LLM_MODEL=qwen3:4b
 | `GET` | `/api/v1/answer/{task_id}` | Poll for the answer |
 | `GET` | `/api/v1/status` | Server health, cache stats, last ingestion |
 | `GET` | `/api/v1/health` | Simple health check |
+| `GET` | `/api/v1/public-config` | Public feature availability, including `chat_enabled` |
 | `POST` | `/api/v1/ingest` | Start document ingestion. Use `?force=true` for full rebuild. |
 | `GET` | `/api/v1/ingest/status` | Poll ingestion progress |
 | `GET` | `/api/v1/ingestion/runs` | Ingestion history |

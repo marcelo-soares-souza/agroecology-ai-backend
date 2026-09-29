@@ -9,7 +9,7 @@ class DeleteDocument:
     def __init__(
         self,
         manage_documents: ManageDocuments,
-        vector_store: VectorStorePort,
+        vector_store: VectorStorePort | None,
     ) -> None:
         self._manage_documents = manage_documents
         self._vector_store = vector_store
@@ -19,6 +19,6 @@ class DeleteDocument:
         if not doc:
             return None
 
-        if self._vector_store.index_exists():
+        if self._vector_store is not None and self._vector_store.index_exists():
             self._vector_store.delete_by_prefix(f"{doc_id}_")
         return doc

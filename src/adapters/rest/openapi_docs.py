@@ -90,8 +90,9 @@ It does not require authentication.
         "description": """
 Returns public feature flags used by web and mobile clients.
 
-When `chat_enabled` is false, clients must not submit questions or request chat
-conversations. The document database remains available.
+When `chat_enabled` is false, clients must not submit questions, request chat
+conversations, start vector ingestion, or request LLM metadata extraction. The
+document database remains available.
 """,
     },
     ("GET", "/api/v1/auth/human-challenge"): {

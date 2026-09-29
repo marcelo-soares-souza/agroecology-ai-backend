@@ -439,6 +439,7 @@ async def delete_chat_conversation(
 
 @app.get("/api/v1/status", response_model=StatusResponse)
 async def status(current_user: User = Depends(get_current_user)):
+    _ensure_chat_enabled()
     use_case = get_status_service()
     if use_case is None:
         raise HTTPException(status_code=503, detail="Not initialized")
@@ -453,6 +454,7 @@ async def status(current_user: User = Depends(get_current_user)):
 async def ingest_start(
     force: bool = False, current_user: User = Depends(require_role("admin"))
 ):
+    _ensure_chat_enabled()
     log_event(
         logger,
         logging.INFO,
@@ -469,6 +471,7 @@ async def ingest_start(
 
 @app.get("/api/v1/ingest/status", response_model=IngestStatusResponse)
 async def ingest_status(current_user: User = Depends(require_role("admin"))):
+    _ensure_chat_enabled()
     run = await get_list_ingestion_runs().get_active()
     if run is None:
         return IngestStatusResponse(status="idle")
@@ -883,6 +886,7 @@ async def extract_document_metadata(
     doc_id: str,
     current_user: User = Depends(require_role("admin")),
 ):
+    _ensure_chat_enabled()
     log_event(
         logger,
         logging.INFO,
@@ -964,6 +968,7 @@ async def download_document(doc_id: str):
 
 @app.post("/api/v1/documents/extract-all-metadata", response_model=MessageResponse)
 async def extract_all_metadata(current_user: User = Depends(require_role("admin"))):
+    _ensure_chat_enabled()
     log_event(
         logger,
         logging.INFO,

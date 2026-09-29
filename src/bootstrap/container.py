@@ -202,6 +202,7 @@ from src.shared.config import (
     AVATAR_DIR,
     BM25_TOP_K,
     CACHE_TTL,
+    CHAT_ENABLED,
     CHUNK_MAX_CHARS,
     CHUNK_OVERLAP,
     CHUNK_OVERLAP_CHARS,
@@ -432,13 +433,15 @@ class Container:
                 max_size=DB_POOL_MAX_SIZE,
             )
 
-            self._create_embedder()
-            self._create_llm()
-            self.index_metadata = LocalIndexMetadata()
-            log_event(logger, logging.INFO, "index_metadata_initialized")
-            self._create_cache()
+            if CHAT_ENABLED:
+                self._create_embedder()
+                self._create_llm()
+                self.index_metadata = LocalIndexMetadata()
+                log_event(logger, logging.INFO, "index_metadata_initialized")
+                self._create_cache()
             self._create_auth_rate_limiter()
-            self._create_reranker()
+            if CHAT_ENABLED:
+                self._create_reranker()
 
             self.doc_repo = PostgresDocumentRepository(self._db_pool)
             await self.doc_repo.initialize()
@@ -497,8 +500,11 @@ class Container:
             await self.suggestion_repo.initialize()
             log_event(logger, logging.INFO, "suggestion_repo_initialized")
 
-            self.vector_store = LanceDBVectorStore()
-            log_event(logger, logging.INFO, "vector_store_initialized", type="lancedb")
+            if CHAT_ENABLED:
+                self.vector_store = LanceDBVectorStore()
+                log_event(
+                    logger, logging.INFO, "vector_store_initialized", type="lancedb"
+                )
 
             self.file_storage = LocalFileStorage()
             log_event(logger, logging.INFO, "file_storage_initialized")
@@ -509,6 +515,8 @@ class Container:
             if self.retriever is not None:
                 self.retriever.prewarm_bm25()
                 self.bm25_prewarmer = BM25PrewarmService(self.retriever)
+            else:
+                log_event(logger, logging.INFO, "ai_runtime_disabled")
             self._initialized = True
             log_event(logger, logging.INFO, "container_init_completed")
         except Exception:
@@ -900,17 +908,12 @@ class Container:
         )
 
     def _create_use_cases(self) -> None:
-        assert self.embedder is not None
-        assert self.llm is not None
-        assert self.vector_store is not None
         assert self.ingestion_repo is not None
         assert self.doc_repo is not None
         assert self.academic_metadata_repo is not None
         assert self.academic_metadata_attempt_repo is not None
         assert self.academic_metadata_run_repo is not None
-        assert self.cache is not None
         assert self.file_storage is not None
-        assert self.index_metadata is not None
         assert self.user_repo is not None
 
         document_storage_config = DocumentStorageConfig(
@@ -968,72 +971,83 @@ class Container:
             refresh_token_reuse_grace_seconds=REFRESH_TOKEN_REUSE_GRACE_SECONDS,
         )
 
-        # Core RAG services
-        self.retriever = RetrieverService(
-            vector_store=self.vector_store,
-            embedder=self.embedder,
-            bm25_factory=BM25Impl,
-            reranker=self.reranker,
-            bm25_top_k=BM25_TOP_K,
-            hybrid_top_k=HYBRID_TOP_K,
-            mmr_lambda=MMR_LAMBDA,
-            similarity_top_k=SIMILARITY_TOP_K,
-        )
         self.manage_docs = ManageDocuments(
             repo=self.doc_repo,
             storage=self.file_storage,
             config=document_storage_config,
         )
 
-        ocr_service = RapidOcrService()
-        loader = LocalDocumentLoader(
-            file_type_to_ext=document_storage_config.file_type_to_ext,
-            ocr=ocr_service,
-        )
-        self.ingest = IngestDocuments(
-            vector_store=self.vector_store,
-            embedder=self.embedder,
-            ingestion_repo=self.ingestion_repo,
-            document_repo=self.doc_repo,
-            loader=loader,
-            index_metadata=self.index_metadata,
-            config=ingestion_config,
-        )
-        self.ingest.register_on_complete(self._on_ingestion_complete)
+        if CHAT_ENABLED:
+            assert self.embedder is not None
+            assert self.llm is not None
+            assert self.vector_store is not None
+            assert self.cache is not None
+            assert self.index_metadata is not None
 
-        self.get_status = GetStatus(
-            vector_store=self.vector_store,
-            ingest=self.ingest,
-            cache=self.cache,
-            ingestion_repo=self.ingestion_repo,
-            doc_repo=self.doc_repo,
-            retriever=self.retriever,
-            llm_provider=self.llm_provider,
-            llm_transport=self.llm_transport,
-            index_metadata=self.index_metadata,
-            config=status_config,
-        )
-        self.extract_metadata = ExtractMetadata(self.llm)
+            self.retriever = RetrieverService(
+                vector_store=self.vector_store,
+                embedder=self.embedder,
+                bm25_factory=BM25Impl,
+                reranker=self.reranker,
+                bm25_top_k=BM25_TOP_K,
+                hybrid_top_k=HYBRID_TOP_K,
+                mmr_lambda=MMR_LAMBDA,
+                similarity_top_k=SIMILARITY_TOP_K,
+            )
+            ocr_service = RapidOcrService()
+            loader = LocalDocumentLoader(
+                file_type_to_ext=document_storage_config.file_type_to_ext,
+                ocr=ocr_service,
+            )
+            self.ingest = IngestDocuments(
+                vector_store=self.vector_store,
+                embedder=self.embedder,
+                ingestion_repo=self.ingestion_repo,
+                document_repo=self.doc_repo,
+                loader=loader,
+                index_metadata=self.index_metadata,
+                config=ingestion_config,
+            )
+            self.ingest.register_on_complete(self._on_ingestion_complete)
 
-        rewriter = LLMQueryRewriter(llm=self.llm)
-        self.ask_question = AskQuestion(
-            retriever=self.retriever,
-            llm=self.llm,
-            config=rag_config,
-            query_rewriter=rewriter,
-        )
+            self.get_status = GetStatus(
+                vector_store=self.vector_store,
+                ingest=self.ingest,
+                cache=self.cache,
+                ingestion_repo=self.ingestion_repo,
+                doc_repo=self.doc_repo,
+                retriever=self.retriever,
+                llm_provider=self.llm_provider,
+                llm_transport=self.llm_transport,
+                index_metadata=self.index_metadata,
+                config=status_config,
+            )
+            self.extract_metadata = ExtractMetadata(self.llm)
 
-        self.enqueue_document_metadata = EnqueueDocumentMetadata(
-            queue=self._get_queue  # type: ignore[arg-type]
-        )
+            rewriter = LLMQueryRewriter(llm=self.llm)
+            self.ask_question = AskQuestion(
+                retriever=self.retriever,
+                llm=self.llm,
+                config=rag_config,
+                query_rewriter=rewriter,
+            )
+            self.enqueue_document_metadata = EnqueueDocumentMetadata(
+                queue=self._get_queue  # type: ignore[arg-type]
+            )
 
         self.upload_document = UploadDocument(
             repo=self.doc_repo,
             storage=self.file_storage,
             config=document_storage_config,
-            enqueue_metadata=self.enqueue_document_metadata.execute,
-            auto_extract_metadata=AUTO_EXTRACT_METADATA,
-            auto_extract_academic_metadata=AUTO_EXTRACT_ACADEMIC_METADATA,
+            enqueue_metadata=(
+                self.enqueue_document_metadata.execute
+                if self.enqueue_document_metadata is not None
+                else None
+            ),
+            auto_extract_metadata=CHAT_ENABLED and AUTO_EXTRACT_METADATA,
+            auto_extract_academic_metadata=(
+                CHAT_ENABLED and AUTO_EXTRACT_ACADEMIC_METADATA
+            ),
         )
         self.list_documents = ListDocuments(
             doc_repo=self.doc_repo,
@@ -1052,13 +1066,15 @@ class Container:
             doc_repo=self.doc_repo,
             academic_metadata_repo=self.academic_metadata_repo,
         )
-        self.extract_document_metadata = ExtractDocumentMetadata(
-            repo=self.doc_repo,
-            storage=self.file_storage,
-            pdf_text_extractor=PyMuPdfTextExtractor(ocr=ocr_service),
-            metadata_extractor=self.extract_metadata,
-            config=document_storage_config,
-        )
+        if CHAT_ENABLED:
+            assert self.extract_metadata is not None
+            self.extract_document_metadata = ExtractDocumentMetadata(
+                repo=self.doc_repo,
+                storage=self.file_storage,
+                pdf_text_extractor=PyMuPdfTextExtractor(ocr=RapidOcrService()),
+                metadata_extractor=self.extract_metadata,
+                config=document_storage_config,
+            )
         academic_metadata_providers = [
             OpenAlexProvider(
                 mailto=OPENALEX_MAILTO or CROSSREF_MAILTO,
@@ -1329,9 +1345,15 @@ class Container:
             email_service=email_service,
             user_repo=self.user_repo,
             config=suggestion_storage_config,
-            enqueue_metadata=self.enqueue_document_metadata.execute,
-            auto_extract_metadata=AUTO_EXTRACT_METADATA,
-            auto_extract_academic_metadata=AUTO_EXTRACT_ACADEMIC_METADATA,
+            enqueue_metadata=(
+                self.enqueue_document_metadata.execute
+                if self.enqueue_document_metadata is not None
+                else None
+            ),
+            auto_extract_metadata=CHAT_ENABLED and AUTO_EXTRACT_METADATA,
+            auto_extract_academic_metadata=(
+                CHAT_ENABLED and AUTO_EXTRACT_ACADEMIC_METADATA
+            ),
         )
         self.admin_approve_all_pending_document_suggestions = (
             AdminApproveAllPendingDocumentSuggestions(
@@ -1359,27 +1381,29 @@ class Container:
         self.list_ingestion_runs = ListIngestionRuns(ingestion_repo=self.ingestion_repo)
 
         # Services that depend on queue (lazy-initialized in start())
-        self.task_manager = TaskManager()
-        self.task_status = GetTaskStatus(task_manager=self.task_manager)
-
-        self.enqueue_pending_metadata = EnqueuePendingMetadata(
-            repo=self.doc_repo,
-            queue=self._get_queue,  # type: ignore[arg-type]
-        )
         self.get_metadata_job_status = GetMetadataJobStatus(
             queue=self._get_queue,  # type: ignore[arg-type]
         )
-        self.ask_task_service = AskTaskService(
-            ask_question=self.ask_question,
-            task_manager=self.task_manager,
-            cache=self.cache,
-            manage_documents=self.manage_docs,
-            chat_repo=self.chat_repo,
-        )
-        self.ingestion_task_service = IngestionTaskService(
-            ingestion_repo=self.ingestion_repo,
-            queue=self._get_queue,  # type: ignore[arg-type]
-        )
+        if CHAT_ENABLED:
+            assert self.ask_question is not None
+            assert self.cache is not None
+            self.task_manager = TaskManager()
+            self.task_status = GetTaskStatus(task_manager=self.task_manager)
+            self.enqueue_pending_metadata = EnqueuePendingMetadata(
+                repo=self.doc_repo,
+                queue=self._get_queue,  # type: ignore[arg-type]
+            )
+            self.ask_task_service = AskTaskService(
+                ask_question=self.ask_question,
+                task_manager=self.task_manager,
+                cache=self.cache,
+                manage_documents=self.manage_docs,
+                chat_repo=self.chat_repo,
+            )
+            self.ingestion_task_service = IngestionTaskService(
+                ingestion_repo=self.ingestion_repo,
+                queue=self._get_queue,  # type: ignore[arg-type]
+            )
 
     def _get_queue(self) -> QueueRepository:
         assert self.queue is not None, "queue not initialized"

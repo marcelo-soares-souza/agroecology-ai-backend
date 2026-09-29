@@ -56,10 +56,12 @@ If `LLM_MODEL` is not set at all, the code fallback is `qwen3:14b`.
 
 ## Chat Availability
 
-Set `CHAT_ENABLED=false` to temporarily pause the AI chat while keeping the
-document database, accounts, suggestions, and administration features available.
+Set `CHAT_ENABLED=false` for document-only operation. The backend keeps document
+browsing, downloads, accounts, suggestions, and non-AI academic metadata
+available, but does not initialize the LLM, embedding model, reranker, LanceDB,
+answer cache, BM25 prewarming, response task manager, or vector-ingestion service.
 The public configuration endpoint informs clients about the current state, and
-the question, answer, and conversation endpoints return `503` while paused.
+AI-runtime endpoints return `503` while paused.
 
 ```env
 CHAT_ENABLED=false
